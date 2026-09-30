@@ -1,3 +1,17 @@
+/**
+ * Admin User Provisioning & Promotion Utility
+ *
+ * Usage:
+ *   npx tsx scripts/create-admin.ts <email> <password>
+ *
+ * Examples:
+ *   npx tsx scripts/create-admin.ts staff@dramashort.com MySecurePass123!
+ *   npx tsx scripts/create-admin.ts admin@dramashort.com Admin123456!
+ *
+ * If the user already exists in Supabase, this script promotes their role to 'admin'.
+ * If the user is new, it creates them with auto-confirmed email and admin privileges.
+ */
+
 import { createClient } from "@supabase/supabase-js";
 import * as dotenv from "dotenv";
 import * as path from "path";
