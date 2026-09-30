@@ -25,8 +25,8 @@ This plan outlines the specific fixes, cleanup tasks, and enhancements needed to
 | **Phase 5** | 🟠 High | H3: Wire admin edit form to Supabase content DB (Add/Edit Drama: title, desc, genre, taxonomy, channel) | ✅ Done | Prevents silent data loss when admins create or edit drama records |
 | **Phase 5** | 🟠 High | H4: Server-side search filtering and pagination in `getPublishedTitles()` (Dramas query) | ✅ Done | Scalable search queries; eliminates full catalog download |
 | **Phase 5** | 🟠 High | H5: Add auth guards and redirects for `/account/*` routes | ✅ Done | Protects user-specific pages against unauthenticated access |
-| **Phase 5** | 🟠 High | H6: Fix `FavoritesContext` guest seed (remove `defaultFavoriteSlugs`) | ⏳ Next | Prevents guest accounts from being pre-seeded with fake favorites |
-| **Phase 6** | 🟡 Medium | M1: Audit and standardize mock/DB hydration pattern across components | ⏳ Planned | Consistent UX and elimination of stale mock data paths |
+| **Phase 5** | 🟠 High | H6: Fix `FavoritesContext` guest seed (remove `defaultFavoriteSlugs`) | ✅ Done | Prevents guest accounts from being pre-seeded with fake favorites |
+| **Phase 6** | 🟡 Medium | M1: Audit and standardize mock/DB hydration pattern across components | ⏳ Next | Consistent UX and elimination of stale mock data paths |
 | **Phase 6** | 🟡 Medium | M2: Dynamic SEO & OpenGraph tags via `generateMetadata()` | ⏳ Planned | Social sharing previews and search engine discovery |
 | **Phase 6** | 🟡 Medium | M3: Add Supabase Storage domain to `next.config.mjs` `remotePatterns` | ⏳ Planned | Prevents image load failures for storage-hosted assets |
 | **Phase 6** | 🟡 Medium | M4: Replace `catch (err: any)` with typed error handling in `AuthContext` | ✅ Done | Strict TypeScript compliance and type-safe `err instanceof Error` handling |
@@ -446,15 +446,27 @@ To eliminate ambiguity across product requirements, admin CMS, and codebase inte
 ---
 
 ### Task 5.6: Clean Guest Seed in `FavoritesContext.tsx` (H6)
-* **Target File**: `contexts/FavoritesContext.tsx`
-* **Problem**: Initial state seeds from `defaultFavoriteSlugs`, causing all guest users to see hardcoded fake favorites before logging in.
-* **Implementation Plan**:
-  1. Initialize guest `favoritedSlugs` as an empty `Set<string>()`.
-  2. Only load stored IDs from `localStorage` once client hydration completes.
-  3. For authenticated users, sync favorites strictly with Supabase `user_favorites` table.
+* **Status**: ✅ Completed
+* **Target Files**:
+  - `contexts/FavoritesContext.tsx`
+  - `data/favorites.mock.ts`
+* **Problem**: Initial state seeded from `defaultFavoriteSlugs`, causing all guest users to see 12 hardcoded fake favorites in their favorites list before logging in.
+* **Delivered Capabilities**:
+  1. Clean Zero-State Guest Seed:
+     - Initialized `favoritedSlugs` as an empty `Set<string>()` and `lists` as `[]`.
+     - Emptied `defaultFavoriteSlugs` in `data/favorites.mock.ts` to `[]`.
+     - First-time visitors and guests start with 0 favorites and see the polished empty state on `/account/favorite` ("You haven't favorited anything yet").
+  2. Legacy Mock Storage Purge:
+     - Detects if visitor's `localStorage` contains the legacy 12 fake demo slugs and purges them on load, ensuring previous test sessions don't leave phantom favorites.
+  3. Safe LocalStorage Hydration:
+     - Persists to `localStorage` strictly after client hydration is confirmed (`isHydrated = true`), preventing hydration mismatches and race conditions.
+  4. Automatic Guest-to-User Cloud Sync:
+     - When a guest user adds favorites to their local session and subsequently logs in or signs up, their guest favorites are automatically migrated to Supabase via `addUserFavorite()`, merged with their cloud favorites, and the local guest key is cleaned up.
 * **Verification**:
-  - Clear localStorage and open site in incognito.
-  - Favorites count in navbar shows `0` and `/account/favorite` shows clean empty state for new visitors.
+  - `npx tsc --noEmit` passed with 0 errors.
+  - `npm run lint` passed with 0 errors.
+  - Verified `defaultFavoriteSlugs: []` in `data/favorites.mock.ts`.
+  - Verified public pages (`/`, `/home`, `/trending`, `/new-release`, `/drama/...`) return HTTP 200 OK.
 
 ---
 

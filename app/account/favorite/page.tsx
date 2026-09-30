@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { ListPlus, FolderPlus, ArrowLeft, Eye, List, Heart } from "lucide-react";
@@ -8,32 +8,66 @@ import Header from "@/components/Header";
 import AccountSidebar from "@/components/account/AccountSidebar";
 import AddToListModal from "@/components/AddToListModal";
 import CreateListModal from "@/components/CreateListModal";
-import { accountUser } from "@/data/account-user.mock";
-import { getTitleBySlugOrFallback } from "@/data/titles.mock";
+import { accountUser as fallbackAccountUser } from "@/data/account-user.mock";
+import { getTitleBySlugOrFallback, type Title } from "@/data/titles.mock";
+import { getTitlesBySlugs } from "@/lib/services/content.service";
 import { useTheme } from "@/contexts/ThemeContext";
 import { useFavorites } from "@/contexts/FavoritesContext";
+import { useAuth } from "@/contexts/AuthContext";
 
 export default function FavoritePage() {
   const { theme } = useTheme();
+  const { user, profile } = useAuth();
   const { favoritedSlugs, lists } = useFavorites();
   const [view, setView] = useState<"favorites" | "myLists">("favorites");
 
   const [isCreateListOpen, setIsCreateListOpen] = useState(false);
-
-  // The slug of the favorite card currently running "Add to List" — also
-  // doubles as the add-to-list modal's open/closed state.
   const [addToListTargetSlug, setAddToListTargetSlug] = useState<string | null>(null);
 
+  const currentName = profile?.display_name || user?.user_metadata?.full_name || fallbackAccountUser.name;
+  const currentEmail = user?.email || fallbackAccountUser.email;
+  const initials = currentName
+    .split(" ")
+    .map((w: string) => w[0])
+    .filter(Boolean)
+    .join("")
+    .slice(0, 2)
+    .toUpperCase() || "U";
+
+  // Hydrate favorite titles from Content DB or fallback
+  const [favoriteEntries, setFavoriteEntries] = useState<Title[]>(() => {
+    return Array.from(favoritedSlugs).map(getTitleBySlugOrFallback);
+  });
+
+  useEffect(() => {
+    let isMounted = true;
+    const slugs = Array.from(favoritedSlugs);
+    if (slugs.length === 0) {
+      setFavoriteEntries([]);
+      return;
+    }
+
+    // Immediate fallback display
+    setFavoriteEntries(slugs.map(getTitleBySlugOrFallback));
+
+    // Async DB lookup
+    getTitlesBySlugs(slugs).then((dbTitles) => {
+      if (!isMounted) return;
+      if (dbTitles.length > 0) {
+        const dbMap = new Map(dbTitles.map((t) => [t.slug, t]));
+        const merged = slugs.map((s) => dbMap.get(s) || getTitleBySlugOrFallback(s));
+        setFavoriteEntries(merged);
+      }
+    });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [favoritedSlugs]);
+
   const handleOpenListPreview = (listId: string) => {
-    // UI only — no real per-list filtering yet, just opens a new window
-    // to demonstrate the "see" affordance.
     window.open(`/account/favorite?list=${listId}`, "_blank", "noopener,noreferrer");
   };
-
-  // Every favorited slug resolves to a title/poster via the same drama
-  // catalog the rest of the site uses — including titles favorited from
-  // elsewhere (e.g. the drama page's heart), not just the original mocks.
-  const favoriteEntries = Array.from(favoritedSlugs).map(getTitleBySlugOrFallback);
 
   return (
     <div data-theme={theme} className="min-h-screen bg-bg text-text">
@@ -44,16 +78,16 @@ export default function FavoritePage() {
           <AccountSidebar />
 
           <main className="w-full flex-1 space-y-6">
-            {/* Profile block — same avatar/email as Account, different actions */}
+            {/* Profile block */}
             <div className="bg-surface border border-border rounded-lg shadow-sm p-6 sm:p-8">
               <div className="flex items-start justify-between gap-4">
                 <div className="flex items-center gap-4">
                   <div className="h-16 w-16 shrink-0 rounded-full bg-primary/15 text-primary flex items-center justify-center font-display font-bold text-xl">
-                    {accountUser.initials}
+                    {initials}
                   </div>
                   <div>
-                    <p className="font-semibold text-text">{accountUser.name}</p>
-                    <p className="text-sm text-text-muted">{accountUser.email}</p>
+                    <p className="font-semibold text-text">{currentName}</p>
+                    <p className="text-sm text-text-muted">{currentEmail}</p>
                   </div>
                 </div>
 
