@@ -21,8 +21,8 @@ This plan outlines the specific fixes, cleanup tasks, and enhancements needed to
 | **Phase 4** | 🔴 Critical | C5: Wire Google OAuth sign-in button in `app/login/page.tsx` & `app/signup/page.tsx` | ✅ Done | Enables functional social authentication with server-side callback handler and open-redirect protection |
 | **Phase 4** | 🔴 Critical | C6: Wire watch history to `getUserWatchHistory()` in `app/account/history/page.tsx` | ✅ Done | Replaces static mock history with persistent user watch history, deletion, and clear modal |
 | **Phase 5** | 🟠 High | H1: Call `upsertWatchProgress()` from video playback events | ✅ Done | Real-time throttled tracking, auto-resume with prompt pill, onPause/onEnded/beforeunload persistence |
-| **Phase 5** | 🟠 High | H2: Replace `ContinueWatching` mock with real user data | ⏳ Next | Dynamic home page resume carousels for logged-in users |
-| **Phase 5** | 🟠 High | H3: Wire admin edit form to Supabase content DB (Add/Edit Drama: title, desc, genre, taxonomy, channel) | ⏳ Planned | Prevents silent data loss when admins create or edit drama records |
+| **Phase 5** | 🟠 High | H2: Replace `ContinueWatching` mock with real user data | ✅ Done | Real Supabase watch history hydration, smart next-episode advancement, & finished series exclusion |
+| **Phase 5** | 🟠 High | H3: Wire admin edit form to Supabase content DB (Add/Edit Drama: title, desc, genre, taxonomy, channel) | ⏳ Next | Prevents silent data loss when admins create or edit drama records |
 | **Phase 5** | 🟠 High | H4: Server-side search filtering and pagination in `getPublishedTitles()` (Dramas query) | ⏳ Planned | Scalable search queries; eliminates full catalog download |
 | **Phase 5** | 🟠 High | H5: Add auth guards and redirects for `/account/*` routes | ⏳ Planned | Protects user-specific pages against unauthenticated access |
 | **Phase 5** | 🟠 High | H6: Fix `FavoritesContext` guest seed (remove `defaultFavoriteSlugs`) | ⏳ Planned | Prevents guest accounts from being pre-seeded with fake favorites |
@@ -310,21 +310,31 @@ To eliminate ambiguity across product requirements, admin CMS, and codebase inte
 ---
 
 ### Task 5.2: Dynamic Continue Watching Feed (H2)
-* **Status**: ⏳ Next
+* **Status**: ✅ Completed
 * **Target File**: `components/ContinueWatching.tsx`
-* **Problem**: Component consumes static mock data from `continue-watching.mock.ts` instead of querying user watch progress.
-* **Implementation Plan**:
-  1. Fetch active in-progress items via `getUserWatchHistory(user.id)` (filtering records where `progress_seconds < duration_seconds * 0.95`).
-  2. Hydrate poster, title, and channel information from `content.service.ts`.
-  3. Render dynamic progress bars showing exact percentage watched.
-  4. Hide section or show recommended prompt if user has no unfinished episodes.
+* **Delivered Capabilities**:
+  1. Real Supabase Watch History Hydration:
+     - Replaced static `continue-watching.mock.ts` with live queries to `getUserWatchHistory(user.id)` (with guest local storage fallback).
+     - Resolves drama titles, channels, and posters via `getTitlesBySlugs()`.
+  2. Smart In-Progress & Episode Advancement Logic:
+     - Mid-episode watches (< 95%) show active episode progress and percentage.
+     - Completed episodes (>= 95%) with remaining episodes automatically advance to `"Up Next: EP X of Y"` with 0% progress bar.
+     - Completed series (final episode >= 95%) are omitted from the Continue Watching feed.
+  3. Direct Episode Resumption:
+     - Cards link directly to `/watch/${slug}?ep=${targetEpisode}` so users resume at the exact episode and second.
+  4. Desktop Navigation & Loading States:
+     - Added left/right carousel scroll navigation buttons on desktop when items exceed viewport width.
+     - Added 5-card pulsing skeleton loader during async fetch to eliminate layout shift.
+     - Added welcoming empty state card with link to `/trending` when no watches are in progress.
 * **Verification**:
-  - Partially watching a title places it in the "Continue Watching" carousel on `/home`.
-  - Finishing the episode removes it from the feed.
+  - `npx tsc --noEmit` passed with 0 errors.
+  - `npm run lint` passed with 0 warnings.
+  - Route `/home` verified with HTTP 200 OK.
 
 ---
 
 ### Task 5.3: Admin Drama Edit & Persistence (H3)
+* **Status**: ⏳ Next
 * **Target File**: `app/admin/titles/[id]/edit/page.tsx` (aliased to `/admin/dramas/[id]/edit`)
 * **Problem**: Form submission runs a `setTimeout` dummy timer and discards changes on navigation.
 * **Implementation Plan**:
