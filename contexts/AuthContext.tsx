@@ -30,6 +30,11 @@ type AuthContextValue = {
     newPassword: string,
     currentPassword?: string
   ) => Promise<{ error: string | null }>;
+  requestEmailChange: (newEmail: string) => Promise<{ error: string | null }>;
+  verifyEmailChange: (
+    newEmail: string,
+    token: string
+  ) => Promise<{ error: string | null }>;
   refreshProfile: () => Promise<void>;
 };
 
@@ -186,6 +191,53 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  const requestEmailChange = async (
+    newEmail: string
+  ): Promise<{ error: string | null }> => {
+    if (!user) {
+      return { error: "You must be signed in to change your email." };
+    }
+
+    try {
+      const { error } = await supabase.auth.updateUser({ email: newEmail });
+      if (error) {
+        return { error: error.message };
+      }
+      return { error: null };
+    } catch (err: unknown) {
+      const message =
+        err instanceof Error ? err.message : "Failed to initiate email change.";
+      return { error: message };
+    }
+  };
+
+  const verifyEmailChange = async (
+    newEmail: string,
+    token: string
+  ): Promise<{ error: string | null }> => {
+    try {
+      const { data, error } = await supabase.auth.verifyOtp({
+        email: newEmail,
+        token: token.trim(),
+        type: "email_change",
+      });
+
+      if (error) {
+        return { error: error.message };
+      }
+
+      if (data.user) {
+        setUser(data.user);
+        await fetchProfile(data.user.id);
+      }
+      return { error: null };
+    } catch (err: unknown) {
+      const message =
+        err instanceof Error ? err.message : "Failed to verify email code.";
+      return { error: message };
+    }
+  };
+
   const refreshProfile = async () => {
     if (user) {
       await fetchProfile(user.id);
@@ -205,6 +257,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         logout,
         updateDisplayName,
         changePassword,
+        requestEmailChange,
+        verifyEmailChange,
         refreshProfile,
       }}
     >

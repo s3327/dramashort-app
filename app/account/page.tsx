@@ -1,11 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Pencil, Check, X, Send, Eye, EyeOff, Lock, Loader2 } from "lucide-react";
+import { Pencil, Check, X, Send, Eye, EyeOff, Lock, Loader2, Mail } from "lucide-react";
 import Header from "@/components/Header";
 import AccountSidebar from "@/components/account/AccountSidebar";
 import Modal from "@/components/Modal";
 import Toast from "@/components/Toast";
+import OtpInput from "@/components/OtpInput";
 import { accountUser as fallbackAccountUser } from "@/data/account-user.mock";
 import { useTheme } from "@/contexts/ThemeContext";
 import { useToast } from "@/hooks/useToast";
@@ -13,7 +14,14 @@ import { useAuth } from "@/contexts/AuthContext";
 
 export default function AccountPage() {
   const { theme } = useTheme();
-  const { user, profile, updateDisplayName, changePassword } = useAuth();
+  const {
+    user,
+    profile,
+    updateDisplayName,
+    changePassword,
+    requestEmailChange,
+    verifyEmailChange,
+  } = useAuth();
 
   const currentName = profile?.display_name || user?.user_metadata?.full_name || fallbackAccountUser.name;
   const currentEmail = user?.email || fallbackAccountUser.email;
@@ -39,6 +47,21 @@ export default function AccountPage() {
   const [isEditingEmail, setIsEditingEmail] = useState(false);
   const [newEmail, setNewEmail] = useState("");
   const [emailCodeSent, setEmailCodeSent] = useState(false);
+  const [isSendingEmailCode, setIsSendingEmailCode] = useState(false);
+  const [emailError, setEmailError] = useState("");
+  const [otpCode, setOtpCode] = useState("");
+  const [isVerifyingOtp, setIsVerifyingOtp] = useState(false);
+  const [otpError, setOtpError] = useState("");
+  const [resendCooldown, setResendCooldown] = useState(0);
+  const { message: emailToastMessage, show: showEmailToast } = useToast();
+
+  useEffect(() => {
+    if (resendCooldown <= 0) return;
+    const timer = setInterval(() => {
+      setResendCooldown((prev) => prev - 1);
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [resendCooldown]);
 
   const handleEditToggle = async () => {
     if (isEditingProfile) {
@@ -59,6 +82,9 @@ export default function AccountPage() {
   const openEmailEdit = () => {
     setNewEmail("");
     setEmailCodeSent(false);
+    setEmailError("");
+    setOtpCode("");
+    setOtpError("");
     setIsEditingEmail(true);
   };
 
@@ -66,13 +92,80 @@ export default function AccountPage() {
     setIsEditingEmail(false);
     setEmailCodeSent(false);
     setNewEmail("");
+    setOtpCode("");
+    setEmailError("");
+    setOtpError("");
   };
 
-  const handleSendEmailCode = (e: React.FormEvent) => {
+  const handleSendEmailCode = async (e: React.FormEvent) => {
     e.preventDefault();
-    // TODO: trigger the real "verify new email" flow (likely a code step,
-    // similar to forgot-password) once the account API exists.
-    setEmailCodeSent(true);
+    setEmailError("");
+
+    const trimmed = newEmail.trim().toLowerCase();
+    if (!trimmed) {
+      setEmailError("Please enter a new email address.");
+      return;
+    }
+
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) {
+      setEmailError("Please enter a valid email address.");
+      return;
+    }
+
+    if (trimmed === currentEmail?.toLowerCase()) {
+      setEmailError("New email address must be different from your current email.");
+      return;
+    }
+
+    setIsSendingEmailCode(true);
+    const res = await requestEmailChange(trimmed);
+    setIsSendingEmailCode(false);
+
+    if (res.error) {
+      setEmailError(res.error);
+    } else {
+      setEmailCodeSent(true);
+      setResendCooldown(60);
+      setOtpCode("");
+      setOtpError("");
+    }
+  };
+
+  const handleResendOtp = async () => {
+    if (resendCooldown > 0 || isSendingEmailCode) return;
+    setEmailError("");
+    setOtpError("");
+    setIsSendingEmailCode(true);
+    const res = await requestEmailChange(newEmail.trim().toLowerCase());
+    setIsSendingEmailCode(false);
+
+    if (res.error) {
+      setOtpError(res.error);
+    } else {
+      setResendCooldown(60);
+      showEmailToast("Verification code resent");
+    }
+  };
+
+  const handleVerifyOtp = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    setOtpError("");
+
+    if (otpCode.length < 6) {
+      setOtpError("Please enter the complete 6-digit verification code.");
+      return;
+    }
+
+    setIsVerifyingOtp(true);
+    const res = await verifyEmailChange(newEmail.trim().toLowerCase(), otpCode);
+    setIsVerifyingOtp(false);
+
+    if (res.error) {
+      setOtpError(res.error);
+    } else {
+      closeEmailEdit();
+      showEmailToast("Email updated successfully");
+    }
   };
 
   // Password change gets its own modal, separate from the inline edit
@@ -243,6 +336,11 @@ export default function AccountPage() {
                     <div className="mt-3 rounded-md border border-dashed border-border p-4 bg-bg">
                       {!emailCodeSent ? (
                         <form onSubmit={handleSendEmailCode} className="space-y-3">
+                          {emailError && (
+                            <div className="rounded-md bg-danger/10 border border-danger/30 p-2.5 text-xs text-danger font-medium">
+                              {emailError}
+                            </div>
+                          )}
                           <div>
                             <label
                               htmlFor="newEmail"
@@ -263,9 +361,17 @@ export default function AccountPage() {
                           <div className="flex items-center gap-2">
                             <button
                               type="submit"
-                              className="rounded-full bg-btn-primary hover:bg-btn-primary-hover text-btn-primary-text font-semibold text-xs px-4 py-2 shadow-sm transition-colors"
+                              disabled={isSendingEmailCode}
+                              className="rounded-full bg-btn-primary hover:bg-btn-primary-hover disabled:opacity-50 text-btn-primary-text font-semibold text-xs px-4 py-2 shadow-sm transition-colors flex items-center gap-1.5"
                             >
-                              Send Verification Code
+                              {isSendingEmailCode ? (
+                                <>
+                                  <Loader2 size={13} className="animate-spin" />
+                                  <span>Sending code...</span>
+                                </>
+                              ) : (
+                                "Send Verification Code"
+                              )}
                             </button>
                             <button
                               type="button"
@@ -277,19 +383,70 @@ export default function AccountPage() {
                           </div>
                         </form>
                       ) : (
-                        <p className="text-xs text-text-muted">
-                          A verification code was sent to{" "}
-                          <span className="font-semibold text-text">{newEmail}</span>.
-                          Enter-the-code UI isn&apos;t wired up yet —{" "}
-                          <button
-                            type="button"
-                            onClick={closeEmailEdit}
-                            className="font-semibold text-link hover:text-link-hover transition-colors"
-                          >
-                            close this
-                          </button>{" "}
-                          for now.
-                        </p>
+                        <div className="space-y-3">
+                          <div className="flex items-start gap-2 text-xs text-text-muted">
+                            <Mail size={15} className="text-primary shrink-0 mt-0.5" />
+                            <p>
+                              A 6-digit confirmation code was sent to{" "}
+                              <span className="font-semibold text-text">{newEmail}</span>. Enter it below to confirm your new email.
+                            </p>
+                          </div>
+
+                          {otpError && (
+                            <div className="rounded-md bg-danger/10 border border-danger/30 p-2.5 text-xs text-danger font-medium">
+                              {otpError}
+                            </div>
+                          )}
+
+                          <div className="max-w-[320px] py-1">
+                            <OtpInput
+                              length={6}
+                              onChange={(val) => {
+                                setOtpCode(val);
+                                if (otpError) setOtpError("");
+                              }}
+                            />
+                          </div>
+
+                          <div className="flex items-center gap-3 pt-1 flex-wrap">
+                            <button
+                              type="button"
+                              disabled={isVerifyingOtp || otpCode.length < 6}
+                              onClick={() => handleVerifyOtp()}
+                              className="rounded-full bg-btn-primary hover:bg-btn-primary-hover disabled:opacity-50 text-btn-primary-text font-semibold text-xs px-5 py-2 shadow-sm transition-colors flex items-center gap-1.5"
+                            >
+                              {isVerifyingOtp ? (
+                                <>
+                                  <Loader2 size={13} className="animate-spin" />
+                                  <span>Verifying...</span>
+                                </>
+                              ) : (
+                                "Confirm & Update Email"
+                              )}
+                            </button>
+
+                            <button
+                              type="button"
+                              disabled={resendCooldown > 0 || isSendingEmailCode}
+                              onClick={handleResendOtp}
+                              className="text-xs font-semibold text-primary hover:underline disabled:text-text-muted disabled:no-underline transition-colors"
+                            >
+                              {resendCooldown > 0
+                                ? `Resend code (${resendCooldown}s)`
+                                : isSendingEmailCode
+                                ? "Resending..."
+                                : "Resend code"}
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={closeEmailEdit}
+                              className="text-xs font-semibold text-text-muted hover:text-text transition-colors ml-auto"
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        </div>
                       )}
                     </div>
                   )}
@@ -410,8 +567,14 @@ export default function AccountPage() {
       </Modal>
 
       <Toast
-        message={passwordToastMessage}
-        icon={<Lock size={14} strokeWidth={2} />}
+        message={passwordToastMessage || emailToastMessage}
+        icon={
+          passwordToastMessage ? (
+            <Lock size={14} strokeWidth={2} />
+          ) : (
+            <Check size={14} strokeWidth={2} />
+          )
+        }
       />
     </div>
   );

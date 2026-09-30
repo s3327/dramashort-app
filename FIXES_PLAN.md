@@ -17,8 +17,8 @@ This plan outlines the specific fixes, cleanup tasks, and enhancements needed to
 | **Phase 4** | 🔴 Critical | C1: Implement real video player with vertical swipe (`app/watch/[slug]/page.tsx`) | ✅ Done | High-performance streaming with custom player, HLS/MP4, vertical/cinema modes, & TikTok swipe up/down |
 | **Phase 4** | 🔴 Critical | C2: Supabase role-based admin auth & middleware route guard | ✅ Done | Server-side `@supabase/ssr` route guard, eliminates client-side bypass, checks `profiles.role === 'admin'` |
 | **Phase 4** | 🔴 Critical | C3: Wire password change to `supabase.auth.updateUser()` | ✅ Done | Verifies current password before update, validates rules, displays loading state and verified success toast |
-| **Phase 4** | 🔴 Critical | C4: Wire email change OTP verification flow with `OtpInput` | ⏳ Next | Fixes broken email change flow and handles 6-digit OTP verification |
-| **Phase 4** | 🔴 Critical | C5: Wire Google OAuth sign-in button in `app/login/page.tsx` | ⏳ Planned | Enables functional social authentication |
+| **Phase 4** | 🔴 Critical | C4: Wire email change OTP verification flow with `OtpInput` | ✅ Done | Replaces broken placeholder with real 6-digit OTP verification, resend cooldown timer, and toast |
+| **Phase 4** | 🔴 Critical | C5: Wire Google OAuth sign-in button in `app/login/page.tsx` | ⏳ Next | Enables functional social authentication |
 | **Phase 4** | 🔴 Critical | C6: Wire watch history to `getUserWatchHistory()` in `app/account/history/page.tsx` | ⏳ Planned | Replaces static mock history with persistent user watch history |
 | **Phase 5** | 🟠 High | H1: Call `upsertWatchProgress()` from video playback events | ⏳ Planned | Persists user episode progress and enables resumption |
 | **Phase 5** | 🟠 High | H2: Replace `ContinueWatching` mock with real user data | ⏳ Planned | Dynamic home page resume carousels for logged-in users |
@@ -211,16 +211,20 @@ To eliminate ambiguity across product requirements, admin CMS, and codebase inte
 ---
 
 ### Task 4.4: Email Change OTP Verification Flow (C4)
-* **Target File**: `app/account/page.tsx`, `components/OtpInput.tsx`
-* **Problem**: Line 256 contains `"Enter-the-code UI isn't wired up yet"`. Users initiating an email change receive no OTP input modal, leaving the flow broken.
-* **Implementation Plan**:
-  1. Trigger email update request via `supabase.auth.updateUser({ email: newEmail })`.
-  2. Transition UI to an OTP verification step rendering the existing `OtpInput` component.
-  3. Submit OTP code to `supabase.auth.verifyOtp({ email: newEmail, token: otpCode, type: 'email_change' })`.
-  4. On successful verification, update local user state in `AuthContext` and show success notification.
+* **Status**: ✅ Completed
+* **Target Files**: `app/account/page.tsx`, `components/OtpInput.tsx`, `contexts/AuthContext.tsx`
+* **Delivered Capabilities**:
+  1. Implemented `requestEmailChange(newEmail)` in `AuthContext` calling `supabase.auth.updateUser({ email: newEmail })` with type-safe error handling.
+  2. Implemented `verifyEmailChange(newEmail, token)` in `AuthContext` calling `supabase.auth.verifyOtp({ email: newEmail, token, type: 'email_change' })`, updating local auth user state and profile upon success.
+  3. Integrated `OtpInput` component in `app/account/page.tsx`:
+     - Added client-side email format validation and self-duplicate check.
+     - Animated loading spinner state on "Send Verification Code" and "Confirm & Update Email" buttons.
+     - Resend code mechanism with 60-second live cooldown countdown timer.
+     - Inline actionable error banners and feedback toasts on successful email update.
 * **Verification**:
-  - Initiate email change; verify OTP modal displays correctly.
-  - Enter OTP token and verify email is updated in Supabase and reflected in account profile UI.
+  - `npx tsc --noEmit` passed with 0 errors.
+  - `npm run lint` passed with 0 warnings.
+  - Page compilation verified on `/account`.
 
 ---
 
@@ -529,12 +533,12 @@ flowchart TD
         P1["Phase 1: Build & Tooling Fixes<br/>• Fix TS2783 in FavoritePage<br/>• ESLint Config (.eslintrc.json)"]
         P2["Phase 2: Route & Link Integrity<br/>• Admin Drama Edit Page<br/>• Consolidate /new to /new-release"]
         P3["Phase 3: Codebase Cleanliness<br/>• Delete 5 Orphaned Mock Files<br/>• Update README & Git tracking"]
-        P4A["Phase 4 (C1–C3): Core Player & Auth Security<br/>• C1: Video Player (HLS, 9:16/16:9, vertical swipe navigation)<br/>• C2: Supabase Role Admin Auth & SSR Middleware Route Guard<br/>• C3: Password Change with Credential Verification<br/>• M4: Type-Safe Error Handling in AuthContext"]
+        P4A["Phase 4 (C1–C4): Core Player & Auth Security<br/>• C1: Video Player (HLS, 9:16/16:9, vertical swipe navigation)<br/>• C2: Supabase Role Admin Auth & SSR Middleware Route Guard<br/>• C3: Password Change with Credential Verification<br/>• C4: Email Change OTP Verification Flow<br/>• M4: Type-Safe Error Handling in AuthContext"]
         P1 --> P2 --> P3 --> P4A
     end
 
-    subgraph ActivePhase["🚀 Active Phase 4 Execution (C4–C6)"]
-        P4B["Phase 4 (Remaining):<br/>• C4: Email Change OTP Verification Flow (⏳ Next)<br/>• C5: Google OAuth Integration Button<br/>• C6: Dynamic Watch History DB Hydration"]
+    subgraph ActivePhase["🚀 Active Phase 4 Execution (C5–C6)"]
+        P4B["Phase 4 (Remaining):<br/>• C5: Google OAuth Integration Button (⏳ Next)<br/>• C6: Dynamic Watch History DB Hydration"]
     end
 
     subgraph Upcoming["⏳ Upcoming Execution Phases"]
