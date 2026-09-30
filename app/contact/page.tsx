@@ -73,7 +73,7 @@ function ContactForm() {
           {subject === "Report" && (
             <div>
               <label htmlFor="reportType" className="block text-sm font-semibold mb-1.5">
-                What's the issue?
+                What&apos;s the issue?
               </label>
               <select
                 id="reportType"

@@ -33,10 +33,7 @@ export default function FavoritePage() {
   // Every favorited slug resolves to a title/poster via the same drama
   // catalog the rest of the site uses — including titles favorited from
   // elsewhere (e.g. the drama page's heart), not just the original mocks.
-  const favoriteEntries = Array.from(favoritedSlugs).map((slug) => ({
-    slug,
-    ...getTitleBySlugOrFallback(slug),
-  }));
+  const favoriteEntries = Array.from(favoritedSlugs).map(getTitleBySlugOrFallback);
 
   return (
     <div data-theme={theme} className="min-h-screen bg-bg text-text">

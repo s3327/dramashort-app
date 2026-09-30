@@ -21,7 +21,7 @@ export default function ContinueWatching() {
           <Clock size={22} strokeWidth={2} className="text-text-muted mb-1" />
           <p className="text-sm font-semibold text-text">Nothing in progress yet</p>
           <p className="text-xs text-text-muted max-w-xs">
-            Start watching a title and it'll show up here so you can pick up
+            Start watching a title and it&apos;ll show up here so you can pick up
             right where you left off.
           </p>
         </div>

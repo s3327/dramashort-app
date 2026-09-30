@@ -17,7 +17,7 @@ export default function AdminDashboardPage() {
       <main className="flex-1 px-6 sm:px-8 py-8 max-w-[1200px]">
         <h1 className="font-display font-bold text-2xl mb-1">Dashboard</h1>
         <p className="text-sm text-text-muted mb-8">
-          Overview of DramaShort's current activity.
+          Overview of DramaShort&apos;s current activity.
         </p>
 
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
@@ -38,7 +38,7 @@ export default function AdminDashboardPage() {
         <div className="bg-surface border border-border rounded-lg shadow-sm p-8 text-center">
           <p className="text-sm text-text-muted">
             Title management, channel management, and the other sections in the
-            sidebar aren't built yet — this is just the entry point into the admin area.
+            sidebar aren&apos;t built yet — this is just the entry point into the admin area.
           </p>
         </div>
       </main>
