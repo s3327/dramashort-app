@@ -38,13 +38,16 @@ function LoginForm() {
       return;
     }
 
-    router.push(searchParams.get("redirect") || "/home");
+    const destination =
+      searchParams.get("returnUrl") || searchParams.get("redirect") || "/home";
+    router.push(destination);
   };
 
   const handleGoogleSignIn = async () => {
     setErrorMessage("");
     setIsGoogleSubmitting(true);
-    const returnPath = searchParams.get("redirect") || "/home";
+    const returnPath =
+      searchParams.get("returnUrl") || searchParams.get("redirect") || "/home";
     const redirectUrl = `${window.location.origin}/auth/callback?next=${encodeURIComponent(returnPath)}`;
 
     const res = await signInWithGoogle(redirectUrl);

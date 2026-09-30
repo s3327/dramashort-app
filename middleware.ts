@@ -97,6 +97,47 @@ export async function middleware(request: NextRequest) {
     return response;
   }
 
+  // 3. User Account Route Protection (/account, /account/*)
+  if (url.pathname === "/account" || url.pathname.startsWith("/account/")) {
+    let response = NextResponse.next({
+      request: {
+        headers: request.headers,
+      },
+    });
+
+    const supabase = createServerClient<Database>(userUrl, userAnonKey, {
+      cookies: {
+        getAll() {
+          return request.cookies.getAll();
+        },
+        setAll(cookiesToSet) {
+          cookiesToSet.forEach(({ name, value }) =>
+            request.cookies.set(name, value)
+          );
+          response = NextResponse.next({
+            request,
+          });
+          cookiesToSet.forEach(({ name, value, options }) =>
+            response.cookies.set(name, value, options)
+          );
+        },
+      },
+    });
+
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    // If unauthenticated guest visits /account/*, redirect to /login with returnUrl
+    if (!user) {
+      const loginUrl = new URL("/login", request.url);
+      loginUrl.searchParams.set("returnUrl", url.pathname);
+      return NextResponse.redirect(loginUrl);
+    }
+
+    return response;
+  }
+
   return NextResponse.next();
 }
 

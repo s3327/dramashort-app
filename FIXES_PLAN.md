@@ -24,8 +24,8 @@ This plan outlines the specific fixes, cleanup tasks, and enhancements needed to
 | **Phase 5** | 🟠 High | H2: Replace `ContinueWatching` mock with real user data | ✅ Done | Real Supabase watch history hydration, smart next-episode advancement, & finished series exclusion |
 | **Phase 5** | 🟠 High | H3: Wire admin edit form to Supabase content DB (Add/Edit Drama: title, desc, genre, taxonomy, channel) | ✅ Done | Prevents silent data loss when admins create or edit drama records |
 | **Phase 5** | 🟠 High | H4: Server-side search filtering and pagination in `getPublishedTitles()` (Dramas query) | ✅ Done | Scalable search queries; eliminates full catalog download |
-| **Phase 5** | 🟠 High | H5: Add auth guards and redirects for `/account/*` routes | ⏳ Next | Protects user-specific pages against unauthenticated access |
-| **Phase 5** | 🟠 High | H6: Fix `FavoritesContext` guest seed (remove `defaultFavoriteSlugs`) | ⏳ Planned | Prevents guest accounts from being pre-seeded with fake favorites |
+| **Phase 5** | 🟠 High | H5: Add auth guards and redirects for `/account/*` routes | ✅ Done | Protects user-specific pages against unauthenticated access |
+| **Phase 5** | 🟠 High | H6: Fix `FavoritesContext` guest seed (remove `defaultFavoriteSlugs`) | ⏳ Next | Prevents guest accounts from being pre-seeded with fake favorites |
 | **Phase 6** | 🟡 Medium | M1: Audit and standardize mock/DB hydration pattern across components | ⏳ Planned | Consistent UX and elimination of stale mock data paths |
 | **Phase 6** | 🟡 Medium | M2: Dynamic SEO & OpenGraph tags via `generateMetadata()` | ⏳ Planned | Social sharing previews and search engine discovery |
 | **Phase 6** | 🟡 Medium | M3: Add Supabase Storage domain to `next.config.mjs` `remotePatterns` | ⏳ Planned | Prevents image load failures for storage-hosted assets |
@@ -416,15 +416,32 @@ To eliminate ambiguity across product requirements, admin CMS, and codebase inte
 ---
 
 ### Task 5.5: Route Protection for `/account/*` Pages (H5)
-* **Target Files**: `middleware.ts`, `app/account/layout.tsx`, `hooks/useRequireAuth.ts`
-* **Problem**: Direct access to `/account`, `/account/favorite`, `/account/history`, `/account/settings` does not redirect unauthenticated guests.
-* **Implementation Plan**:
-  1. Create a `useRequireAuth` hook or enforce server-side check in `middleware.ts` for `/account/:path*`.
-  2. Unauthenticated visitors are redirected to `/login?returnUrl=/account/...`.
-  3. Authenticated state hydration displays account skeleton until session is confirmed.
+* **Status**: ✅ Completed
+* **Target Files**:
+  - `middleware.ts`
+  - `app/account/layout.tsx`
+  - `hooks/useRequireAuth.ts`
+  - `app/login/page.tsx`
+  - `app/signup/page.tsx`
+* **Problem**: Direct access to `/account`, `/account/favorite`, `/account/history`, `/account/settings` did not redirect unauthenticated guests, exposing empty or mock account views.
+* **Delivered Capabilities**:
+  1. Server-Side Protection in `middleware.ts`:
+     - Added route guard for `/account` and `/account/*`.
+     - Validates session with `@supabase/ssr` `createServerClient`.
+     - Unauthenticated guests receive an immediate HTTP 307 redirect to `/login?returnUrl=${encodeURIComponent(url.pathname)}`.
+  2. Client-Side Protection Hook (`hooks/useRequireAuth.ts`):
+     - Created `useRequireAuth(redirectTo = "/login")` monitoring `isLoading` and `isLoggedIn` from `AuthContext`.
+     - Automatically handles client transitions or expired session redirections.
+  3. Hydration Layout Skeleton (`app/account/layout.tsx`):
+     - Created `AccountLayout` with `useRequireAuth()`.
+     - Displays account skeleton (Header, Sidebar avatar & nav shimmer, content cards shimmer) during initial auth hydration.
+  4. Auth Flow Alignment:
+     - Updated `/login` and `/signup` post-auth redirection logic to check `returnUrl` before `redirect`, returning users directly to their requested account page upon signing in.
 * **Verification**:
-  - Open incognito window and navigate to `/account/favorite`.
-  - User is immediately redirected to `/login?returnUrl=%2Faccount%2Ffavorite`.
+  - `npx tsc --noEmit` passed with 0 errors.
+  - `npm run lint` passed with 0 errors.
+  - Live HTTP tests verified 307 redirects for unauthenticated guests to `/login?returnUrl=...` on all 4 account routes (`/account`, `/account/favorite`, `/account/history`, `/account/settings`).
+  - Authenticated session verified HTTP 200 OK across all 4 account routes.
 
 ---
 

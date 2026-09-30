@@ -40,7 +40,8 @@ function SignUpForm() {
       return;
     }
 
-    const redirect = searchParams.get("redirect");
+    const redirect =
+      searchParams.get("returnUrl") || searchParams.get("redirect");
     const params = new URLSearchParams({ email });
     if (redirect) params.set("redirect", redirect);
     router.push(`/verify-email?${params.toString()}`);
@@ -49,7 +50,8 @@ function SignUpForm() {
   const handleGoogleSignIn = async () => {
     setGeneralError("");
     setIsGoogleSubmitting(true);
-    const returnPath = searchParams.get("redirect") || "/home";
+    const returnPath =
+      searchParams.get("returnUrl") || searchParams.get("redirect") || "/home";
     const redirectUrl = `${window.location.origin}/auth/callback?next=${encodeURIComponent(returnPath)}`;
 
     const res = await signInWithGoogle(redirectUrl);
