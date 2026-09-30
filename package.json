@@ -13,7 +13,8 @@
     "types:user": "supabase gen types typescript --project-id bpidsbcrvpkavvdvtpgh > types/supabase-user.ts",
     "types:all": "npm run types:content && npm run types:user",
     "db:seed:dev": "tsx scripts/seed-dev-content.ts",
-    "db:clean:dev": "tsx scripts/seed-dev-content.ts --clean"
+    "db:clean:dev": "tsx scripts/seed-dev-content.ts --clean",
+    "admin:create": "tsx scripts/create-admin.ts"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.7",
