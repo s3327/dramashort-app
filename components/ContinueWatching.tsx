@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { Play, Clock, ChevronLeft, ChevronRight, Sparkles } from "lucide-react";
+import { Play, ChevronLeft, ChevronRight } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import {
   getUserWatchHistory,
@@ -128,6 +128,11 @@ export default function ContinueWatching() {
     }
   };
 
+  // If no dramas are in progress or initial state before watching, hide section completely
+  if (!hasLoaded || items.length === 0) {
+    return null;
+  }
+
   return (
     <section className="max-w-[1200px] mx-auto px-6 py-8 sm:py-10">
       <div className="flex items-center justify-between gap-4 mb-4">
@@ -141,7 +146,7 @@ export default function ContinueWatching() {
         </div>
 
         {/* Carousel controls on desktop when items exist */}
-        {hasLoaded && items.length > 3 && (
+        {items.length > 3 && (
           <div className="hidden sm:flex items-center gap-1.5">
             <button
               type="button"
@@ -163,50 +168,11 @@ export default function ContinueWatching() {
         )}
       </div>
 
-      {!hasLoaded ? (
-        /* Loading Skeleton */
-        <div className="flex gap-4 overflow-hidden pb-2">
-          {Array.from({ length: 5 }).map((_, i) => (
-            <div
-              key={i}
-              className="shrink-0 w-32 sm:w-36 md:w-40 animate-pulse space-y-2"
-            >
-              <div className="aspect-[2/3] rounded-md bg-surface border border-border/40" />
-              <div className="h-3.5 bg-surface rounded w-3/4" />
-              <div className="h-3 bg-surface/60 rounded w-1/2" />
-            </div>
-          ))}
-        </div>
-      ) : items.length === 0 ? (
-        /* Empty State */
-        <div className="flex flex-col sm:flex-row items-center justify-between gap-4 rounded-xl border border-border bg-surface p-6 text-center sm:text-left">
-          <div className="flex items-center gap-3.5">
-            <div className="w-10 h-10 rounded-full bg-primary/10 text-primary flex items-center justify-center shrink-0">
-              <Clock size={20} strokeWidth={2} />
-            </div>
-            <div>
-              <p className="text-sm font-semibold text-text">
-                Nothing in progress yet
-              </p>
-              <p className="text-xs text-text-muted max-w-sm">
-                Watch an episode and your resume progress will automatically appear here.
-              </p>
-            </div>
-          </div>
-          <Link
-            href="/trending"
-            className="inline-flex items-center gap-1.5 rounded-full bg-btn-primary hover:bg-btn-primary-hover text-btn-primary-text font-semibold text-xs px-4 py-2 shadow-sm transition-colors shrink-0"
-          >
-            <Sparkles size={14} />
-            <span>Discover Trending</span>
-          </Link>
-        </div>
-      ) : (
-        /* Dynamic In-Progress Carousel */
-        <div
-          ref={scrollContainerRef}
-          className="flex gap-4 overflow-x-auto pb-3 snap-x snap-mandatory [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-        >
+      {/* Dynamic In-Progress Carousel */}
+      <div
+        ref={scrollContainerRef}
+        className="flex gap-4 overflow-x-auto pb-3 snap-x snap-mandatory [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+      >
           {items.map((item) => (
             <Link
               key={item.id}
@@ -265,7 +231,6 @@ export default function ContinueWatching() {
             </Link>
           ))}
         </div>
-      )}
     </section>
   );
 }
