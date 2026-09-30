@@ -1,0 +1,133 @@
+/* ==========================================================================
+   DramaShort — Design Tokens
+   Values are "R G B" channel strings (no commas) so Tailwind can apply them
+   as rgb(var(--x) / <alpha-value>) and opacity modifiers (e.g. bg-primary/50)
+   still work.
+   ========================================================================== */
+
+:root {
+  /* ---- Brand scale: Primary (Magenta/Pink — from the DS lettering) ---- */
+  --primary-dark:    198 10 88;    /* #C60A58 */
+  --primary:         238 41 123;   /* #EE297B */
+  --primary-light:   239 111 164;  /* #EF6FA4 */
+  --primary-soft:    231 171 196;  /* #E7ABC4 */
+  --primary-hover:   228 15 104;   /* #E40F68 */
+
+  /* ---- Brand scale: Secondary (Blush Pink — from the star outline) ---- */
+  --secondary-dark:  233 63 147;   /* #E93F93 */
+  --secondary:       237 131 183;  /* #ED83B7 */
+  --secondary-light: 244 195 219;  /* #F4C3DB */
+  --secondary-soft:  241 218 229;  /* #F1DAE5 */
+  --secondary-hover: 234 98 165;   /* #EA62A5 */
+
+  /* ---- Brand scale: Tertiary (Star Yellow) ---- */
+  --tertiary-dark:   245 235 64;   /* #F5EB40 */
+  --tertiary:        245 239 135;  /* #F5EF87 */
+  --tertiary-light:  249 246 202;  /* #F9F6CA */
+  --tertiary-soft:   243 242 216;  /* #F3F2D8 */
+  --tertiary-hover:  244 236 100;  /* #F4EC64 */
+
+  /* ---- Danger (Red — for destructive actions, theme-independent) ---- */
+  --danger-dark:  153 20 20;    /* #991414 */
+  --danger:       220 38 38;    /* #DC2626 */
+  --danger-light: 248 113 113;  /* #F87171 */
+  --danger-soft:  254 226 226;  /* #FEE2E2 */
+  --danger-hover: 185 28 28;    /* #B91C1C */
+
+  /* ---- Base text colors (theme-independent primitives) ---- */
+  --text-dark:  35 19 32;    /* #231320 — ink, for light/soft backgrounds */
+  --text-light: 255 247 250; /* #FFF7FA — near-white, for dark backgrounds */
+
+  /* ---- Radii, shadow, motion (small starter set) ---- */
+  --radius-sm: 8px;
+  --radius-md: 14px;
+  --radius-lg: 22px;
+  --radius-pill: 999px;
+  --shadow-sm: 0 2px 8px rgb(35 19 32 / 0.08);
+  --shadow-md: 0 8px 24px rgb(35 19 32 / 0.14);
+  --ease-brand: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* ==========================================================================
+   Theme surfaces — pick ONE via <html data-theme="light|soft|dark">
+   Each theme only redefines *semantic* tokens. Brand colors above never
+   change between themes — only how text/backgrounds/borders map to them.
+   ========================================================================== */
+
+[data-theme="light"] {
+  --bg:            255 255 255; /* #FFFFFF */
+  --surface:       251 243 246; /* #FBF3F6 */
+  --surface-raised: 255 255 255;
+  --border:        238 224 230;
+
+  --text:          var(--text-dark);
+  --text-muted:    35 19 32 / 0.64;
+  --text-inverse:  var(--text-light);
+
+  --link:          var(--primary-dark);
+  --link-hover:    var(--primary-hover);
+
+  --btn-primary-bg:      var(--primary);
+  --btn-primary-bg-hover: var(--primary-hover);
+  --btn-primary-text:    var(--text-light);
+
+  --btn-secondary-bg:      var(--secondary-soft);
+  --btn-secondary-bg-hover: var(--secondary-light);
+  --btn-secondary-text:    var(--primary-dark);
+
+  --btn-tertiary-bg:       var(--tertiary);
+  --btn-tertiary-bg-hover: var(--tertiary-hover);
+  --btn-tertiary-text:     var(--text-dark);
+}
+
+[data-theme="soft"] {
+  --bg:            243 231 234; /* #F3E7EA — the pale blush from the lockup canvas */
+  --surface:       255 255 255;
+  --surface-raised: 255 255 255;
+  --border:        231 210 217;
+
+  --text:          var(--text-dark);
+  --text-muted:    35 19 32 / 0.64;
+  --text-inverse:  var(--text-light);
+
+  --link:          var(--primary-dark);
+  --link-hover:    var(--primary-hover);
+
+  --btn-primary-bg:      var(--primary);
+  --btn-primary-bg-hover: var(--primary-hover);
+  --btn-primary-text:    var(--text-light);
+
+  --btn-secondary-bg:      var(--surface-raised);
+  --btn-secondary-bg-hover: var(--secondary-soft);
+  --btn-secondary-text:    var(--primary-dark);
+
+  --btn-tertiary-bg:       var(--tertiary);
+  --btn-tertiary-bg-hover: var(--tertiary-hover);
+  --btn-tertiary-text:     var(--text-dark);
+}
+
+[data-theme="dark"] {
+  --bg:            28 18 32;   /* #1C1220 — deep plum-black, not pure black */
+  --surface:       43 26 38;   /* #2B1A26 */
+  --surface-raised: 54 33 47;
+  --border:        68 44 60;
+
+  --text:          var(--text-light);
+  --text-muted:    255 247 250 / 0.66;
+  --text-inverse:  var(--text-dark);
+
+  --link:          var(--secondary-light);
+  --link-hover:    var(--tertiary);
+
+  --btn-primary-bg:      var(--primary);
+  --btn-primary-bg-hover: var(--primary-light);
+  --btn-primary-text:    var(--text-light);
+
+  --btn-secondary-bg:      var(--surface-raised);
+  --btn-secondary-bg-hover: 68 44 60;
+  --btn-secondary-text:    var(--text-light);
+
+  --btn-tertiary-bg:       var(--tertiary);
+  --btn-tertiary-bg-hover: var(--tertiary-hover);
+  --btn-tertiary-text:     var(--text-dark);
+}

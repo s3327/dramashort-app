@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="soft">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DramaShort — Design Tokens</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --primary-dark:198 10 88; --primary:238 41 123; --primary-light:239 111 164; --primary-soft:231 171 196; --primary-hover:228 15 104;
+    --secondary-dark:233 63 147; --secondary:237 131 183; --secondary-light:244 195 219; --secondary-soft:241 218 229; --secondary-hover:234 98 165;
+    --tertiary-dark:245 235 64; --tertiary:245 239 135; --tertiary-light:249 246 202; --tertiary-soft:243 242 216; --tertiary-hover:244 236 100;
+    --text-dark:35 19 32; --text-light:255 247 250;
+    --radius-sm:8px; --radius-md:14px; --radius-lg:22px; --radius-pill:999px;
+    --shadow-sm:0 2px 8px rgb(35 19 32 / .08); --shadow-md:0 8px 24px rgb(35 19 32 / .14);
+    --ease-brand:cubic-bezier(.22,1,.36,1);
+    --font-display:'Fredoka',sans-serif; --font-body:'Plus Jakarta Sans',sans-serif;
+  }
+  [data-theme="light"]{
+    --bg:255 255 255; --surface:251 243 246; --surface-raised:255 255 255; --border:238 224 230;
+    --text:var(--text-dark); --text-muted:35 19 32; --text-muted-a:.64; --text-inverse:var(--text-light);
+    --link:var(--primary-dark); --link-hover:var(--primary-hover);
+    --btn-primary-bg:var(--primary); --btn-primary-bg-hover:var(--primary-hover); --btn-primary-text:var(--text-light);
+    --btn-secondary-bg:var(--secondary-soft); --btn-secondary-bg-hover:var(--secondary-light); --btn-secondary-text:var(--primary-dark);
+    --btn-tertiary-bg:var(--tertiary); --btn-tertiary-bg-hover:var(--tertiary-hover); --btn-tertiary-text:var(--text-dark);
+  }
+  [data-theme="soft"]{
+    --bg:243 231 234; --surface:255 255 255; --surface-raised:255 255 255; --border:231 210 217;
+    --text:var(--text-dark); --text-muted:35 19 32; --text-muted-a:.64; --text-inverse:var(--text-light);
+    --link:var(--primary-dark); --link-hover:var(--primary-hover);
+    --btn-primary-bg:var(--primary); --btn-primary-bg-hover:var(--primary-hover); --btn-primary-text:var(--text-light);
+    --btn-secondary-bg:var(--surface-raised); --btn-secondary-bg-hover:var(--secondary-soft); --btn-secondary-text:var(--primary-dark);
+    --btn-tertiary-bg:var(--tertiary); --btn-tertiary-bg-hover:var(--tertiary-hover); --btn-tertiary-text:var(--text-dark);
+  }
+  [data-theme="dark"]{
+    --bg:28 18 32; --surface:43 26 38; --surface-raised:54 33 47; --border:68 44 60;
+    --text:var(--text-light); --text-muted:255 247 250; --text-muted-a:.66; --text-inverse:var(--text-dark);
+    --link:var(--secondary-light); --link-hover:var(--tertiary);
+    --btn-primary-bg:var(--primary); --btn-primary-bg-hover:var(--primary-light); --btn-primary-text:var(--text-light);
+    --btn-secondary-bg:var(--surface-raised); --btn-secondary-bg-hover:68 44 60; --btn-secondary-text:var(--text-light);
+    --btn-tertiary-bg:var(--tertiary); --btn-tertiary-bg-hover:var(--tertiary-hover); --btn-tertiary-text:var(--text-dark);
+  }
+
+  *{box-sizing:border-box;}
+  body{
+    margin:0; font-family:var(--font-body);
+    background:rgb(var(--bg)); color:rgb(var(--text));
+    transition:background .35s var(--ease-brand), color .35s var(--ease-brand);
+    padding-bottom:80px;
+  }
+  .wrap{max-width:980px; margin:0 auto; padding:32px 20px 0;}
+  header{position:sticky; top:0; z-index:10; backdrop-filter:blur(8px); background:rgb(var(--bg) / .82); border-bottom:1px solid rgb(var(--border));}
+  .headerRow{max-width:980px; margin:0 auto; padding:14px 20px; display:flex; align-items:center; justify-content:space-between; gap:16px;}
+  .brand{display:flex; align-items:center; gap:10px; font-family:var(--font-display); font-weight:600; font-size:20px;}
+  .brand .dot{width:10px;height:10px;border-radius:50%;background:rgb(var(--primary));}
+  .switcher{display:flex; gap:6px; background:rgb(var(--surface)); border:1px solid rgb(var(--border)); padding:4px; border-radius:var(--radius-pill);}
+  .switcher button{
+    border:none; background:transparent; padding:7px 14px; border-radius:var(--radius-pill);
+    font-family:var(--font-body); font-weight:600; font-size:13px; cursor:pointer; color:rgb(var(--text) / .7);
+    transition:all .2s var(--ease-brand);
+  }
+  .switcher button.active{background:rgb(var(--primary)); color:rgb(var(--text-light));}
+
+  section{margin:44px 0;}
+  h1{font-family:var(--font-display); font-size:34px; margin:4px 0 6px; font-weight:600;}
+  h2{font-family:var(--font-display); font-size:20px; font-weight:600; margin:0 0 4px;}
+  .lede{color:rgb(var(--text-muted) / var(--text-muted-a)); font-size:15px; margin:0 0 18px; max-width:640px;}
+  .eyebrow{text-transform:uppercase; letter-spacing:.08em; font-size:11px; font-weight:700; color:rgb(var(--primary)); margin:0 0 6px;}
+
+  .scaleRow{display:flex; gap:0; border-radius:var(--radius-md); overflow:hidden; box-shadow:var(--shadow-sm); margin-bottom:14px;}
+  .swatch{flex:1; min-width:0; height:84px; display:flex; flex-direction:column; align-items:center; justify-content:center; font-size:11px; font-weight:600; gap:2px;}
+  .swatch span.hex{font-family:monospace; font-size:10.5px; opacity:.85;}
+
+  .semanticGrid{display:grid; grid-template-columns:repeat(auto-fit,minmax(140px,1fr)); gap:12px;}
+  .semSwatch{border:1px solid rgb(var(--border)); border-radius:var(--radius-md); padding:14px; display:flex; flex-direction:column; gap:36px;}
+  .semSwatch .label{font-size:12px; font-weight:700;}
+  .semSwatch .sub{font-size:11px; color:rgb(var(--text-muted) / var(--text-muted-a));}
+
+  .typeBlock{display:flex; flex-direction:column; gap:18px;}
+  .typeRow{display:flex; align-items:baseline; gap:16px; flex-wrap:wrap;}
+  .typeRow .tag{font-size:11px; font-family:monospace; color:rgb(var(--text-muted) / var(--text-muted-a)); width:120px; flex-shrink:0;}
+  .display-xl{font-family:var(--font-display); font-weight:700; font-size:44px; margin:0;}
+  .display-lg{font-family:var(--font-display); font-weight:600; font-size:30px; margin:0;}
+  .display-md{font-family:var(--font-display); font-weight:600; font-size:22px; margin:0;}
+  .body-lg{font-size:17px; margin:0;}
+  .body-md{font-size:15px; margin:0; color:rgb(var(--text-muted) / var(--text-muted-a));}
+  .caption{font-size:12px; margin:0; text-transform:uppercase; letter-spacing:.06em; font-weight:700; color:rgb(var(--text-muted) / var(--text-muted-a));}
+
+  .row{display:flex; gap:12px; flex-wrap:wrap; align-items:center;}
+  .btn{font-family:var(--font-body); font-weight:700; font-size:14px; border:none; cursor:pointer; padding:12px 22px; border-radius:var(--radius-pill); transition:transform .15s var(--ease-brand), background .2s;}
+  .btn:hover{transform:translateY(-1px);}
+  .btn:active{transform:translateY(0);}
+  .btn-primary{background:rgb(var(--btn-primary-bg)); color:rgb(var(--btn-primary-text));}
+  .btn-primary:hover{background:rgb(var(--btn-primary-bg-hover));}
+  .btn-secondary{background:rgb(var(--btn-secondary-bg)); color:rgb(var(--btn-secondary-text));}
+  .btn-secondary:hover{background:rgb(var(--btn-secondary-bg-hover));}
+  .btn-tertiary{background:rgb(var(--btn-tertiary-bg)); color:rgb(var(--btn-tertiary-text));}
+  .btn-tertiary:hover{background:rgb(var(--btn-tertiary-bg-hover));}
+  .btn-ghost{background:transparent; color:rgb(var(--text)); border:1.5px solid rgb(var(--border));}
+  .btn-ghost:hover{border-color:rgb(var(--primary)); color:rgb(var(--primary));}
+  .btn-disabled{background:rgb(var(--border)); color:rgb(var(--text-muted) / .5); cursor:not-allowed;}
+  .btn-disabled:hover{transform:none;}
+
+  a.link{color:rgb(var(--link)); font-weight:600; text-decoration:none; border-bottom:1.5px solid rgb(var(--link) / .35); padding-bottom:1px;}
+  a.link:hover{color:rgb(var(--link-hover)); border-color:rgb(var(--link-hover));}
+
+  .card{
+    background:rgb(var(--surface)); border:1px solid rgb(var(--border)); border-radius:var(--radius-lg);
+    padding:20px; box-shadow:var(--shadow-sm); max-width:300px;
+  }
+  .poster{
+    height:180px; border-radius:var(--radius-md); margin-bottom:14px;
+    background:linear-gradient(150deg, rgb(var(--primary)), rgb(var(--secondary)) 60%, rgb(var(--tertiary)));
+    display:flex; align-items:flex-end; padding:10px; position:relative; overflow:hidden;
+  }
+  .chip{background:rgb(var(--tertiary)); color:rgb(var(--text-dark)); font-size:11px; font-weight:800; padding:4px 10px; border-radius:var(--radius-pill); position:absolute; top:10px; left:10px;}
+  .ep{background:rgb(0 0 0 / .38); color:#fff; font-size:11px; font-weight:700; padding:4px 9px; border-radius:var(--radius-pill);}
+  .progress{height:5px; background:rgb(var(--border)); border-radius:var(--radius-pill); margin-top:12px; overflow:hidden;}
+  .progress i{display:block; height:100%; width:62%; background:rgb(var(--primary));}
+</style>
+</head>
+<body>
+  <header>
+    <div class="headerRow">
+      <div class="brand"><span class="dot"></span>DramaShort tokens</div>
+      <div class="switcher" id="switcher">
+        <button data-t="light">Light</button>
+        <button data-t="soft" class="active">Soft</button>
+        <button data-t="dark">Dark</button>
+      </div>
+    </div>
+  </header>
+
+  <div class="wrap">
+    <section>
+      <p class="eyebrow">Foundation</p>
+      <h1>Design tokens</h1>
+      <p class="lede">One palette, three surfaces. Flip the switcher above — only backgrounds, text and link/button mappings change; the brand scale below stays fixed.</p>
+    </section>
+
+    <section>
+      <h2>Primary — Magenta</h2>
+      <p class="body-md" style="margin-bottom:12px;">From the DS lettering. Main CTAs, active states, brand moments.</p>
+      <div class="scaleRow">
+        <div class="swatch" style="background:#C60A58;color:#fff;">Dark<span class="hex">#C60A58</span></div>
+        <div class="swatch" style="background:#EE297B;color:#fff;">Base<span class="hex">#EE297B</span></div>
+        <div class="swatch" style="background:#E40F68;color:#fff;">Hover<span class="hex">#E40F68</span></div>
+        <div class="swatch" style="background:#EF6FA4;color:#fff;">Light<span class="hex">#EF6FA4</span></div>
+        <div class="swatch" style="background:#E7ABC4;color:#231320;">Soft<span class="hex">#E7ABC4</span></div>
+      </div>
+
+      <h2>Secondary — Blush</h2>
+      <p class="body-md" style="margin-bottom:12px;">From the star outline. Supporting UI, secondary buttons, highlights.</p>
+      <div class="scaleRow">
+        <div class="swatch" style="background:#E93F93;color:#fff;">Dark<span class="hex">#E93F93</span></div>
+        <div class="swatch" style="background:#ED83B7;color:#fff;">Base<span class="hex">#ED83B7</span></div>
+        <div class="swatch" style="background:#EA62A5;color:#fff;">Hover<span class="hex">#EA62A5</span></div>
+        <div class="swatch" style="background:#F4C3DB;color:#231320;">Light<span class="hex">#F4C3DB</span></div>
+        <div class="swatch" style="background:#F1DAE5;color:#231320;">Soft<span class="hex">#F1DAE5</span></div>
+      </div>
+
+      <h2>Tertiary — Star Yellow</h2>
+      <p class="body-md" style="margin-bottom:12px;">From the star burst. Badges, "new episode" chips, sparing accents.</p>
+      <div class="scaleRow">
+        <div class="swatch" style="background:#F5EB40;color:#231320;">Dark<span class="hex">#F5EB40</span></div>
+        <div class="swatch" style="background:#F5EF87;color:#231320;">Base<span class="hex">#F5EF87</span></div>
+        <div class="swatch" style="background:#F4EC64;color:#231320;">Hover<span class="hex">#F4EC64</span></div>
+        <div class="swatch" style="background:#F9F6CA;color:#231320;">Light<span class="hex">#F9F6CA</span></div>
+        <div class="swatch" style="background:#F3F2D8;color:#231320;">Soft<span class="hex">#F3F2D8</span></div>
+      </div>
+    </section>
+
+    <section>
+      <h2>Semantic surfaces (theme-aware)</h2>
+      <p class="body-md" style="margin-bottom:14px;">These four re-map on every theme switch — try it above.</p>
+      <div class="semanticGrid">
+        <div class="semSwatch" style="background:rgb(var(--bg));">
+          <span class="label">Page bg</span><span class="sub">--bg</span>
+        </div>
+        <div class="semSwatch" style="background:rgb(var(--surface));">
+          <span class="label">Surface</span><span class="sub">--surface</span>
+        </div>
+        <div class="semSwatch" style="background:rgb(var(--surface-raised));">
+          <span class="label">Raised</span><span class="sub">--surface-raised</span>
+        </div>
+        <div class="semSwatch" style="background:rgb(var(--bg)); border-color:rgb(var(--primary));">
+          <span class="label" style="color:rgb(var(--text));">Border</span><span class="sub">--border sample</span>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h2>Typography</h2>
+      <p class="body-md" style="margin-bottom:16px;">Display: <b>Fredoka</b> (rounded, echoes the logo's bubble letterforms) · Body: <b>Plus Jakarta Sans</b>.</p>
+      <div class="typeBlock">
+        <div class="typeRow"><span class="tag">display-xl / 44</span><p class="display-xl">Binge the next episode</p></div>
+        <div class="typeRow"><span class="tag">display-lg / 30</span><p class="display-lg">Trending this week</p></div>
+        <div class="typeRow"><span class="tag">display-md / 22</span><p class="display-md">Fated Marriage, EP 12</p></div>
+        <div class="typeRow"><span class="tag">body-lg / 17</span><p class="body-lg">She thought it was a marriage of convenience — until she found the letter.</p></div>
+        <div class="typeRow"><span class="tag">body-md / 15</span><p class="body-md">Updated daily · Romance, Revenge · 62 episodes</p></div>
+        <div class="typeRow"><span class="tag">caption / 12</span><p class="caption">New episode</p></div>
+      </div>
+    </section>
+
+    <section>
+      <h2>Buttons</h2>
+      <div class="row" style="margin-top:14px;">
+        <button class="btn btn-primary">Watch now</button>
+        <button class="btn btn-secondary">Add to list</button>
+        <button class="btn btn-tertiary">Unlock with coins</button>
+        <button class="btn btn-ghost">Share</button>
+        <button class="btn btn-disabled" disabled>Coming soon</button>
+      </div>
+    </section>
+
+    <section>
+      <h2>Links</h2>
+      <p class="body-lg" style="margin-top:12px;">Read the <a class="link" href="#">episode guide</a> or check our <a class="link" href="#">terms of use</a> before you start unlocking coins.</p>
+    </section>
+
+    <section>
+      <h2>Applied: drama card</h2>
+      <div class="card" style="margin-top:16px;">
+        <div class="poster">
+          <span class="chip">NEW</span>
+          <span class="ep">EP 12 / 62</span>
+        </div>
+        <p class="display-md" style="margin-bottom:4px;">Fated Marriage</p>
+        <p class="body-md">Romance · Revenge</p>
+        <div class="progress"><i></i></div>
+      </div>
+    </section>
+  </div>
+
+  <script>
+    const html = document.documentElement;
+    document.getElementById('switcher').addEventListener('click', (e) => {
+      const btn = e.target.closest('button[data-t]');
+      if(!btn) return;
+      html.setAttribute('data-theme', btn.dataset.t);
+      document.querySelectorAll('#switcher button').forEach(b=>b.classList.toggle('active', b===btn));
+    });
+  </script>
+</body>
+</html>

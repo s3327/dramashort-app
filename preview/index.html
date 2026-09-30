@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DramaShort</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --primary-dark:198 10 88; --primary:238 41 123; --primary-light:239 111 164; --primary-soft:231 171 196; --primary-hover:228 15 104;
+    --secondary-dark:233 63 147; --secondary:237 131 183; --secondary-light:244 195 219; --secondary-soft:241 218 229; --secondary-hover:234 98 165;
+    --tertiary-dark:245 235 64; --tertiary:245 239 135; --tertiary-light:249 246 202; --tertiary-soft:243 242 216; --tertiary-hover:244 236 100;
+    --text-light:255 247 250; --text-dark:35 19 32;
+    --bg:28 18 32; --surface:43 26 38; --surface-raised:54 33 47; --border:68 44 60;
+    --text:var(--text-light); --text-muted:255 247 250; --text-muted-a:.66;
+    --ease-brand:cubic-bezier(.22,1,.36,1);
+    --font-display:'Fredoka',sans-serif; --font-body:'Plus Jakarta Sans',sans-serif;
+  }
+  *{box-sizing:border-box;}
+  html,body{height:100%;}
+  body{
+    margin:0; font-family:var(--font-body); background:rgb(var(--bg)); color:rgb(var(--text));
+    overflow-x:hidden; position:relative;
+  }
+  /* ambient glow, subtle, not neon-on-black default */
+  body::before{
+    content:''; position:fixed; inset:-20% -10% auto -10%; height:70%;
+    background:radial-gradient(60% 60% at 30% 20%, rgb(var(--primary) / .28), transparent 70%),
+               radial-gradient(50% 50% at 80% 10%, rgb(var(--tertiary) / .14), transparent 70%);
+    pointer-events:none; z-index:0;
+  }
+
+  nav{position:relative; z-index:2; max-width:1100px; margin:0 auto; padding:26px 24px 0; display:flex; align-items:center; gap:10px;}
+  nav .logo{font-family:var(--font-display); font-weight:700; font-size:20px; letter-spacing:.01em;}
+  nav .logo b{color:rgb(var(--primary));}
+
+  main{position:relative; z-index:2; max-width:1100px; margin:0 auto; padding:52px 24px 90px; display:grid; grid-template-columns:1fr 1fr; gap:24px; align-items:center; min-height:78vh;}
+  @media (max-width:880px){ main{grid-template-columns:1fr; padding-top:20px;} }
+
+  .copy{max-width:480px;}
+  .eyebrow{
+    display:inline-flex; align-items:center; gap:8px; font-size:12px; font-weight:700; letter-spacing:.06em;
+    text-transform:uppercase; color:rgb(var(--tertiary)); background:rgb(var(--tertiary) / .12);
+    border:1px solid rgb(var(--tertiary) / .35); padding:6px 14px; border-radius:999px; margin-bottom:22px;
+  }
+  h1{
+    font-family:var(--font-display); font-weight:700; font-size:clamp(34px,5vw,52px); line-height:1.06;
+    margin:0 0 8px; letter-spacing:-.01em;
+  }
+  h1 .soft{display:block; font-size:.5em; font-weight:600; color:rgb(var(--text-muted) / .7); margin-top:10px;}
+  p.sub{font-size:16px; line-height:1.55; color:rgb(var(--text-muted) / var(--text-muted-a)); margin:20px 0 30px; max-width:420px;}
+
+  .cta-row{display:flex; align-items:center; gap:18px; flex-wrap:wrap;}
+  .enter-btn{
+    font-family:var(--font-body); font-weight:800; font-size:16px; color:rgb(var(--text-light));
+    background:rgb(var(--primary)); border:none; padding:16px 30px; border-radius:999px; cursor:pointer;
+    display:inline-flex; align-items:center; gap:10px; text-decoration:none;
+    box-shadow:0 10px 30px rgb(var(--primary) / .35);
+    transition:transform .22s var(--ease-brand), box-shadow .22s var(--ease-brand), background .2s;
+  }
+  .enter-btn:hover{ transform:translateY(-2px); background:rgb(var(--primary-hover)); box-shadow:0 14px 34px rgb(var(--primary) / .45); }
+  .enter-btn svg{transition:transform .22s var(--ease-brand);}
+  .enter-btn:hover svg{transform:translateX(3px);}
+  .fineprint{font-size:12.5px; color:rgb(var(--text-muted) / .5);}
+
+  /* ---- Signature element: fanned vertical episode stack ---- */
+  .stage{position:relative; height:440px; display:flex; align-items:center; justify-content:center;}
+  .fan{position:relative; width:230px; height:380px;}
+  .card{
+    position:absolute; top:0; left:0; width:170px; height:302px; border-radius:20px; overflow:hidden;
+    box-shadow:0 20px 40px rgb(0 0 0 / .45); border:1px solid rgb(255 255 255 / .08);
+    display:flex; flex-direction:column; justify-content:flex-end; padding:12px;
+    opacity:0; transform:translateY(30px) rotate(var(--r,0deg)); animation:riseIn .7s var(--ease-brand) forwards;
+    animation-delay:var(--d,0s);
+  }
+  @keyframes riseIn{ to{opacity:1; transform:translate(var(--x,0),0) rotate(var(--r,0deg));} }
+  .card .badge{position:absolute; top:10px; left:10px; background:rgb(var(--tertiary)); color:rgb(var(--text-dark)); font-size:10px; font-weight:800; padding:3px 9px; border-radius:999px;}
+  .card .ep{background:rgb(0 0 0 / .4); color:#fff; font-size:10.5px; font-weight:700; padding:3px 8px; border-radius:999px; align-self:flex-start; margin-bottom:6px;}
+  .card .title{color:#fff; font-family:var(--font-display); font-weight:600; font-size:14px; line-height:1.2;}
+  .c1{ --r:-13deg; --x:-64px; z-index:1; --d:.05s; background:linear-gradient(155deg, rgb(var(--secondary)), rgb(var(--primary-dark)) 70%); top:38px;}
+  .c2{ --r:9deg; --x:58px; z-index:1; --d:.15s; background:linear-gradient(155deg, rgb(var(--tertiary)), rgb(var(--secondary-hover)) 75%); top:30px;}
+  .c3{ --r:0deg; --x:0px; z-index:2; --d:.28s; background:linear-gradient(160deg, rgb(var(--primary)), rgb(var(--tertiary)) 120%); top:0; width:190px; height:340px; left:20px;}
+  .stage .glow{position:absolute; width:280px; height:280px; background:rgb(var(--primary) / .35); filter:blur(70px); border-radius:50%; z-index:0;}
+
+  footer{position:relative; z-index:2; text-align:center; padding:0 24px 40px; font-size:12px; color:rgb(var(--text-muted) / .4);}
+</style>
+</head>
+<body>
+  <nav>
+    <div class="logo"><b>Drama</b>Short</div>
+  </nav>
+
+  <main>
+    <div class="copy">
+      <span class="eyebrow">★ new episodes daily</span>
+      <h1>One more episode.<br>Then bed.
+        <span class="soft">(You said that at ep. 4, too.)</span>
+      </h1>
+      <p class="sub">Vertical dramas built for a 12-minute break — revenge, rebirth, forbidden marriages, repeat. No app required, just a thumb.</p>
+      <div class="cta-row">
+        <a class="enter-btn" href="./home.html">
+          Enter DramaShort
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M5 12h14M13 6l6 6-6 6" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </a>
+        <span class="fineprint">Free to start · No credit card</span>
+      </div>
+    </div>
+
+    <div class="stage">
+      <div class="glow"></div>
+      <div class="fan">
+        <div class="card c1"><span class="badge">NEW</span><span class="ep">EP 3</span><span class="title">Marrying My Rival's Husband</span></div>
+        <div class="card c2"><span class="ep">EP 18</span><span class="title">Reborn as the CEO's Enemy</span></div>
+        <div class="card c3"><span class="badge">TRENDING</span><span class="ep">EP 12 / 62</span><span class="title">Fated Marriage</span></div>
+      </div>
+    </div>
+  </main>
+
+  <footer>DramaShort · content for 16+ · vertical dramas from partner studios worldwide</footer>
+</body>
+</html>
