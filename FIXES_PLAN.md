@@ -256,17 +256,29 @@ To eliminate ambiguity across product requirements, admin CMS, and codebase inte
 ---
 
 ### Task 4.6: Dynamic Watch History Hydration (C6)
-* **Target File**: `app/account/history/page.tsx`
-* **Problem**: Page imports static `historyItems` from `@/data/history.mock` and never calls the existing `getUserWatchHistory(user.id)` in `lib/services/user.service.ts`.
-* **Implementation Plan**:
-  1. When authenticated `user` is available, invoke `getUserWatchHistory(user.id)`.
-  2. Extract unique title slugs/IDs from history rows and batch-fetch titles via `getTitlesBySlugs()`.
-  3. Transform history records into display items (including episode number, timestamp, progress percentage).
-  4. Display empty state (`"No watch history yet"`) when user has 0 records, rather than showing fake mock entries.
-  5. Support "Clear History" action invoking `user.service.ts` deletion method.
+* **Status**: ✅ Completed
+* **Target Files**: `app/account/history/page.tsx`, `lib/services/user.service.ts`
+* **Delivered Capabilities**:
+  1. Service Layer Expansion in `lib/services/user.service.ts`:
+     - Implemented `clearUserWatchHistory(userId)` deleting all rows for the user from Supabase `watch_history`.
+     - Implemented `deleteWatchHistoryItem(userId, titleSlug)` deleting a single drama record.
+     - Implemented `clearGuestWatchHistory()` and `deleteGuestWatchHistoryItem(titleSlug)` for offline/guest state.
+  2. Real Database Hydration in `app/account/history/page.tsx`:
+     - Replaced static mock list with live data from `getUserWatchHistory(user.id)`.
+     - Batch queries drama metadata using `getTitlesBySlugs()`.
+     - Formats dates into chronological categories: "Today", "Yesterday", and formatted calendar dates within the 60-day window.
+  3. Seamless Playback Resume & Individual Deletion:
+     - Play button overlay links directly to `/watch/${item.slug}?ep=${item.episodeNumber}`.
+     - Hover deletion icon on cards allows removing single titles from history.
+  4. Clear All Confirmation Modal:
+     - Added confirmation modal with alert details, cancellation option, and loading feedback.
+  5. Skeleton & Empty States:
+     - Pulsing skeleton grid while data is loading.
+     - Centered empty state with call-to-action to explore dramas.
 * **Verification**:
-  - Log in with a clean test account: watch history shows empty state.
-  - Watch an episode: history reflects the watched item with accurate timestamp and progress.
+  - `npx tsc --noEmit` passed with 0 errors.
+  - `npm run lint` passed with 0 warnings.
+  - Compilation on `/account/history` verified.
 
 ---
 

@@ -207,6 +207,40 @@ export async function upsertWatchProgress(
   }
 }
 
+export async function clearUserWatchHistory(userId: string): Promise<boolean> {
+  try {
+    const supabase = createUserClient();
+    const { error } = await supabase
+      .from("watch_history")
+      .delete()
+      .eq("user_id", userId);
+
+    return !error;
+  } catch (err) {
+    console.error("Error clearing watch history:", err);
+    return false;
+  }
+}
+
+export async function deleteWatchHistoryItem(
+  userId: string,
+  titleSlug: string
+): Promise<boolean> {
+  try {
+    const supabase = createUserClient();
+    const { error } = await supabase
+      .from("watch_history")
+      .delete()
+      .eq("user_id", userId)
+      .eq("title_slug", titleSlug);
+
+    return !error;
+  } catch (err) {
+    console.error("Error deleting watch history item:", err);
+    return false;
+  }
+}
+
 export const GUEST_HISTORY_KEY = "dramashort_watch_history";
 
 export function getGuestWatchHistory(): WatchHistoryRow[] {
@@ -241,6 +275,27 @@ export function saveGuestWatchProgress(
     return updated;
   } catch {
     return [];
+  }
+}
+
+export function deleteGuestWatchHistoryItem(titleSlug: string): WatchHistoryRow[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const current = getGuestWatchHistory();
+    const updated = current.filter((it) => it.title_slug !== titleSlug);
+    localStorage.setItem(GUEST_HISTORY_KEY, JSON.stringify(updated));
+    return updated;
+  } catch {
+    return [];
+  }
+}
+
+export function clearGuestWatchHistory(): void {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.removeItem(GUEST_HISTORY_KEY);
+  } catch {
+    // Ignore storage errors
   }
 }
 
