@@ -322,10 +322,10 @@ To eliminate ambiguity across product requirements, admin CMS, and codebase inte
      - Completed series (final episode >= 95%) are omitted from the Continue Watching feed.
   3. Direct Episode Resumption:
      - Cards link directly to `/watch/${slug}?ep=${targetEpisode}` so users resume at the exact episode and second.
-  4. Desktop Navigation & Loading States:
+  4. Clean Zero-State Visibility & Navigation:
+     - When the user has zero watch progress (initial state before watching any drama), the Continue Watching section is completely hidden (`return null`), keeping the homepage sleek and focused on discovery.
+     - The section activates dynamically as soon as the user watches any drama episode.
      - Added left/right carousel scroll navigation buttons on desktop when items exceed viewport width.
-     - Added 5-card pulsing skeleton loader during async fetch to eliminate layout shift.
-     - Added welcoming empty state card with link to `/trending` when no watches are in progress.
 * **Verification**:
   - `npx tsc --noEmit` passed with 0 errors.
   - `npm run lint` passed with 0 warnings.
