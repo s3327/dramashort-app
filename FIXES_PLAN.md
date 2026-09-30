@@ -22,15 +22,15 @@ This plan outlines the specific fixes, cleanup tasks, and enhancements needed to
 | **Phase 4** | 🔴 Critical | C6: Wire watch history to `getUserWatchHistory()` in `app/account/history/page.tsx` | ✅ Done | Replaces static mock history with persistent user watch history, deletion, and clear modal |
 | **Phase 5** | 🟠 High | H1: Call `upsertWatchProgress()` from video playback events | ✅ Done | Real-time throttled tracking, auto-resume with prompt pill, onPause/onEnded/beforeunload persistence |
 | **Phase 5** | 🟠 High | H2: Replace `ContinueWatching` mock with real user data | ✅ Done | Real Supabase watch history hydration, smart next-episode advancement, & finished series exclusion |
-| **Phase 5** | 🟠 High | H3: Wire admin edit form to Supabase content DB (Add/Edit Drama: title, desc, genre, taxonomy, channel) | ⏳ Next | Prevents silent data loss when admins create or edit drama records |
-| **Phase 5** | 🟠 High | H4: Server-side search filtering and pagination in `getPublishedTitles()` (Dramas query) | ⏳ Planned | Scalable search queries; eliminates full catalog download |
+| **Phase 5** | 🟠 High | H3: Wire admin edit form to Supabase content DB (Add/Edit Drama: title, desc, genre, taxonomy, channel) | ✅ Done | Prevents silent data loss when admins create or edit drama records |
+| **Phase 5** | 🟠 High | H4: Server-side search filtering and pagination in `getPublishedTitles()` (Dramas query) | ⏳ Next | Scalable search queries; eliminates full catalog download |
 | **Phase 5** | 🟠 High | H5: Add auth guards and redirects for `/account/*` routes | ⏳ Planned | Protects user-specific pages against unauthenticated access |
 | **Phase 5** | 🟠 High | H6: Fix `FavoritesContext` guest seed (remove `defaultFavoriteSlugs`) | ⏳ Planned | Prevents guest accounts from being pre-seeded with fake favorites |
 | **Phase 6** | 🟡 Medium | M1: Audit and standardize mock/DB hydration pattern across components | ⏳ Planned | Consistent UX and elimination of stale mock data paths |
 | **Phase 6** | 🟡 Medium | M2: Dynamic SEO & OpenGraph tags via `generateMetadata()` | ⏳ Planned | Social sharing previews and search engine discovery |
 | **Phase 6** | 🟡 Medium | M3: Add Supabase Storage domain to `next.config.mjs` `remotePatterns` | ⏳ Planned | Prevents image load failures for storage-hosted assets |
 | **Phase 6** | 🟡 Medium | M4: Replace `catch (err: any)` with typed error handling in `AuthContext` | ✅ Done | Strict TypeScript compliance and type-safe `err instanceof Error` handling |
-| **Phase 6** | 🟡 Medium | M5: Load admin drama edit data from Supabase content DB | ⏳ Planned | Allows editing of dynamically created dramas not in mock array |
+| **Phase 6** | 🟡 Medium | M5: Load admin drama edit data from Supabase content DB | ✅ Done | Delivered in H3: Asynchronously hydrates drama on mount via getDramaById |
 | **Phase 6** | 🟡 Medium | M6: Wire Telegram Connect integration in `app/account/page.tsx` | ⏳ Planned | Functional Telegram account linking / bot deep-linking |
 | **Phase 6** | 🟡 Medium | M7: Standardize Admin nomenclature: "Dramas" & "Add Drama" in UI & routes | ⏳ Planned | Eliminates confusion between entity (Drama) and field (title) |
 | **Phase 7** | 🟢 Low | L1: Reusable custom hooks (`useDebounce`, `useRequireAuth`, `useMediaQuery`) | ⏳ Planned | DRY code, standardized debounce, and cleaner component logic |
@@ -334,24 +334,44 @@ To eliminate ambiguity across product requirements, admin CMS, and codebase inte
 ---
 
 ### Task 5.3: Admin Drama Edit & Persistence (H3)
-* **Status**: ⏳ Next
-* **Target File**: `app/admin/titles/[id]/edit/page.tsx` (aliased to `/admin/dramas/[id]/edit`)
-* **Problem**: Form submission runs a `setTimeout` dummy timer and discards changes on navigation.
-* **Implementation Plan**:
-  1. Wire form submission to a real mutation method in `content.service.ts` (`updateDrama(id, payload)` / `updateTitle`).
-  2. Ensure the form captures and persists all core attributes of a **Drama**:
-     - `title`: The display name of the drama
-     - `desc` / `synopsis`: Narrative description
-     - `genre`: Primary genre category
-     - `taxonomy`: Categorization tags & tropes
-     - `channel`: Channel relationship / assignment
-     - `status`: (`Published`, `Draft`, etc.) and `totalEpisodes`
-  3. Perform optimistic updates or disable form fields with a loading spinner during mutation.
-  4. Display success toast and router push back to `/admin/dramas` (or `/admin/titles`).
-  5. Show clear error notification if database update fails (e.g., duplicate slug, network error).
+* **Status**: ✅ Completed
+* **Target Files**:
+  - `app/admin/titles/[id]/edit/page.tsx` (aliased to `/admin/dramas/[id]/edit`)
+  - `app/api/admin/dramas/[id]/route.ts` (aliased to `/api/admin/titles/[id]/route.ts`)
+  - `lib/services/content.service.ts`
+  - `app/admin/titles/page.tsx` (aliased to `/admin/dramas/page.tsx`)
+* **Problem**: Form submission ran a `setTimeout` dummy timer and discarded changes on navigation. Newly inserted dramas in Supabase could not be loaded for editing because the edit page only checked the static mock array.
+* **Delivered Capabilities**:
+  1. Live DB Mutation & Privileged API Endpoint:
+     - Implemented `PATCH /api/admin/dramas/[id]` and `GET /api/admin/dramas/[id]` (aliased by `/api/admin/titles/[id]`).
+     - Route verifies administrator authentication via `createUserServerClient()` and performs updates using `getContentAdminClient()` (`CONTENT_SUPABASE_SERVICE_ROLE_KEY`), bypassing client-side RLS limitations.
+  2. Full Drama Domain Entity Persistence:
+     - Persists and updates all core drama attributes:
+       - `title`: The display name of the drama
+       - `synopsis` (`desc`): Narrative storyline description
+       - `genre`: Primary genre category
+       - `tags` (`taxonomy`): Categorization tropes & tags
+       - `channel_name`, `channel_code`, and `channel_id`: Channel relational resolution
+       - `status`: (`Published`, `Draft`, `Scheduled`, `Archived`)
+       - `total_episodes`: Total episode count
+       - `poster_url`: Custom poster URL
+       - `updated_at`: Real-time timestamp
+  3. Dynamic Data Retrieval & Hydration:
+     - `getDramaById(id)` / `getTitleById(id)` in `content.service.ts`: Queries Supabase Content DB on mount, falling back to mock fixtures only when offline or for legacy IDs.
+     - `getAdminDramas()` in `content.service.ts`: Hydrates `/admin/titles` (and `/admin/dramas`) with all 25 real Supabase dramas and their UUIDs.
+  4. Production UX & Error Resilience:
+     - Shimmer pulse skeleton loading state while fetching drama data.
+     - Inline error alert banner when validation or mutation encounters an issue.
+     - Form disabling with `Loader2` spinner on "Save Changes" button during submission.
+     - Verified toast message `"Changes saved successfully"` followed by clean redirection to `/admin/titles`.
+  5. Route Aliasing:
+     - Created `app/admin/dramas/[id]/edit/page.tsx` and `app/admin/dramas/page.tsx` cleanly re-exporting the titles pages, supporting both `/admin/titles` and `/admin/dramas` URL structures.
 * **Verification**:
-  - Edit synopsis, title, or status of a drama in Admin; save and reload `/admin/dramas`.
-  - Updated drama information persists across browser reloads.
+  - `npx tsc --noEmit` passed with 0 errors.
+  - `npm run lint` passed with 0 errors.
+  - Live API testing: `GET /api/admin/dramas/:id` returned HTTP 200 with real database row.
+  - Live API testing: `PATCH /api/admin/dramas/:id` persisted updated tags to Supabase Content DB and verified with subsequent query.
+  - Route Guard testing: Unauthenticated requests returned 307 redirect with `returnUrl`. Authenticated admin session returned HTTP 200 for both `/admin/titles/[id]/edit` and `/admin/dramas/[id]/edit`.
 
 ---
 

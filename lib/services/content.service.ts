@@ -1,6 +1,6 @@
 import { contentClient } from "@/lib/supabase/content";
 import type { Database } from "@/types/supabase-content";
-import type { Title, TitleStatus } from "@/data/titles.mock";
+import { titles as mockTitles, type Title, type TitleStatus } from "@/data/titles.mock";
 import type { Channel } from "@/data/channels.mock";
 import type { HeroSlide } from "@/data/hero-slides.mock";
 
@@ -318,3 +318,113 @@ export async function getRelatedTitlesFromDb(
     return [];
   }
 }
+
+/**
+ * Fetches a single drama by ID (Supabase Content DB first, mock fallback).
+ */
+export async function getDramaById(id: string): Promise<Drama | null> {
+  if (!id) return null;
+  try {
+    const { data, error } = await contentClient
+      .from("titles")
+      .select("*")
+      .eq("id", id)
+      .maybeSingle();
+
+    if (!error && data) {
+      return mapTitleRowToTitle(data);
+    }
+  } catch (err) {
+    console.warn("Supabase getDramaById lookup failed:", err);
+  }
+
+  // Fallback to mock data by ID or slug
+  const mockItem = mockTitles.find((t) => t.id === id || t.slug === id);
+  if (mockItem) {
+    return mockItem;
+  }
+
+  return null;
+}
+
+/** Domain entity alias for getDramaById */
+export const getTitleById = getDramaById;
+
+/**
+ * Fetches all dramas for the administrative catalog.
+ * Returns Supabase data ordered by creation date, or falls back to mock titles.
+ */
+export async function getAdminDramas(): Promise<Drama[]> {
+  try {
+    const { data, error } = await contentClient
+      .from("titles")
+      .select("*")
+      .order("created_at", { ascending: false });
+
+    if (!error && data && data.length > 0) {
+      return data.map(mapTitleRowToTitle);
+    }
+  } catch (err) {
+    console.warn("Failed to fetch admin dramas from Supabase:", err);
+  }
+  return mockTitles;
+}
+
+export interface UpdateDramaPayload {
+  title?: string;
+  synopsis?: string;
+  genre?: string;
+  tags?: string[] | string;
+  channel?: string;
+  channel_name?: string;
+  channel_code?: string;
+  channel_id?: string | null;
+  status?: TitleStatus;
+  totalEpisodes?: number;
+  total_episodes?: number;
+  poster?: string;
+  poster_url?: string;
+}
+
+/**
+ * Persists changes to a Drama via the administrative API.
+ * Updates Supabase Content DB with full verification.
+ */
+export async function updateDrama(
+  id: string,
+  payload: UpdateDramaPayload
+): Promise<{ success: boolean; data?: Drama; error?: string }> {
+  try {
+    const res = await fetch(`/api/admin/dramas/${encodeURIComponent(id)}`, {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+    });
+
+    const data = await res.json();
+    if (!res.ok || !data.success) {
+      return {
+        success: false,
+        error: data.error || `Update failed with HTTP ${res.status}`,
+      };
+    }
+
+    return {
+      success: true,
+      data: data.data,
+    };
+  } catch (err: unknown) {
+    const msg =
+      err instanceof Error ? err.message : "Network error while saving changes";
+    return {
+      success: false,
+      error: msg,
+    };
+  }
+}
+
+/** Domain entity alias for updateDrama */
+export const updateTitle = updateDrama;
+

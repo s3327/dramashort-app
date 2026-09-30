@@ -6,8 +6,9 @@ import Link from "next/link";
 import { Search, List, LayoutGrid, Pencil } from "lucide-react";
 import AdminSidebar from "@/components/admin/AdminSidebar";
 import Pagination from "@/components/Pagination";
-import { channels } from "@/data/channels.mock";
-import { titles as adminTitles, type TitleStatus } from "@/data/titles.mock";
+import { channels as initialChannels, type Channel } from "@/data/channels.mock";
+import { titles as adminTitles, type TitleStatus, type Title } from "@/data/titles.mock";
+import { getAdminDramas, getChannels } from "@/lib/services/content.service";
 
 const ALL_CHANNELS = "All Channels";
 const ROWS_PER_PAGE_OPTIONS = [20, 50, 75, 100, 250];
@@ -20,6 +21,8 @@ const STATUS_STYLES: Record<TitleStatus, string> = {
 };
 
 export default function AdminTitlesPage() {
+  const [dramas, setDramas] = useState<Title[]>(adminTitles);
+  const [channelList, setChannelList] = useState<Channel[]>(initialChannels);
   const [query, setQuery] = useState("");
   const [selectedChannel, setSelectedChannel] = useState(ALL_CHANNELS);
   const [view, setView] = useState<"list" | "card">("list");
@@ -27,20 +30,45 @@ export default function AdminTitlesPage() {
   const [page, setPage] = useState(1);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
+  // Dynamic catalog hydration from Supabase Content DB
+  useEffect(() => {
+    let mounted = true;
+    async function loadCatalog() {
+      try {
+        const [dbDramas, dbChannels] = await Promise.all([
+          getAdminDramas(),
+          getChannels().catch(() => initialChannels),
+        ]);
+        if (!mounted) return;
+        if (dbDramas && dbDramas.length > 0) {
+          setDramas(dbDramas);
+        }
+        if (dbChannels && dbChannels.length > 0) {
+          setChannelList(dbChannels);
+        }
+      } catch (err) {
+        console.warn("Failed to dynamically hydrate admin catalog:", err);
+      }
+    }
+    loadCatalog();
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
-    // TODO: wire up to the real titles API — filtering is client-side over
-    // mock data for now.
   };
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return adminTitles.filter((t) => {
+    return dramas.filter((t) => {
       const matchesQuery = q === "" || t.title.toLowerCase().includes(q);
-      const matchesChannel = selectedChannel === ALL_CHANNELS || t.channel === selectedChannel;
+      const matchesChannel =
+        selectedChannel === ALL_CHANNELS || t.channel === selectedChannel;
       return matchesQuery && matchesChannel;
     });
-  }, [query, selectedChannel]);
+  }, [dramas, query, selectedChannel]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / rowsPerPage));
   const pageItems = filtered.slice((page - 1) * rowsPerPage, page * rowsPerPage);
@@ -105,7 +133,7 @@ export default function AdminTitlesPage() {
             className="rounded-md border border-border bg-surface text-sm text-text px-3.5 py-2.5 focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-colors"
           >
             <option value={ALL_CHANNELS}>{ALL_CHANNELS}</option>
-            {channels.map((c) => (
+            {channelList.map((c) => (
               <option key={c.slug} value={c.name}>
                 {c.name}
               </option>
