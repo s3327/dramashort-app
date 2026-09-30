@@ -66,61 +66,252 @@ export function mapEpisodeRowToEpisode(row: EpisodeRow): Episode {
   };
 }
 
-/**
- * Fetches all published titles with optional filtering and sorting.
- */
-export async function getPublishedTitles(options?: {
+export interface TitleQueryOptions {
+  query?: string;
+  search?: string;
+  genre?: string;
   channelName?: string;
   channelSlug?: string;
-  genre?: string;
-  search?: string;
+  tags?: string[];
   sort?: "trending" | "newest" | "rating";
+  page?: number;
+  pageSize?: number;
   limit?: number;
   offset?: number;
-}): Promise<Title[]> {
+}
+
+export type DramaQueryOptions = TitleQueryOptions;
+
+export interface PaginatedTitlesResult {
+  items: Title[];
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+}
+
+export type PaginatedDramasResult = PaginatedTitlesResult;
+
+/**
+ * Executes a server-side search and filtering query over the titles database with pagination.
+ */
+export async function searchPublishedTitles(
+  options?: TitleQueryOptions
+): Promise<PaginatedTitlesResult> {
+  const page = Math.max(1, options?.page || 1);
+  const pageSize = Math.max(1, options?.pageSize || options?.limit || 12);
+  const from =
+    options?.offset !== undefined ? options.offset : (page - 1) * pageSize;
+  const to = from + pageSize - 1;
+
   try {
     let query = contentClient
       .from("titles")
-      .select("*")
+      .select("*", { count: "exact" })
       .eq("status", "Published");
 
-    if (options?.channelName) {
+    // Search query (matches title or synopsis)
+    const rawSearch = (options?.query || options?.search || "").trim();
+    if (rawSearch) {
+      const cleanTerm = rawSearch.replace(/[,()]/g, " ").trim();
+      if (cleanTerm) {
+        query = query.or(
+          `title.ilike.%${cleanTerm}%,synopsis.ilike.%${cleanTerm}%`
+        );
+      }
+    }
+
+    if (
+      options?.channelName &&
+      options.channelName !== "All" &&
+      options.channelName !== "All Channels"
+    ) {
       query = query.eq("channel_name", options.channelName);
     }
 
-    if (options?.genre && options.genre !== "All" && options.genre !== "All Genres") {
+    if (
+      options?.genre &&
+      options.genre !== "All" &&
+      options.genre !== "All Genres"
+    ) {
       query = query.eq("genre", options.genre);
     }
 
-    if (options?.search) {
-      query = query.ilike("title", `%${options.search.trim()}%`);
+    if (options?.tags && options.tags.length > 0) {
+      query = query.contains("tags", options.tags);
     }
 
     if (options?.sort === "newest") {
       query = query.order("created_at", { ascending: false });
     } else if (options?.sort === "rating") {
-      query = query.order("rating", { ascending: false });
+      query = query.order("rating", { ascending: false, nullsFirst: false });
     } else {
-      // Default to trending
-      query = query.order("views_count", { ascending: false });
+      query = query.order("views_count", {
+        ascending: false,
+        nullsFirst: false,
+      });
     }
 
-    if (options?.limit) {
-      const from = options.offset || 0;
-      query = query.range(from, from + options.limit - 1);
-    }
+    query = query.range(from, to);
 
-    const { data, error } = await query;
+    const { data, count, error } = await query;
     if (error || !data) {
-      console.warn("Failed to fetch titles from Supabase:", error?.message);
-      return [];
+      console.warn("Failed to query titles from Supabase:", error?.message);
+      return filterMockTitles(options, page, pageSize);
     }
 
-    return data.map(mapTitleRowToTitle);
+    const items = data.map(mapTitleRowToTitle);
+    const total = count !== null ? count : items.length;
+    const totalPages = Math.max(1, Math.ceil(total / pageSize));
+
+    return {
+      items,
+      total,
+      page,
+      pageSize,
+      totalPages,
+    };
   } catch (err) {
-    console.error("Error in getPublishedTitles:", err);
-    return [];
+    console.error("Error in searchPublishedTitles:", err);
+    return filterMockTitles(options, page, pageSize);
   }
+}
+
+/** Domain alias for searchPublishedTitles */
+export const searchDramas = searchPublishedTitles;
+
+/**
+ * In-memory fallback filtering for mock data during offline development.
+ */
+function filterMockTitles(
+  options?: TitleQueryOptions,
+  page = 1,
+  pageSize = 12
+): PaginatedTitlesResult {
+  const q = (options?.query || options?.search || "").trim().toLowerCase();
+  const channelName = options?.channelName;
+  const genre = options?.genre;
+  const tags = options?.tags;
+
+  const filtered = mockTitles.filter((item) => {
+    const isPublished = item.status === "Published";
+    const matchesQuery =
+      !q ||
+      item.title.toLowerCase().includes(q) ||
+      item.synopsis.toLowerCase().includes(q);
+    const matchesChannel =
+      !channelName ||
+      channelName === "All Channels" ||
+      channelName === "All" ||
+      item.channel === channelName;
+    const matchesGenre =
+      !genre ||
+      genre === "All Genres" ||
+      genre === "All" ||
+      item.genre === genre;
+    const matchesTags =
+      !tags || tags.length === 0 || tags.every((t) => item.tags.includes(t));
+
+    return (
+      isPublished && matchesQuery && matchesChannel && matchesGenre && matchesTags
+    );
+  });
+
+  if (options?.sort === "newest") {
+    filtered.sort(
+      (a, b) =>
+        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    );
+  } else if (options?.sort === "rating") {
+    filtered.sort((a, b) => (b.rating || 0) - (a.rating || 0));
+  } else {
+    filtered.sort((a, b) => b.views - a.views);
+  }
+
+  const total = filtered.length;
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const items = filtered.slice((page - 1) * pageSize, page * pageSize);
+
+  return {
+    items,
+    total,
+    page,
+    pageSize,
+    totalPages,
+  };
+}
+
+/**
+ * Fetches all published titles with optional filtering and sorting.
+ * Backward-compatible wrapper returning Title[] array.
+ */
+export async function getPublishedTitles(
+  options?: TitleQueryOptions
+): Promise<Title[]> {
+  const result = await searchPublishedTitles(options);
+  return result.items;
+}
+
+/** Domain alias for getPublishedTitles */
+export const getPublishedDramas = getPublishedTitles;
+
+/**
+ * Fetches distinct available genres across all published dramas.
+ */
+export async function getDistinctGenres(): Promise<string[]> {
+  try {
+    const { data, error } = await contentClient
+      .from("titles")
+      .select("genre")
+      .eq("status", "Published");
+    if (!error && data && data.length > 0) {
+      const set = new Set(data.map((r) => r.genre).filter(Boolean));
+      return Array.from(set).sort();
+    }
+  } catch (err) {
+    console.warn("Failed to fetch distinct genres:", err);
+  }
+  return [
+    "Coming of Age",
+    "Dark Romance",
+    "Fantasy",
+    "Marriage",
+    "Military",
+    "Period",
+    "Rebirth",
+    "Rivals",
+    "Romance",
+  ];
+}
+
+/**
+ * Fetches popular taxonomy tags / tropes across all published dramas.
+ */
+export async function getPopularTags(): Promise<string[]> {
+  try {
+    const { data, error } = await contentClient
+      .from("titles")
+      .select("tags")
+      .eq("status", "Published");
+    if (!error && data && data.length > 0) {
+      const set = new Set(data.flatMap((r) => r.tags || []).filter(Boolean));
+      return Array.from(set).sort();
+    }
+  } catch (err) {
+    console.warn("Failed to fetch popular tags:", err);
+  }
+  return [
+    "CEO",
+    "Revenge",
+    "Marriage",
+    "Second Chance",
+    "Secret Identity",
+    "Fake Marriage",
+    "Romance",
+    "Billionaire",
+    "Villain",
+    "Fantasy",
+  ];
 }
 
 /**

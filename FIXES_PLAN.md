@@ -23,8 +23,8 @@ This plan outlines the specific fixes, cleanup tasks, and enhancements needed to
 | **Phase 5** | 🟠 High | H1: Call `upsertWatchProgress()` from video playback events | ✅ Done | Real-time throttled tracking, auto-resume with prompt pill, onPause/onEnded/beforeunload persistence |
 | **Phase 5** | 🟠 High | H2: Replace `ContinueWatching` mock with real user data | ✅ Done | Real Supabase watch history hydration, smart next-episode advancement, & finished series exclusion |
 | **Phase 5** | 🟠 High | H3: Wire admin edit form to Supabase content DB (Add/Edit Drama: title, desc, genre, taxonomy, channel) | ✅ Done | Prevents silent data loss when admins create or edit drama records |
-| **Phase 5** | 🟠 High | H4: Server-side search filtering and pagination in `getPublishedTitles()` (Dramas query) | ⏳ Next | Scalable search queries; eliminates full catalog download |
-| **Phase 5** | 🟠 High | H5: Add auth guards and redirects for `/account/*` routes | ⏳ Planned | Protects user-specific pages against unauthenticated access |
+| **Phase 5** | 🟠 High | H4: Server-side search filtering and pagination in `getPublishedTitles()` (Dramas query) | ✅ Done | Scalable search queries; eliminates full catalog download |
+| **Phase 5** | 🟠 High | H5: Add auth guards and redirects for `/account/*` routes | ⏳ Next | Protects user-specific pages against unauthenticated access |
 | **Phase 5** | 🟠 High | H6: Fix `FavoritesContext` guest seed (remove `defaultFavoriteSlugs`) | ⏳ Planned | Prevents guest accounts from being pre-seeded with fake favorites |
 | **Phase 6** | 🟡 Medium | M1: Audit and standardize mock/DB hydration pattern across components | ⏳ Planned | Consistent UX and elimination of stale mock data paths |
 | **Phase 6** | 🟡 Medium | M2: Dynamic SEO & OpenGraph tags via `generateMetadata()` | ⏳ Planned | Social sharing previews and search engine discovery |
@@ -376,24 +376,42 @@ To eliminate ambiguity across product requirements, admin CMS, and codebase inte
 ---
 
 ### Task 5.4: Server-Side Search Filtering & Pagination (H4)
-* **Target Files**: `app/search/page.tsx`, `lib/services/content.service.ts`
-* **Problem**: Search downloads the entire catalog via parameter-less `getPublishedTitles()` and filters everything client-side in JavaScript.
-* **Implementation Plan**:
-  1. Enhance `getPublishedTitles()` to accept search parameters:
-     ```typescript
-     interface TitleQueryOptions {
-       query?: string;
-       genre?: string;
-       channelSlug?: string;
-       sort?: 'trending' | 'newest' | 'rating';
-       page?: number;
-       pageSize?: number;
-     }
-     ```
-  2. Translate options to Supabase PostgREST filters (`.ilike('title', ...)`, `.eq('genre', ...)`, `.range(from, to)`).
-  3. Implement debounced search input (300ms) on `/search` triggering server-side queries.
+* **Status**: ✅ Completed
+* **Target Files**:
+  - `app/search/page.tsx`
+  - `lib/services/content.service.ts`
+  - `hooks/useDebounce.ts`
+* **Problem**: Search downloaded the entire catalog via parameter-less `getPublishedTitles()` and filtered everything client-side in JavaScript, resulting in high latency and poor scalability.
+* **Delivered Capabilities**:
+  1. PostgREST Server-Side Query Engine:
+     - Implemented `searchPublishedTitles(options?: TitleQueryOptions): Promise<PaginatedTitlesResult>` (and alias `searchDramas`) in `lib/services/content.service.ts`.
+     - Direct Supabase PostgREST filters:
+       - Multi-field keyword query matching both `title` and `synopsis` using `.or('title.ilike.%...,synopsis.ilike.%...')`
+       - Exact channel affiliation match (`.eq('channel_name', channel)`)
+       - Genre category filter (`.eq('genre', genre)`)
+       - Taxonomy tropes filter (`.contains('tags', tags)`)
+       - Dynamic sorting: `"trending"` (`views_count`), `"newest"` (`created_at`), `"rating"` (`rating`)
+     - Server-side counting and range pagination: `{ count: 'exact' }` and `.range(from, to)`.
+     - Added `getDistinctGenres()` and `getPopularTags()` querying the real catalog.
+     - Backwards compatibility: `getPublishedTitles(options)` calls `searchPublishedTitles(options)` and returns `result.items`.
+  2. Generic Debounce Hook:
+     - Created `hooks/useDebounce.ts` for clean, reusable 300ms input throttling, preventing request spam while users type.
+  3. Upgraded Public Search Architecture (`app/search/page.tsx`):
+     - Eliminated in-memory full catalog downloads; queries execute on-demand with paginated results (`PAGE_SIZE = 12`).
+     - 300ms debounced search bar with instant clear button.
+     - Dynamic URL query synchronization (`window.history.replaceState`) for shareable search links (`/search?q=...&genre=...&page=...`).
+     - 12-item shimmer skeleton loader during query execution to eliminate layout shift.
+     - Responsive empty state with single-click "Clear all filters" button.
+     - Results counter and responsive page navigation with `<Pagination>`.
 * **Verification**:
-  - Verify network tab: search queries send query params to backend and return paginated subsets rather than entire database tables.
+  - `npx tsc --noEmit` passed with 0 errors.
+  - `npm run lint` passed with 0 errors.
+  - Live query verification:
+    - Keyword search (`"wife"`): returned 4 exact matching titles across title/synopsis.
+    - Genre filter (`"Fantasy"`): returned 3 exact matching titles.
+    - Tag filter (`["CEO"]`): returned 2 matching titles.
+    - Pagination test (2 per page): total 26, returned 2 items, computed 13 pages.
+  - Live HTTP routes `/search` and `/search?q=wife&genre=Marriage` returned HTTP 200 OK.
 
 ---
 
