@@ -22,6 +22,8 @@ import {
   Loader2,
   AlertCircle,
   Settings,
+  ChevronUp,
+  ChevronDown,
 } from "lucide-react";
 
 export type AspectRatioMode = "fit" | "9:16" | "16:9";
@@ -97,6 +99,13 @@ export default function VideoPlayer({
   const [hoverTime, setHoverTime] = useState<number | null>(null);
   const [hoverPosition, setHoverPosition] = useState<number>(0);
   const [isScrubbing, setIsScrubbing] = useState(false);
+
+  // Vertical Swipe Gesture States (Swipe Up = Next, Swipe Down = Prev)
+  const touchStartY = useRef<number | null>(null);
+  const touchStartX = useRef<number | null>(null);
+  const isDragging = useRef<boolean>(false);
+  const [swipeOffset, setSwipeOffset] = useState<number>(0);
+  const [swipeHint, setSwipeHint] = useState<"next" | "prev" | null>(null);
 
   // Restore volume preference from localStorage
   useEffect(() => {
@@ -356,6 +365,121 @@ export default function VideoPlayer({
     setCurrentTime(targetTime);
   };
 
+  // Vertical Swipe Gesture Handlers (TikTok / ReelShort style episode navigation)
+  const handleTouchStart = (e: React.TouchEvent<HTMLDivElement>) => {
+    const target = e.target as HTMLElement;
+    if (
+      target.closest("button") ||
+      target.closest("input") ||
+      target.closest(".group\\/scrub")
+    ) {
+      return;
+    }
+    touchStartY.current = e.touches[0].clientY;
+    touchStartX.current = e.touches[0].clientX;
+    isDragging.current = true;
+  };
+
+  const handleTouchMove = (e: React.TouchEvent<HTMLDivElement>) => {
+    if (!isDragging.current || touchStartY.current === null || touchStartX.current === null) return;
+    const currentY = e.touches[0].clientY;
+    const currentX = e.touches[0].clientX;
+    const deltaY = currentY - touchStartY.current;
+    const deltaX = currentX - touchStartX.current;
+
+    // Only engage if movement is primarily vertical
+    if (Math.abs(deltaY) > Math.abs(deltaX) && Math.abs(deltaY) > 8) {
+      const damped = deltaY * 0.45;
+      setSwipeOffset(damped);
+      if (deltaY < -20) {
+        setSwipeHint("next");
+      } else if (deltaY > 20) {
+        setSwipeHint("prev");
+      } else {
+        setSwipeHint(null);
+      }
+    }
+  };
+
+  const handleTouchEnd = () => {
+    if (!isDragging.current) return;
+    isDragging.current = false;
+    touchStartY.current = null;
+    touchStartX.current = null;
+
+    if (swipeOffset < -45) {
+      // Swiped UP -> Next Episode
+      if (currentEpisode < totalEpisodes && onNextEpisode) {
+        onNextEpisode();
+      }
+    } else if (swipeOffset > 45) {
+      // Swiped DOWN -> Previous Episode
+      if (currentEpisode > 1 && onPrevEpisode) {
+        onPrevEpisode();
+      }
+    }
+
+    setSwipeOffset(0);
+    setSwipeHint(null);
+  };
+
+  const handleMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
+    const target = e.target as HTMLElement;
+    if (
+      target.closest("button") ||
+      target.closest("input") ||
+      target.closest(".group\\/scrub")
+    ) {
+      return;
+    }
+    touchStartY.current = e.clientY;
+    touchStartX.current = e.clientX;
+    isDragging.current = true;
+  };
+
+  const handleMouseMoveWithSwipe = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!isDragging.current || touchStartY.current === null || touchStartX.current === null) {
+      handleMouseMove();
+      return;
+    }
+    const deltaY = e.clientY - touchStartY.current;
+    const deltaX = e.clientX - touchStartX.current;
+
+    if (Math.abs(deltaY) > Math.abs(deltaX) && Math.abs(deltaY) > 8) {
+      const damped = deltaY * 0.45;
+      setSwipeOffset(damped);
+      if (deltaY < -20) {
+        setSwipeHint("next");
+      } else if (deltaY > 20) {
+        setSwipeHint("prev");
+      } else {
+        setSwipeHint(null);
+      }
+    } else {
+      handleMouseMove();
+    }
+  };
+
+  const handleMouseUp = () => {
+    if (!isDragging.current) return;
+    isDragging.current = false;
+    touchStartY.current = null;
+    touchStartX.current = null;
+
+    if (swipeOffset < -45) {
+      if (currentEpisode < totalEpisodes && onNextEpisode) {
+        onNextEpisode();
+      }
+    } else if (swipeOffset > 45) {
+      if (currentEpisode > 1 && onPrevEpisode) {
+        onPrevEpisode();
+      }
+    }
+
+    setSwipeOffset(0);
+    setSwipeHint(null);
+  };
+
   // Keyboard controls
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -513,8 +637,16 @@ export default function VideoPlayer({
   return (
     <div
       ref={containerRef}
-      onMouseMove={handleMouseMove}
-      onMouseLeave={handleMouseLeave}
+      onMouseMove={handleMouseMoveWithSwipe}
+      onMouseLeave={() => {
+        handleMouseUp();
+        handleMouseLeave();
+      }}
+      onMouseDown={handleMouseDown}
+      onMouseUp={handleMouseUp}
+      onTouchStart={handleTouchStart}
+      onTouchMove={handleTouchMove}
+      onTouchEnd={handleTouchEnd}
       className={`relative group select-none overflow-hidden rounded-xl bg-black shadow-2xl transition-all ${aspectContainerClasses} flex items-center justify-center`}
     >
       {/* Ambient background blur for 9:16 mode on widescreen displays */}
@@ -530,28 +662,67 @@ export default function VideoPlayer({
         </div>
       )}
 
-      {/* Main Video Element */}
-      <video
-        ref={videoRef}
-        playsInline
-        className={`w-full h-full cursor-pointer ${
-          aspectMode === "9:16" ? "object-cover" : "object-contain"
-        }`}
-        onClick={togglePlay}
-        onTimeUpdate={handleTimeUpdate}
-        onLoadedMetadata={handleLoadedMetadata}
-        onWaiting={() => setIsBuffering(true)}
-        onPlaying={() => {
-          setIsBuffering(false);
-          setIsPlaying(true);
+      {/* Main Video Element (with subtle rubberband transform on swipe) */}
+      <div
+        style={{
+          transform: `translateY(${swipeOffset}px)`,
+          transition: isDragging.current ? "none" : "transform 0.25s cubic-bezier(0.2, 0.8, 0.2, 1)",
         }}
-        onPause={() => setIsPlaying(false)}
-        onEnded={handleVideoEnded}
-        onError={() => {
-          setIsBuffering(false);
-          setHasError("Error loading video stream. Please check your connection.");
-        }}
-      />
+        className="w-full h-full flex items-center justify-center"
+      >
+        <video
+          ref={videoRef}
+          playsInline
+          className={`w-full h-full cursor-pointer ${
+            aspectMode === "9:16" ? "object-cover" : "object-contain"
+          }`}
+          onClick={togglePlay}
+          onTimeUpdate={handleTimeUpdate}
+          onLoadedMetadata={handleLoadedMetadata}
+          onWaiting={() => setIsBuffering(true)}
+          onPlaying={() => {
+            setIsBuffering(false);
+            setIsPlaying(true);
+          }}
+          onPause={() => setIsPlaying(false)}
+          onEnded={handleVideoEnded}
+          onError={() => {
+            setIsBuffering(false);
+            setHasError("Error loading video stream. Please check your connection.");
+          }}
+        />
+      </div>
+
+      {/* Vertical Swipe Gesture Floating Badge Indicator */}
+      {swipeHint && (
+        <div
+          className={`absolute inset-x-0 flex justify-center pointer-events-none z-30 transition-all duration-200 ${
+            swipeHint === "next" ? "top-16" : "bottom-20"
+          }`}
+        >
+          <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-black/90 border border-primary/60 text-white text-xs font-bold backdrop-blur-md shadow-2xl animate-pulse">
+            {swipeHint === "next" ? (
+              <>
+                <ChevronUp size={16} className="text-primary animate-bounce" />
+                <span>
+                  {currentEpisode < totalEpisodes
+                    ? `Release to Play Episode ${currentEpisode + 1}`
+                    : "You're on the latest episode"}
+                </span>
+              </>
+            ) : (
+              <>
+                <ChevronDown size={16} className="text-primary animate-bounce" />
+                <span>
+                  {currentEpisode > 1
+                    ? `Release to Play Episode ${currentEpisode - 1}`
+                    : "You're on the first episode"}
+                </span>
+              </>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Buffering Spinner */}
       {isBuffering && !hasError && (
