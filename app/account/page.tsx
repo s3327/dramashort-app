@@ -1,31 +1,50 @@
 "use client";
 
-import { useState } from "react";
-import { Pencil, Check, X, Send, Eye, EyeOff, Lock } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Pencil, Check, X, Send, Eye, EyeOff, Lock, Loader2 } from "lucide-react";
 import Header from "@/components/Header";
 import AccountSidebar from "@/components/account/AccountSidebar";
 import Modal from "@/components/Modal";
 import Toast from "@/components/Toast";
-import { accountUser } from "@/data/account-user.mock";
+import { accountUser as fallbackAccountUser } from "@/data/account-user.mock";
 import { useTheme } from "@/contexts/ThemeContext";
 import { useToast } from "@/hooks/useToast";
+import { useAuth } from "@/contexts/AuthContext";
 
 export default function AccountPage() {
   const { theme } = useTheme();
-  // Generic profile edit (display name) — separate from the email flow,
-  // since email changes need their own verification step below.
-  const [isEditingProfile, setIsEditingProfile] = useState(false);
-  const [displayName, setDisplayName] = useState(accountUser.name);
+  const { user, profile, updateDisplayName, changePassword } = useAuth();
 
-  // Email has its own "special handling" — a distinct edit trigger that
-  // reveals a new-email input + a (stubbed) verification send step.
+  const currentName = profile?.display_name || user?.user_metadata?.full_name || fallbackAccountUser.name;
+  const currentEmail = user?.email || fallbackAccountUser.email;
+  const initials = currentName
+    .split(" ")
+    .map((w: string) => w[0])
+    .filter(Boolean)
+    .join("")
+    .slice(0, 2)
+    .toUpperCase() || "U";
+
+  // Generic profile edit (display name)
+  const [isEditingProfile, setIsEditingProfile] = useState(false);
+  const [displayName, setDisplayName] = useState(currentName);
+
+  useEffect(() => {
+    if (currentName) {
+      setDisplayName(currentName);
+    }
+  }, [currentName]);
+
+  // Email has its own "special handling"
   const [isEditingEmail, setIsEditingEmail] = useState(false);
   const [newEmail, setNewEmail] = useState("");
   const [emailCodeSent, setEmailCodeSent] = useState(false);
 
-  const handleEditToggle = () => {
+  const handleEditToggle = async () => {
     if (isEditingProfile) {
-      // TODO: persist displayName to the real account API once it exists.
+      if (displayName.trim() && displayName !== currentName) {
+        await updateDisplayName(displayName.trim());
+      }
       setIsEditingProfile(false);
     } else {
       setIsEditingProfile(true);
@@ -33,7 +52,7 @@ export default function AccountPage() {
   };
 
   const handleCancelEdit = () => {
-    setDisplayName(accountUser.name);
+    setDisplayName(currentName);
     setIsEditingProfile(false);
   };
 
@@ -67,6 +86,7 @@ export default function AccountPage() {
   const [showNewPassword, setShowNewPassword] = useState(false);
   const [showConfirmNewPassword, setShowConfirmNewPassword] = useState(false);
   const [passwordError, setPasswordError] = useState("");
+  const [isSubmittingPassword, setIsSubmittingPassword] = useState(false);
   const { message: passwordToastMessage, show: showPasswordToast } = useToast();
 
   const openPasswordModal = () => {
@@ -77,17 +97,43 @@ export default function AccountPage() {
     setIsPasswordModalOpen(true);
   };
 
-  const handleChangePassword = (e: React.FormEvent) => {
+  const handleChangePassword = async (e: React.FormEvent) => {
     e.preventDefault();
+    setPasswordError("");
+
+    if (!currentPassword) {
+      setPasswordError("Please enter your current password.");
+      return;
+    }
+
+    if (newPassword.length < 6) {
+      setPasswordError("New password must be at least 6 characters.");
+      return;
+    }
+
+    if (newPassword === currentPassword) {
+      setPasswordError("New password must be different from your current password.");
+      return;
+    }
+
     if (newPassword !== confirmNewPassword) {
       setPasswordError("New passwords don't match.");
       return;
     }
-    // TODO: verify currentPassword and persist newPassword via the real
-    // auth API once it exists.
-    setPasswordError("");
-    setIsPasswordModalOpen(false);
-    showPasswordToast("Password updated");
+
+    setIsSubmittingPassword(true);
+    const res = await changePassword(newPassword, currentPassword);
+    setIsSubmittingPassword(false);
+
+    if (res.error) {
+      setPasswordError(res.error);
+    } else {
+      setIsPasswordModalOpen(false);
+      setCurrentPassword("");
+      setNewPassword("");
+      setConfirmNewPassword("");
+      showPasswordToast("Password updated successfully");
+    }
   };
 
   return (
@@ -106,11 +152,11 @@ export default function AccountPage() {
               <div className="flex items-start justify-between gap-4 mb-8">
                 <div className="flex items-center gap-4">
                   <div className="h-16 w-16 shrink-0 rounded-full bg-primary/15 text-primary flex items-center justify-center font-display font-bold text-xl">
-                    {accountUser.initials}
+                    {initials}
                   </div>
                   <div>
-                    <p className="font-semibold text-text">{accountUser.name}</p>
-                    <p className="text-sm text-text-muted">{accountUser.email}</p>
+                    <p className="font-semibold text-text">{currentName}</p>
+                    <p className="text-sm text-text-muted">{currentEmail}</p>
                   </div>
                 </div>
 
@@ -185,7 +231,7 @@ export default function AccountPage() {
                     id="email"
                     name="email"
                     type="email"
-                    value={accountUser.email}
+                    value={currentEmail}
                     disabled
                     readOnly
                     className="w-full rounded-md border border-border bg-surface px-3.5 py-2.5 text-sm text-text-muted cursor-not-allowed"
@@ -348,9 +394,17 @@ export default function AccountPage() {
           )}
           <button
             type="submit"
-            className="w-full rounded-full bg-btn-primary hover:bg-btn-primary-hover text-btn-primary-text font-semibold text-sm py-2.5 shadow-sm transition-colors"
+            disabled={isSubmittingPassword}
+            className="w-full rounded-full bg-btn-primary hover:bg-btn-primary-hover disabled:opacity-50 text-btn-primary-text font-semibold text-sm py-2.5 shadow-sm transition-colors flex items-center justify-center gap-2"
           >
-            Save Password
+            {isSubmittingPassword ? (
+              <>
+                <Loader2 size={16} className="animate-spin" />
+                <span>Updating password...</span>
+              </>
+            ) : (
+              "Save Password"
+            )}
           </button>
         </form>
       </Modal>

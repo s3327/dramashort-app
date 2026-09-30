@@ -16,7 +16,7 @@ This plan outlines the specific fixes, cleanup tasks, and enhancements needed to
 | **Phase 3** | 🟢 Low | Update `README.md` & Initialize Git | ✅ Done | Reflected accurate project status and enabled version tracking |
 | **Phase 4** | 🔴 Critical | C1: Implement real video player (`app/watch/[slug]/page.tsx`) | ✅ Done | Unlocks high-performance streaming with custom player, HLS/MP4, & vertical/cinema modes |
 | **Phase 4** | 🔴 Critical | C2: Supabase role-based admin auth & middleware route guard | ✅ Done | Closes localStorage privilege escalation; enforces server-side JWT and profile role checks |
-| **Phase 4** | 🔴 Critical | C3: Wire password change to `supabase.auth.updateUser()` | ⏳ Planned | Eliminates false success toast and enables secure password updates |
+| **Phase 4** | 🔴 Critical | C3: Wire password change to `supabase.auth.updateUser()` | ✅ Done | Eliminates false success toast; verifies current password and updates via Supabase Auth |
 | **Phase 4** | 🔴 Critical | C4: Wire email change OTP verification flow with `OtpInput` | ⏳ Planned | Fixes broken email change flow and handles verification |
 | **Phase 4** | 🔴 Critical | C5: Wire Google OAuth sign-in button in `app/login/page.tsx` | ⏳ Planned | Enables functional social authentication |
 | **Phase 4** | 🔴 Critical | C6: Wire watch history to `getUserWatchHistory()` in `app/account/history/page.tsx` | ⏳ Planned | Replaces static mock history with persistent user watch history |
@@ -190,16 +190,22 @@ To eliminate ambiguity across product requirements, admin CMS, and codebase inte
 ---
 
 ### Task 4.3: Real Password Change via Supabase Auth (C3)
-* **Target File**: `app/account/page.tsx`
-* **Problem**: `handleChangePassword` has a `TODO` comment and unconditionally invokes `showPasswordToast("Password updated")` without calling any authentication service.
-* **Implementation Plan**:
-  1. Call `supabase.auth.updateUser({ password: newPassword })`.
-  2. Implement proper validation: enforce password strength, check that `newPassword === confirmPassword`.
-  3. Handle error states: invalid session, expired token, or weak password with descriptive inline error messages.
-  4. Only fire `showPasswordToast("Password updated")` upon confirmed API success, followed by closing the modal and clearing fields.
+* **Status**: ✅ Completed
+* **Target Files**: `contexts/AuthContext.tsx`, `app/account/page.tsx`
+* **Delivered Capabilities**:
+  1. Implemented `changePassword(newPassword, currentPassword)` in `AuthContext`:
+     - Verifies existing user credentials with `supabase.auth.signInWithPassword({ email, password: currentPassword })` to prevent unauthorized password overwriting.
+     - Calls `supabase.auth.updateUser({ password: newPassword })` to securely update user authentication record.
+     - Type-safe error handling avoiding `any` casts.
+  2. Upgraded password change modal in `app/account/page.tsx`:
+     - Added client-side validation: verifies current password is non-empty, checks minimum length of 6 characters, ensures new password differs from current, and validates confirmation match.
+     - Added loading state with animated spinner (`Loader2`) on the submit button.
+     - Shows descriptive inline error messages on failure (e.g. invalid current password, weak password).
+     - Clears form fields, closes modal, and displays success toast only upon confirmed API success.
 * **Verification**:
-  - Changing password with invalid input shows inline validation error.
-  - Successfully updating password allows re-login with the new password; failure does not show false success toast.
+  - `npx tsc --noEmit` passed with 0 errors.
+  - `npm run lint` passed with 0 warnings.
+  - `npm run build` compiled all 33 pages successfully.
 
 ---
 

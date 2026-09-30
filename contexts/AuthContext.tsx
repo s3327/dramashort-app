@@ -1,44 +1,220 @@
 "use client";
 
-import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
-
-const STORAGE_KEY = "dramashort-auth";
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useState,
+  type ReactNode,
+} from "react";
+import type { User, Session } from "@supabase/supabase-js";
+import { createUserClient } from "@/lib/supabase/user-client";
+import {
+  getUserProfile,
+  updateUserProfile,
+  syncGuestWatchHistory,
+  type ProfileRow,
+} from "@/lib/services/user.service";
 
 type AuthContextValue = {
+  user: User | null;
+  profile: ProfileRow | null;
+  session: Session | null;
   isLoggedIn: boolean;
-  login: () => void;
-  logout: () => void;
+  isLoading: boolean;
+  login: (email?: string, password?: string) => Promise<{ error: string | null }>;
+  signUp: (email: string, password: string, displayName?: string) => Promise<{ error: string | null }>;
+  logout: () => Promise<void>;
+  updateDisplayName: (displayName: string) => Promise<boolean>;
+  changePassword: (
+    newPassword: string,
+    currentPassword?: string
+  ) => Promise<{ error: string | null }>;
+  refreshProfile: () => Promise<void>;
 };
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
-// Mock only — stands in for a real session (cookie/JWT) until auth exists.
-// Persisted to localStorage purely so the logged-in state survives a
-// refresh during review; a real implementation would check a session
-// cookie server-side instead.
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [supabase] = useState(() => createUserClient());
+  const [user, setUser] = useState<User | null>(null);
+  const [session, setSession] = useState<Session | null>(null);
+  const [profile, setProfile] = useState<ProfileRow | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
 
-  useEffect(() => {
-    const stored = window.localStorage.getItem(STORAGE_KEY);
-    if (stored === "true") setIsLoggedIn(true);
-  }, []);
-
-  const login = () => {
-    setIsLoggedIn(true);
-    window.localStorage.setItem(STORAGE_KEY, "true");
+  const fetchProfile = async (userId: string) => {
+    const prof = await getUserProfile(userId);
+    setProfile(prof);
   };
 
-  const logout = () => {
-    setIsLoggedIn(false);
-    window.localStorage.removeItem(STORAGE_KEY);
+  useEffect(() => {
+    // 1. Check active session
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+      setUser(session?.user ?? null);
+      if (session?.user) {
+        fetchProfile(session.user.id);
+        syncGuestWatchHistory(session.user.id);
+      }
+      setIsLoading(false);
+    });
+
+    // 2. Listen for auth changes
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange(async (_event, session) => {
+      setSession(session);
+      setUser(session?.user ?? null);
+      if (session?.user) {
+        await fetchProfile(session.user.id);
+        syncGuestWatchHistory(session.user.id);
+      } else {
+        setProfile(null);
+      }
+      setIsLoading(false);
+    });
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, [supabase]);
+
+  const login = async (email?: string, password?: string) => {
+    if (!email || !password) {
+      // Demo fallback if called without params
+      return { error: "Please enter both email and password." };
+    }
+
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+
+      if (error) {
+        return { error: error.message };
+      }
+
+      setUser(data.user);
+      setSession(data.session);
+      if (data.user) {
+        await fetchProfile(data.user.id);
+      }
+      return { error: null };
+    } catch (err: any) {
+      return { error: err?.message || "An unexpected error occurred during login." };
+    }
+  };
+
+  const signUp = async (email: string, password: string, displayName?: string) => {
+    try {
+      const { data, error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          data: {
+            full_name: displayName || splitEmail(email),
+          },
+        },
+      });
+
+      if (error) {
+        return { error: error.message };
+      }
+
+      return { error: null };
+    } catch (err: any) {
+      return { error: err?.message || "An unexpected error occurred during signup." };
+    }
+  };
+
+  const logout = async () => {
+    try {
+      await supabase.auth.signOut();
+      setUser(null);
+      setSession(null);
+      setProfile(null);
+    } catch (err) {
+      console.error("Logout error:", err);
+    }
+  };
+
+  const updateDisplayName = async (displayName: string): Promise<boolean> => {
+    if (!user) return false;
+    const success = await updateUserProfile(user.id, { display_name: displayName });
+    if (success) {
+      setProfile((prev) => (prev ? { ...prev, display_name: displayName } : null));
+    }
+    return success;
+  };
+
+  const changePassword = async (
+    newPassword: string,
+    currentPassword?: string
+  ): Promise<{ error: string | null }> => {
+    if (!user) {
+      return { error: "You must be signed in to change your password." };
+    }
+
+    try {
+      // 1. Verify current password if provided and user has email
+      if (currentPassword && user.email) {
+        const { error: verifyError } = await supabase.auth.signInWithPassword({
+          email: user.email,
+          password: currentPassword,
+        });
+
+        if (verifyError) {
+          return { error: "Current password is incorrect." };
+        }
+      }
+
+      // 2. Update to new password via Supabase Auth
+      const { error: updateError } = await supabase.auth.updateUser({
+        password: newPassword,
+      });
+
+      if (updateError) {
+        return { error: updateError.message };
+      }
+
+      return { error: null };
+    } catch (err: unknown) {
+      const message =
+        err instanceof Error ? err.message : "Failed to update password.";
+      return { error: message };
+    }
+  };
+
+  const refreshProfile = async () => {
+    if (user) {
+      await fetchProfile(user.id);
+    }
   };
 
   return (
-    <AuthContext.Provider value={{ isLoggedIn, login, logout }}>
+    <AuthContext.Provider
+      value={{
+        user,
+        profile,
+        session,
+        isLoggedIn: !!user,
+        isLoading,
+        login,
+        signUp,
+        logout,
+        updateDisplayName,
+        changePassword,
+        refreshProfile,
+      }}
+    >
       {children}
     </AuthContext.Provider>
   );
+}
+
+function splitEmail(email: string): string {
+  return email.split("@")[0] || "User";
 }
 
 export function useAuth() {
