@@ -5,8 +5,12 @@ import type { Channel } from "@/data/channels.mock";
 import type { HeroSlide } from "@/data/hero-slides.mock";
 
 export type TitleRow = Database["public"]["Tables"]["titles"]["Row"];
+export type DramaRow = TitleRow;
 export type ChannelRow = Database["public"]["Tables"]["channels"]["Row"];
 export type EpisodeRow = Database["public"]["Tables"]["episodes"]["Row"];
+
+/** Canonical domain entity alias: media items stored in database are Dramas */
+export type Drama = Title;
 
 export type Episode = {
   id: string;

@@ -14,10 +14,10 @@ This plan outlines the specific fixes, cleanup tasks, and enhancements needed to
 | **Phase 2** | 🟡 Medium | Consolidate `/new` into `/new-release` | ✅ Done | Eliminated duplicated route and legacy data source |
 | **Phase 3** | 🟢 Low | Clean up 5 orphaned legacy mock files (~42 KB) | ✅ Done | Reduced tech debt, eliminated duplicate schema confusion |
 | **Phase 3** | 🟢 Low | Update `README.md` & Initialize Git | ✅ Done | Reflected accurate project status and enabled version tracking |
-| **Phase 4** | 🔴 Critical | C1: Implement real video player (`app/watch/[slug]/page.tsx`) | ✅ Done | Unlocks high-performance streaming with custom player, HLS/MP4, & vertical/cinema modes |
-| **Phase 4** | 🔴 Critical | C2: Supabase role-based admin auth & middleware route guard | ✅ Done | Closes localStorage privilege escalation; enforces server-side JWT and profile role checks |
-| **Phase 4** | 🔴 Critical | C3: Wire password change to `supabase.auth.updateUser()` | ✅ Done | Eliminates false success toast; verifies current password and updates via Supabase Auth |
-| **Phase 4** | 🔴 Critical | C4: Wire email change OTP verification flow with `OtpInput` | ⏳ Planned | Fixes broken email change flow and handles verification |
+| **Phase 4** | 🔴 Critical | C1: Implement real video player with vertical swipe (`app/watch/[slug]/page.tsx`) | ✅ Done | High-performance streaming with custom player, HLS/MP4, vertical/cinema modes, & TikTok swipe up/down |
+| **Phase 4** | 🔴 Critical | C2: Supabase role-based admin auth & middleware route guard | ✅ Done | Server-side `@supabase/ssr` route guard, eliminates client-side bypass, checks `profiles.role === 'admin'` |
+| **Phase 4** | 🔴 Critical | C3: Wire password change to `supabase.auth.updateUser()` | ✅ Done | Verifies current password before update, validates rules, displays loading state and verified success toast |
+| **Phase 4** | 🔴 Critical | C4: Wire email change OTP verification flow with `OtpInput` | ⏳ Next | Fixes broken email change flow and handles 6-digit OTP verification |
 | **Phase 4** | 🔴 Critical | C5: Wire Google OAuth sign-in button in `app/login/page.tsx` | ⏳ Planned | Enables functional social authentication |
 | **Phase 4** | 🔴 Critical | C6: Wire watch history to `getUserWatchHistory()` in `app/account/history/page.tsx` | ⏳ Planned | Replaces static mock history with persistent user watch history |
 | **Phase 5** | 🟠 High | H1: Call `upsertWatchProgress()` from video playback events | ⏳ Planned | Persists user episode progress and enables resumption |
@@ -29,7 +29,7 @@ This plan outlines the specific fixes, cleanup tasks, and enhancements needed to
 | **Phase 6** | 🟡 Medium | M1: Audit and standardize mock/DB hydration pattern across components | ⏳ Planned | Consistent UX and elimination of stale mock data paths |
 | **Phase 6** | 🟡 Medium | M2: Dynamic SEO & OpenGraph tags via `generateMetadata()` | ⏳ Planned | Social sharing previews and search engine discovery |
 | **Phase 6** | 🟡 Medium | M3: Add Supabase Storage domain to `next.config.mjs` `remotePatterns` | ⏳ Planned | Prevents image load failures for storage-hosted assets |
-| **Phase 6** | 🟡 Medium | M4: Replace `catch (err: any)` with typed error handling in `AuthContext` | ⏳ Planned | Strict TypeScript compliance and safer error handling |
+| **Phase 6** | 🟡 Medium | M4: Replace `catch (err: any)` with typed error handling in `AuthContext` | ✅ Done | Strict TypeScript compliance and type-safe `err instanceof Error` handling |
 | **Phase 6** | 🟡 Medium | M5: Load admin drama edit data from Supabase content DB | ⏳ Planned | Allows editing of dynamically created dramas not in mock array |
 | **Phase 6** | 🟡 Medium | M6: Wire Telegram Connect integration in `app/account/page.tsx` | ⏳ Planned | Functional Telegram account linking / bot deep-linking |
 | **Phase 6** | 🟡 Medium | M7: Standardize Admin nomenclature: "Dramas" & "Add Drama" in UI & routes | ⏳ Planned | Eliminates confusion between entity (Drama) and field (title) |
@@ -163,6 +163,7 @@ To eliminate ambiguity across product requirements, admin CMS, and codebase inte
   7. Robust error recovery overlay with retry button.
   8. Integrated throttled watch progress tracking (persisting every 10s to `user.service.ts`).
   9. Added breadcrumb navigation on `/watch/[slug]` and back link to drama overview.
+  10. Integrated TikTok-style vertical swipe gestures: Swipe UP advances to the next episode, Swipe DOWN navigates to previous episode, featuring fluid touch/mouse tracking, responsive spring damping (`deltaY * 0.45`), directional pill cues (`'Next Episode'`, `'Previous Episode'`), threshold protection (> 45px), and interactive boundary checks.
 * **Verification**:
   - `npx tsc --noEmit` compiles with 0 errors.
   - `npm run lint` passes with 0 warnings on player and watch page.
@@ -405,13 +406,13 @@ To eliminate ambiguity across product requirements, admin CMS, and codebase inte
 ---
 
 ### Task 6.4: Type-Safe Error Handling in `AuthContext.tsx` (M4)
+* **Status**: ✅ Completed
 * **Target File**: `contexts/AuthContext.tsx`
-* **Problem**: Catch blocks specify `catch (err: any)`, bypassing TypeScript type checking.
-* **Implementation Plan**:
-  1. Change to `catch (err: unknown)`.
-  2. Implement an error utility `getErrorMessage(err)` checking for `instanceof Error` or Supabase `AuthError`.
+* **Delivered Capabilities**:
+  1. Replaced unsafe `catch (err: any)` with typed `catch (err: unknown)`.
+  2. Implemented type-safe error message extraction checking `err instanceof Error ? err.message : fallback`.
 * **Verification**:
-  - Run `npx tsc --noEmit` -> Zero `any` warnings in auth context.
+  - `npx tsc --noEmit` passes with 0 type warnings across `contexts/AuthContext.tsx`.
 
 ---
 
@@ -524,27 +525,31 @@ flowchart TD
         DS["Entity: Drama (Dramas)<br/>• Fields: title, desc, genre, taxonomy, channels<br/>• Actions: 'Add Drama' / 'Edit Drama'"]
     end
 
-    subgraph Completed["✅ Completed Phases"]
+    subgraph Completed["✅ Completed Phases & Tasks"]
         P1["Phase 1: Build & Tooling Fixes<br/>• Fix TS2783 in FavoritePage<br/>• ESLint Config (.eslintrc.json)"]
         P2["Phase 2: Route & Link Integrity<br/>• Admin Drama Edit Page<br/>• Consolidate /new to /new-release"]
         P3["Phase 3: Codebase Cleanliness<br/>• Delete 5 Orphaned Mock Files<br/>• Update README & Git tracking"]
-        P1 --> P2 --> P3
+        P4A["Phase 4 (C1–C3): Core Player & Auth Security<br/>• C1: Video Player (HLS, 9:16/16:9, vertical swipe navigation)<br/>• C2: Supabase Role Admin Auth & SSR Middleware Route Guard<br/>• C3: Password Change with Credential Verification<br/>• M4: Type-Safe Error Handling in AuthContext"]
+        P1 --> P2 --> P3 --> P4A
+    end
+
+    subgraph ActivePhase["🚀 Active Phase 4 Execution (C4–C6)"]
+        P4B["Phase 4 (Remaining):<br/>• C4: Email Change OTP Verification Flow (⏳ Next)<br/>• C5: Google OAuth Integration Button<br/>• C6: Dynamic Watch History DB Hydration"]
     end
 
     subgraph Upcoming["⏳ Upcoming Execution Phases"]
-        P4["Phase 4: Critical Core Features & Auth (C1–C6)<br/>• Real Video Player (/watch/[slug])<br/>• Supabase Role-Based Admin Auth & Middleware<br/>• Password Change API<br/>• Email Change OTP Flow<br/>• Google OAuth Integration<br/>• Dynamic Watch History Hydration"]
-        
         P5["Phase 5: High-Priority UX & Persistence (H1–H6)<br/>• Real-time Watch Progress Tracking<br/>• Dynamic Continue Watching Component<br/>• Admin Drama Edit/Create DB Save (title, desc, genre, taxonomy, channel)<br/>• Server-Side Search Filtering & Pagination<br/>• Account Route Protection (/account/*)<br/>• Clean Guest Seed in FavoritesContext"]
         
-        P6["Phase 6: Medium-Priority Quality & Architecture (M1–M7)<br/>• Standardize Mock/DB Hydration Architecture<br/>• Dynamic Metadata & OpenGraph SEO<br/>• Supabase Storage Domain in next.config<br/>• Type-Safe Error Handling in AuthContext<br/>• Dynamic Admin Edit Data Retrieval<br/>• Telegram Connect Integration<br/>• Standardize Admin Nomenclature ('Dramas' & 'Add Drama')"]
+        P6["Phase 6: Medium-Priority Quality & Architecture (M1–M7)<br/>• Standardize Mock/DB Hydration Architecture<br/>• Dynamic Metadata & OpenGraph SEO<br/>• Supabase Storage Domain in next.config<br/>• Dynamic Admin Edit Data Retrieval<br/>• Telegram Connect Integration<br/>• Standardize Admin Nomenclature ('Dramas' & 'Add Drama')"]
         
         P7["Phase 7: Polish, DX & Testing (L1–L6)<br/>• Reusable Custom Hooks Library<br/>• Shimmer Skeleton Loaders<br/>• Segment Error Boundaries (error.tsx)<br/>• Root Global Error Boundary<br/>• Design Token Verification<br/>• Automated Testing Suite"]
         
-        P4 --> P5 --> P6 --> P7
+        P5 --> P6 --> P7
     end
 
-    DomainStandard -.-> Upcoming
-    Completed --> Upcoming
+    DomainStandard -.-> ActivePhase
+    Completed --> ActivePhase
+    ActivePhase --> Upcoming
     P7 --> V["Final Validation: Next.js Production Build & Automated Tests"]
     V --> Done["🚀 DramaShort Production Ready"]
 ```
