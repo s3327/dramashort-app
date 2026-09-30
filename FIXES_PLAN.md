@@ -18,9 +18,9 @@ This plan outlines the specific fixes, cleanup tasks, and enhancements needed to
 | **Phase 4** | 🔴 Critical | C2: Supabase role-based admin auth & middleware route guard | ✅ Done | Server-side `@supabase/ssr` route guard, eliminates client-side bypass, checks `profiles.role === 'admin'` |
 | **Phase 4** | 🔴 Critical | C3: Wire password change to `supabase.auth.updateUser()` | ✅ Done | Verifies current password before update, validates rules, displays loading state and verified success toast |
 | **Phase 4** | 🔴 Critical | C4: Wire email change OTP verification flow with `OtpInput` | ✅ Done | Replaces broken placeholder with real 6-digit OTP verification, resend cooldown timer, and toast |
-| **Phase 4** | 🔴 Critical | C5: Wire Google OAuth sign-in button in `app/login/page.tsx` | ⏳ Next | Enables functional social authentication |
-| **Phase 4** | 🔴 Critical | C6: Wire watch history to `getUserWatchHistory()` in `app/account/history/page.tsx` | ⏳ Planned | Replaces static mock history with persistent user watch history |
-| **Phase 5** | 🟠 High | H1: Call `upsertWatchProgress()` from video playback events | ⏳ Planned | Persists user episode progress and enables resumption |
+| **Phase 4** | 🔴 Critical | C5: Wire Google OAuth sign-in button in `app/login/page.tsx` & `app/signup/page.tsx` | ✅ Done | Enables functional social authentication with server-side callback handler and open-redirect protection |
+| **Phase 4** | 🔴 Critical | C6: Wire watch history to `getUserWatchHistory()` in `app/account/history/page.tsx` | ✅ Done | Replaces static mock history with persistent user watch history, deletion, and clear modal |
+| **Phase 5** | 🟠 High | H1: Call `upsertWatchProgress()` from video playback events | ⏳ Next | Persists user episode progress and enables resumption |
 | **Phase 5** | 🟠 High | H2: Replace `ContinueWatching` mock with real user data | ⏳ Planned | Dynamic home page resume carousels for logged-in users |
 | **Phase 5** | 🟠 High | H3: Wire admin edit form to Supabase content DB (Add/Edit Drama: title, desc, genre, taxonomy, channel) | ⏳ Planned | Prevents silent data loss when admins create or edit drama records |
 | **Phase 5** | 🟠 High | H4: Server-side search filtering and pagination in `getPublishedTitles()` (Dramas query) | ⏳ Planned | Scalable search queries; eliminates full catalog download |
@@ -285,6 +285,7 @@ To eliminate ambiguity across product requirements, admin CMS, and codebase inte
 ## 7. Phase 5: High-Priority UX & Persistence Gaps (H1–H6)
 
 ### Task 5.1: Real-Time Watch Progress Tracking (H1)
+* **Status**: ⏳ Next
 * **Target Files**: `app/watch/[slug]/page.tsx`, `lib/services/user.service.ts`
 * **Problem**: `upsertWatchProgress()` is fully implemented in the service layer but never invoked during playback.
 * **Implementation Plan**:
