@@ -1,73 +1,132 @@
-# DramaShort — Project Package
+# DramaShort — Web & Admin Platform
 
-Everything built so far, in one place.
+DramaShort is a vertical drama streaming web platform built for high-retention short-form episodic entertainment, paired with an integrated backoffice admin portal.
 
-## Structure
+---
+
+## Architecture & Features
+
+* **Framework**: Next.js 15 (App Router), React 19, TypeScript, Tailwind CSS, Lucide icons.
+* **Multi-Theme Engine**: Custom design tokens with 3 runtime surfaces (`light`, `soft` [default], `dark`) managed via `ThemeProvider` and CSS variables.
+* **Unified Drama Catalog**: Single source of truth in [`data/titles.mock.ts`](data/titles.mock.ts) powering public feeds, detail views, and backoffice management.
+* **Subdomain Admin Routing**: Next.js middleware automatically detects `admin.*` hostnames and internally rewrites requests to `/admin`.
+* **Client State & Persistence**: `AuthContext` (mock session) and `FavoritesContext` with `localStorage` synchronization.
+
+---
+
+## Route Overview
+
+### 🎬 Public Consumer Web App
+| Route | Description |
+|---|---|
+| `/` | Landing gateway hero with brand ambient glow and enter CTA |
+| `/home` | Main feed with Hero carousel, Continue Watching, Top Trending, and New Releases |
+| `/trending` | View-ranked catalog with time-period pill selector |
+| `/genres` | Filterable drama library with responsive category chips and pagination |
+| `/new-release` | Newest releases sorted chronologically by publication date |
+| `/channel/[slug]` | Channel/studio showcase with breadcrumb hierarchy and catalog |
+| `/drama/[slug]` | Drama details, synopsis, channel link, favorite toggle, list modal, related recommendations |
+| `/watch/[slug]` | Video player interface with 40-episode tabbed navigation and issue reporting modal |
+| `/search` | Deep search with query, channel, genre, and multi-tag filtering |
+| `/contact`, `/faq`, `/terms`, `/privacy-policy`, `/content-guidelines`, `/maintenance` | Informational and legal layout pages |
+
+### 👤 User Account & Auth
+| Route | Description |
+|---|---|
+| `/login`, `/signup`, `/forgot-password`, `/verify-email` | Authentication flow with OTP input and redirect preservation |
+| `/account` | User profile overview, display name edit, email verification change step, password change modal |
+| `/account/favorite` | User favorites catalog and custom watchlists |
+| `/account/history` | Chronological watch history with relative timestamps |
+| `/account/settings` | Account configuration and language preferences |
+
+### 🛠️ Backoffice Admin Console
+| Route | Description |
+|---|---|
+| `/admin` | Smart gateway routing to dashboard or login based on session |
+| `/admin/login` | Admin authentication portal |
+| `/admin/dashboard` | KPI analytics (total titles, users, views, active channels) |
+| `/admin/titles` | Title directory with table & card views, channel filters, search, bulk select, and pagination |
+| `/admin/titles/[id]/edit` | Complete title editing form (metadata, status, episodes, tags, synopsis, poster preview) |
+| `/admin/channels` | Channel management grid with sync status, title counts, and metadata |
+| `/admin/genres` | Genre and tag directory with usage counters and creation modal |
+| `/admin/users` | User management directory with status filtering and sorting |
+| `/admin/settings` | Tabbed configurations (General, Site, Users, Ads) |
+| `/admin/import` | Drama scraping and bulk ingest placeholder |
+
+---
+
+## Project Structure
 
 ```
 dramashort/
-├── app/                          # Next.js App Router source
-│   ├── layout.tsx                 # data-theme="dark", loads Fredoka + Plus Jakarta Sans
-│   ├── globals.css                # tailwind directives + imports design-tokens/tokens.css
-│   ├── page.tsx                   # landing page ("/") — hero + Enter CTA → /home
-│   └── home/
-│       └── page.tsx               # /home — now renders <Header /> at the top
+├── app/                          # Next.js App Router
+│   ├── (auth)/                   # login, signup, forgot-password, verify-email
+│   ├── account/                  # account, favorite, history, settings
+│   ├── admin/                    # admin console & titles/[id]/edit
+│   ├── channel/[slug]/           # channel profile pages
+│   ├── drama/[slug]/             # drama detail pages
+│   ├── watch/[slug]/             # video player & episode picker
+│   ├── home/                     # homepage feed
+│   ├── genres/                   # genre filter directory
+│   ├── new-release/              # new releases directory
+│   ├── search/                   # multi-attribute search
+│   ├── layout.tsx                # font providers & theme wrapper
+│   └── globals.css               # tailwind directives & design tokens
 │
-├── components/
-│   └── Header.tsx                 # logo · nav menu · search/user icons (lucide-react)
+├── components/                   # modular UI components
+│   ├── admin/                    # admin sidebar & placeholders
+│   ├── account/                  # account navigation sidebar
+│   ├── header/                   # desktop nav, mobile sheet, action bar
+│   ├── Header.tsx                # main sticky navigation bar
+│   ├── Footer.tsx                # footer with dynamic browse & legal links
+│   ├── Hero.tsx                  # featured carousel
+│   ├── TitleCard.tsx             # reusable responsive drama card
+│   └── Toast.tsx                 # animated toast notification
 │
-├── data/
-│   └── nav-links.mock.ts          # mock menu links — swap for real routes later
-│
-├── design-tokens/
-│   ├── tokens.css                 # brand color scales + light/soft/dark theme surfaces
-│   └── tailwind.config.js         # tailwind theme wired to the CSS variables
-│
-├── public/brand/
-│   ├── dramashort-logo.png        # wordmark + star (used by Header)
-│   ├── dramashort-wordmark.png    # wordmark only, no star
-│   └── dramashort-icon-circle.png # circular icon mark
-│
-├── preview/                       # standalone HTML — open directly in a browser, no build needed
-│   ├── index.html                 # landing page mockup
-│   ├── home.html                  # /home placeholder mockup
-│   └── design-tokens-preview.html # full palette / type / button / link reference
-│
-├── package.json                   # all dependencies (Next.js, React, Tailwind, lucide-react)
-├── tsconfig.json
-├── next.config.mjs
-├── postcss.config.js
-├── tailwind.config.js             # copy of design-tokens/tailwind.config.js, at root where Tailwind expects it
-├── next-env.d.ts
-└── .gitignore
+├── contexts/                     # AuthContext, AdminAuthContext, FavoritesContext, ThemeContext
+├── data/                         # unified catalog (titles.mock.ts) and static data mocks
+├── design-tokens/                # tokens.css (color scales, theme tokens) and tailwind config
+├── hooks/                        # useToast and custom utility hooks
+├── lib/                          # formatting utilities and recommendation algorithms
+├── middleware.ts                 # admin subdomain URL rewrite rules
+├── preview/                      # standalone static HTML preview mockups
+└── public/                       # logos, wordmarks, circular icons
 ```
+
+---
 
 ## Status
 
 | Piece | Status |
 |---|---|
-| Design tokens (colors, themes, type) | ✅ Done |
-| Landing page (`/`) | ✅ Done |
-| `/home` route | 🟡 Placeholder, Header wired in |
-| Header component | ✅ Built and wired into `/home` |
-| Main feed | ⬜ Not started |
-| Admin site | ⬜ Not started |
-| Telegram Mini App | ⬜ Not started |
+| Design Tokens (Colors, Themes, Typography) | ✅ Complete |
+| Landing Page (`/`) | ✅ Complete |
+| Homepage Feed (`/home`) | ✅ Complete |
+| Drama Detail & Watch Experience | ✅ Complete |
+| User Account & Favorites Management | ✅ Complete |
+| Authentication Screens (Login, Signup, OTP) | ✅ Complete |
+| Admin Console & Title Management | ✅ Complete |
+| Unified Catalog (`titles.mock.ts`) | ✅ Complete |
+| Backend & Database Integration | ⬜ Next Phase |
+| Telegram Mini App Integration | ⬜ Next Phase |
 
-## Getting it running
+---
 
-This folder is now a complete, installable project — no `create-next-app` step needed.
+## Getting Started
 
 ```bash
-cd dramashort
+# 1. Install dependencies
 npm install
+
+# 2. Run local development server
 npm run dev
+
+# 3. Check types & linting
+npx tsc --noEmit
+npm run lint
+
+# 4. Build for production
+npm run build
 ```
 
-Then open `localhost:3000` and `localhost:3000/home`.
-
-## Notes for later
-
-- Public site → Next.js (SEO + ISR for synced drama metadata). Admin site → lighter Vite + React, importing the same `design-tokens/` files to stay visually consistent.
-- Telegram Mini App reuses the same two token files — one design system, three surfaces.
-- Wiring `Header` into `/home` and building the real feed are the next steps, pending your review.
+Open `http://localhost:3000` to view the public site, or `http://localhost:3000/admin` for the admin portal.
