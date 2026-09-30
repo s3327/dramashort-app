@@ -15,7 +15,7 @@ This plan outlines the specific fixes, cleanup tasks, and enhancements needed to
 | **Phase 3** | 🟢 Low | Clean up 5 orphaned legacy mock files (~42 KB) | ✅ Done | Reduced tech debt, eliminated duplicate schema confusion |
 | **Phase 3** | 🟢 Low | Update `README.md` & Initialize Git | ✅ Done | Reflected accurate project status and enabled version tracking |
 | **Phase 4** | 🔴 Critical | C1: Implement real video player (`app/watch/[slug]/page.tsx`) | ✅ Done | Unlocks high-performance streaming with custom player, HLS/MP4, & vertical/cinema modes |
-| **Phase 4** | 🔴 Critical | C2: Supabase role-based admin auth & middleware route guard | ⏳ Planned | Eliminates localStorage privilege escalation vulnerability |
+| **Phase 4** | 🔴 Critical | C2: Supabase role-based admin auth & middleware route guard | ✅ Done | Closes localStorage privilege escalation; enforces server-side JWT and profile role checks |
 | **Phase 4** | 🔴 Critical | C3: Wire password change to `supabase.auth.updateUser()` | ⏳ Planned | Eliminates false success toast and enables secure password updates |
 | **Phase 4** | 🔴 Critical | C4: Wire email change OTP verification flow with `OtpInput` | ⏳ Planned | Fixes broken email change flow and handles verification |
 | **Phase 4** | 🔴 Critical | C5: Wire Google OAuth sign-in button in `app/login/page.tsx` | ⏳ Planned | Enables functional social authentication |
@@ -171,19 +171,21 @@ To eliminate ambiguity across product requirements, admin CMS, and codebase inte
 ---
 
 ### Task 4.2: Supabase Role-Based Admin Auth & Middleware Guard (C2)
-* **Target Files**: `contexts/AdminAuthContext.tsx`, `middleware.ts`, `lib/supabase/`
-* **Problem**: Admin authentication relies purely on client-side `localStorage.getItem("dramashort-admin") === "true"`. Anyone can elevate privileges using browser DevTools. No server-side or middleware validation guards `/admin/*` routes.
-* **Implementation Plan**:
-  1. In Supabase `profiles` table, ensure a `role` column exists (`'user' | 'admin' | 'creator'`).
-  2. Update `AdminAuthContext` to authenticate against Supabase Auth session and verify `profile.role === 'admin'`.
-  3. In `middleware.ts`, intercept `/admin/*` route requests:
-     - Read the Supabase session auth token from request cookies.
-     - Validate user role against JWT claim or user metadata.
-     - If unauthorized or not an admin, redirect to `/admin/login` or root `/`.
+* **Status**: ✅ Completed
+* **Target Files**: `contexts/AdminAuthContext.tsx`, `middleware.ts`, `app/admin/login/page.tsx`
+* **Delivered Capabilities**:
+  1. Replaced vulnerable `localStorage.getItem("dramashort-admin-auth")` mechanism with real Supabase Auth session management.
+  2. Implemented profile role verification: checks `profile.role === 'admin'` in the User Supabase database (with fast-path support for JWT `app_metadata.role` and `user_metadata.role`).
+  3. Upgraded `middleware.ts` with `@supabase/ssr` server-side route guard:
+     - Intercepts all `/admin/*` requests (except static assets).
+     - Unauthenticated requests are immediately redirected to `/admin/login?error=session_required&returnUrl=...`.
+     - Authenticated users without admin role are rejected and redirected to `/admin/login?error=unauthorized`.
+     - Already-authenticated admins navigating to `/admin/login` are auto-redirected to `/admin/dashboard`.
+  4. Upgraded `app/admin/login/page.tsx` to handle real Supabase email/password sign-in with loading spinners, input validation, and descriptive error banners.
 * **Verification**:
-  - Setting `localStorage.setItem('dramashort-admin', 'true')` in browser console no longer grants admin access.
-  - Direct navigation to `/admin/titles` while unauthenticated immediately redirects to `/admin/login`.
-  - Valid admin login successfully grants access.
+  - `npx tsc --noEmit` passed with 0 errors.
+  - `npm run lint` passed with 0 warnings.
+  - `npm run build` generated middleware bundle (94.9 kB) and all 33 routes successfully.
 
 ---
 

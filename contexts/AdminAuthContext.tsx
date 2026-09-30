@@ -1,40 +1,169 @@
 "use client";
 
-import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useState,
+  useCallback,
+  type ReactNode,
+} from "react";
+import type { User, Session } from "@supabase/supabase-js";
+import { createUserClient } from "@/lib/supabase/user-client";
+import { getUserProfile, type ProfileRow } from "@/lib/services/user.service";
 
-const STORAGE_KEY = "dramashort-admin-auth";
-
-type AdminAuthContextValue = {
+export type AdminAuthContextValue = {
+  user: User | null;
+  profile: ProfileRow | null;
+  session: Session | null;
   isLoggedIn: boolean;
-  login: () => void;
-  logout: () => void;
+  isLoading: boolean;
+  login: (email?: string, password?: string) => Promise<{ error: string | null }>;
+  logout: () => Promise<void>;
+  refreshAdminStatus: () => Promise<boolean>;
 };
 
 const AdminAuthContext = createContext<AdminAuthContextValue | null>(null);
 
-// Mock only — stands in for a real staff session until admin auth exists.
-// Deliberately separate from the public site's AuthContext/storage key —
-// an admin session and a public-site session are different concerns.
 export function AdminAuthProvider({ children }: { children: ReactNode }) {
+  const [supabase] = useState(() => createUserClient());
+  const [user, setUser] = useState<User | null>(null);
+  const [session, setSession] = useState<Session | null>(null);
+  const [profile, setProfile] = useState<ProfileRow | null>(null);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
 
+  const verifyAdminRole = useCallback(
+    async (authUser: User | null): Promise<boolean> => {
+      if (!authUser) {
+        setUser(null);
+        setProfile(null);
+        setIsLoggedIn(false);
+        return false;
+      }
+
+      // 1. Check user metadata / app_metadata for fast path
+      const metadataRole =
+        authUser.app_metadata?.role || authUser.user_metadata?.role;
+      if (metadataRole === "admin") {
+        setUser(authUser);
+        setIsLoggedIn(true);
+        // fetch profile in background
+        getUserProfile(authUser.id).then((p) => setProfile(p));
+        return true;
+      }
+
+      // 2. Check profiles database table
+      const prof = await getUserProfile(authUser.id);
+      setProfile(prof);
+
+      if (prof?.role === "admin") {
+        setUser(authUser);
+        setIsLoggedIn(true);
+        return true;
+      }
+
+      // Not an admin
+      setUser(null);
+      setIsLoggedIn(false);
+      return false;
+    },
+    []
+  );
+
+  // Initialize and subscribe to auth state changes
   useEffect(() => {
-    const stored = window.localStorage.getItem(STORAGE_KEY);
-    if (stored === "true") setIsLoggedIn(true);
-  }, []);
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
+      setSession(session);
+      await verifyAdminRole(session?.user ?? null);
+      setIsLoading(false);
+    });
 
-  const login = () => {
-    setIsLoggedIn(true);
-    window.localStorage.setItem(STORAGE_KEY, "true");
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange(async (_event, newSession) => {
+      setSession(newSession);
+      await verifyAdminRole(newSession?.user ?? null);
+      setIsLoading(false);
+    });
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, [supabase, verifyAdminRole]);
+
+  const login = async (email?: string, password?: string) => {
+    if (!email || !password) {
+      return { error: "Please enter both admin email and password." };
+    }
+
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+
+      if (error) {
+        return { error: error.message };
+      }
+
+      if (!data.user) {
+        return { error: "Authentication failed. No user record returned." };
+      }
+
+      // Verify administrator role in profiles table
+      const isAdmin = await verifyAdminRole(data.user);
+      if (!isAdmin) {
+        // Sign out immediately to prevent unauthorized session usage
+        await supabase.auth.signOut();
+        return {
+          error:
+            "Access denied. This account does not have administrator privileges.",
+        };
+      }
+
+      setSession(data.session);
+      return { error: null };
+    } catch (err: unknown) {
+      const message =
+        err instanceof Error ? err.message : "An unexpected error occurred.";
+      return { error: message };
+    }
   };
 
-  const logout = () => {
-    setIsLoggedIn(false);
-    window.localStorage.removeItem(STORAGE_KEY);
+  const logout = async () => {
+    try {
+      await supabase.auth.signOut();
+    } catch (err) {
+      console.error("Error signing out from admin:", err);
+    } finally {
+      setUser(null);
+      setProfile(null);
+      setSession(null);
+      setIsLoggedIn(false);
+    }
+  };
+
+  const refreshAdminStatus = async (): Promise<boolean> => {
+    const {
+      data: { user: currentUser },
+    } = await supabase.auth.getUser();
+    return verifyAdminRole(currentUser);
   };
 
   return (
-    <AdminAuthContext.Provider value={{ isLoggedIn, login, logout }}>
+    <AdminAuthContext.Provider
+      value={{
+        user,
+        profile,
+        session,
+        isLoggedIn,
+        isLoading,
+        login,
+        logout,
+        refreshAdminStatus,
+      }}
+    >
       {children}
     </AdminAuthContext.Provider>
   );
