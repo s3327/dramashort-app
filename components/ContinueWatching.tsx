@@ -113,8 +113,19 @@ export default function ContinueWatching() {
       loadHistory();
     }
 
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === "dramashort_watch_history" || !e.key) {
+        loadHistory();
+      }
+    };
+
+    window.addEventListener("storage", handleStorageChange);
+    window.addEventListener("focus", loadHistory);
+
     return () => {
       isMounted = false;
+      window.removeEventListener("storage", handleStorageChange);
+      window.removeEventListener("focus", loadHistory);
     };
   }, [user, isAuthLoading]);
 
