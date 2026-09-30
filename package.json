@@ -6,23 +6,36 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "db:content:push": "supabase db push --workdir supabase/content",
+    "db:user:push": "supabase db push --workdir supabase/user",
+    "types:content": "supabase gen types typescript --project-id czkkzoiuyqybafacpgsp > types/supabase-content.ts",
+    "types:user": "supabase gen types typescript --project-id bpidsbcrvpkavvdvtpgh > types/supabase-user.ts",
+    "types:all": "npm run types:content && npm run types:user",
+    "db:seed:dev": "tsx scripts/seed-dev-content.ts",
+    "db:clean:dev": "tsx scripts/seed-dev-content.ts --clean"
   },
   "dependencies": {
+    "@supabase/ssr": "^0.12.7",
+    "@supabase/supabase-js": "^2.117.2",
+    "hls.js": "^1.7.3",
+    "lucide-react": "^0.469.0",
     "next": "^15.1.0",
     "react": "^19.0.0",
-    "react-dom": "^19.0.0",
-    "lucide-react": "^0.469.0"
+    "react-dom": "^19.0.0"
   },
   "devDependencies": {
-    "typescript": "^5.6.0",
     "@types/node": "^22.10.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
-    "tailwindcss": "^3.4.15",
-    "postcss": "^8.4.49",
     "autoprefixer": "^10.4.20",
+    "dotenv": "^18.0.4",
     "eslint": "^9.16.0",
-    "eslint-config-next": "^15.1.0"
+    "eslint-config-next": "^15.1.0",
+    "postcss": "^8.4.49",
+    "supabase": "^2.118.0",
+    "tailwindcss": "^3.4.15",
+    "tsx": "^4.23.15",
+    "typescript": "^5.6.0"
   }
 }
