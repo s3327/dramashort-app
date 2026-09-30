@@ -24,6 +24,7 @@ import {
   Settings,
   ChevronUp,
   ChevronDown,
+  X,
 } from "lucide-react";
 
 export type AspectRatioMode = "fit" | "9:16" | "16:9";
@@ -36,8 +37,10 @@ export interface VideoPlayerProps {
   currentEpisode: number;
   totalEpisodes: number;
   initialProgressSeconds?: number;
+  initialProgressRatio?: number;
   autoPlay?: boolean;
   onTimeUpdate?: (currentTime: number, duration: number, progressRatio: number) => void;
+  onPause?: (currentTime: number, duration: number, progressRatio: number) => void;
   onEnded?: () => void;
   onNextEpisode?: () => void;
   onPrevEpisode?: () => void;
@@ -64,8 +67,10 @@ export default function VideoPlayer({
   currentEpisode,
   totalEpisodes,
   initialProgressSeconds = 0,
+  initialProgressRatio,
   autoPlay = false,
   onTimeUpdate,
+  onPause,
   onEnded,
   onNextEpisode,
   onPrevEpisode,
@@ -99,6 +104,10 @@ export default function VideoPlayer({
   const [hoverTime, setHoverTime] = useState<number | null>(null);
   const [hoverPosition, setHoverPosition] = useState<number>(0);
   const [isScrubbing, setIsScrubbing] = useState(false);
+  const [resumeNotification, setResumeNotification] = useState<{
+    formatted: string;
+    ratio: number;
+  } | null>(null);
 
   // Vertical Swipe Gesture States (Swipe Up = Next, Swipe Down = Prev)
   const touchStartY = useRef<number | null>(null);
@@ -614,10 +623,34 @@ export default function VideoPlayer({
   const handleLoadedMetadata = () => {
     const video = videoRef.current;
     if (!video) return;
-    setDuration(video.duration || 0);
+    const dur = video.duration || 0;
+    setDuration(dur);
     setIsBuffering(false);
-    if (initialProgressSeconds > 0) {
-      video.currentTime = initialProgressSeconds;
+
+    let targetTime = 0;
+    if (initialProgressSeconds && initialProgressSeconds > 0 && initialProgressSeconds < dur - 2) {
+      targetTime = initialProgressSeconds;
+    } else if (
+      initialProgressRatio &&
+      initialProgressRatio > 0.02 &&
+      initialProgressRatio < 0.95 &&
+      dur > 0
+    ) {
+      targetTime = dur * initialProgressRatio;
+    }
+
+    if (targetTime > 0) {
+      video.currentTime = targetTime;
+      setCurrentTime(targetTime);
+      setResumeNotification({
+        formatted: formatTime(targetTime),
+        ratio: targetTime / dur,
+      });
+
+      const timer = setTimeout(() => {
+        setResumeNotification(null);
+      }, 6000);
+      return () => clearTimeout(timer);
     }
   };
 
@@ -684,7 +717,13 @@ export default function VideoPlayer({
             setIsBuffering(false);
             setIsPlaying(true);
           }}
-          onPause={() => setIsPlaying(false)}
+          onPause={() => {
+            setIsPlaying(false);
+            const video = videoRef.current;
+            if (video && video.duration > 0 && onPause) {
+              onPause(video.currentTime, video.duration, video.currentTime / video.duration);
+            }
+          }}
           onEnded={handleVideoEnded}
           onError={() => {
             setIsBuffering(false);
@@ -692,6 +731,41 @@ export default function VideoPlayer({
           }}
         />
       </div>
+
+      {/* Auto-Resume Floating Pill Indicator */}
+      {resumeNotification && (
+        <div className="absolute top-4 left-4 z-30 flex items-center gap-2.5 rounded-full bg-black/85 border border-primary/50 px-3.5 py-1.5 text-xs text-white backdrop-blur-md shadow-xl animate-in fade-in slide-in-from-top-2">
+          <span className="h-2 w-2 rounded-full bg-primary animate-pulse shrink-0" />
+          <span>
+            Resumed at {resumeNotification.formatted} ({Math.round(resumeNotification.ratio * 100)}%)
+          </span>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              if (videoRef.current) {
+                videoRef.current.currentTime = 0;
+                setCurrentTime(0);
+              }
+              setResumeNotification(null);
+            }}
+            className="text-primary hover:text-primary-hover font-semibold underline underline-offset-2 ml-1 text-[11px]"
+          >
+            Start over
+          </button>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              setResumeNotification(null);
+            }}
+            className="text-white/60 hover:text-white ml-0.5"
+            aria-label="Dismiss resume notification"
+          >
+            <X size={13} />
+          </button>
+        </div>
+      )}
 
       {/* Vertical Swipe Gesture Floating Badge Indicator */}
       {swipeHint && (

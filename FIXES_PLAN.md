@@ -20,8 +20,8 @@ This plan outlines the specific fixes, cleanup tasks, and enhancements needed to
 | **Phase 4** | 🔴 Critical | C4: Wire email change OTP verification flow with `OtpInput` | ✅ Done | Replaces broken placeholder with real 6-digit OTP verification, resend cooldown timer, and toast |
 | **Phase 4** | 🔴 Critical | C5: Wire Google OAuth sign-in button in `app/login/page.tsx` & `app/signup/page.tsx` | ✅ Done | Enables functional social authentication with server-side callback handler and open-redirect protection |
 | **Phase 4** | 🔴 Critical | C6: Wire watch history to `getUserWatchHistory()` in `app/account/history/page.tsx` | ✅ Done | Replaces static mock history with persistent user watch history, deletion, and clear modal |
-| **Phase 5** | 🟠 High | H1: Call `upsertWatchProgress()` from video playback events | ⏳ Next | Persists user episode progress and enables resumption |
-| **Phase 5** | 🟠 High | H2: Replace `ContinueWatching` mock with real user data | ⏳ Planned | Dynamic home page resume carousels for logged-in users |
+| **Phase 5** | 🟠 High | H1: Call `upsertWatchProgress()` from video playback events | ✅ Done | Real-time throttled tracking, auto-resume with prompt pill, onPause/onEnded/beforeunload persistence |
+| **Phase 5** | 🟠 High | H2: Replace `ContinueWatching` mock with real user data | ⏳ Next | Dynamic home page resume carousels for logged-in users |
 | **Phase 5** | 🟠 High | H3: Wire admin edit form to Supabase content DB (Add/Edit Drama: title, desc, genre, taxonomy, channel) | ⏳ Planned | Prevents silent data loss when admins create or edit drama records |
 | **Phase 5** | 🟠 High | H4: Server-side search filtering and pagination in `getPublishedTitles()` (Dramas query) | ⏳ Planned | Scalable search queries; eliminates full catalog download |
 | **Phase 5** | 🟠 High | H5: Add auth guards and redirects for `/account/*` routes | ⏳ Planned | Protects user-specific pages against unauthenticated access |
@@ -285,21 +285,32 @@ To eliminate ambiguity across product requirements, admin CMS, and codebase inte
 ## 7. Phase 5: High-Priority UX & Persistence Gaps (H1–H6)
 
 ### Task 5.1: Real-Time Watch Progress Tracking (H1)
-* **Status**: ⏳ Next
-* **Target Files**: `app/watch/[slug]/page.tsx`, `lib/services/user.service.ts`
-* **Problem**: `upsertWatchProgress()` is fully implemented in the service layer but never invoked during playback.
-* **Implementation Plan**:
-  1. Add throttled event handler to the video player's `timeupdate` (e.g., save every 10 seconds).
-  2. Save immediately on `pause`, `ended`, or component unmount (`beforeunload`).
-  3. Payload: `userId`, `titleId`, `episodeId`, `episodeNumber`, `progressSeconds`, `durationSeconds`.
-  4. On initial video load, query existing progress and offer/auto-seek to resume point.
+* **Status**: ✅ Completed
+* **Target Files**: `app/watch/[slug]/page.tsx`, `components/VideoPlayer.tsx`, `lib/services/user.service.ts`
+* **Delivered Capabilities**:
+  1. Throttled Real-Time Tracking:
+     - Player tracks playback progress every 10 seconds during active playback.
+     - Saves immediately to Supabase `watch_history` via `upsertWatchProgress()` (or `saveGuestWatchProgress()` for offline guests).
+  2. Multi-Trigger Event Persistence:
+     - Saves progress immediately on `pause` (`onPause` event callback).
+     - Saves progress (`1.0`) on `ended` when episode finishes.
+     - Flushes latest playback progress on window `beforeunload` (tab close / browser exit) and component unmount.
+  3. Seamless Auto-Resume & Pill Notification:
+     - On initial video load, checks Supabase / guest watch history for saved episode and progress ratio.
+     - When progress is detected between 2% and 95%, auto-seeks player to the exact resume second upon metadata load.
+     - Renders an interactive floating pill notification (`Resumed at MM:SS (X%)`) with a "Start over" action and dismiss button.
+  4. Query Parameter & Navigation Synchronization:
+     - Reads `?ep=` query parameter and synchronizes URL query state when advancing or selecting episodes without full reloads.
+     - Automatic guest history migration: syncs guest watch history to Supabase when authenticated.
 * **Verification**:
-  - Play an episode to 01:45, pause or navigate away.
-  - Reopen episode: video resumes or prompts to resume at 01:45. Supabase `watch_history` row reflects accurate seconds.
+  - `npx tsc --noEmit` passed with 0 errors.
+  - `npm run lint` passed with 0 warnings.
+  - Verified route `/watch/ceo-secret-wife?ep=2` renders with status 200.
 
 ---
 
 ### Task 5.2: Dynamic Continue Watching Feed (H2)
+* **Status**: ⏳ Next
 * **Target File**: `components/ContinueWatching.tsx`
 * **Problem**: Component consumes static mock data from `continue-watching.mock.ts` instead of querying user watch progress.
 * **Implementation Plan**:

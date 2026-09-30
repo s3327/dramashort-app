@@ -1,21 +1,27 @@
 "use client";
 
-import { use, useEffect, useMemo, useState, useRef, useCallback } from "react";
+import { use, useEffect, useMemo, useState, useRef, useCallback, Suspense } from "react";
 import Image from "next/image";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { Flag, ArrowLeft, Tv, Star, Eye } from "lucide-react";
 import Header from "@/components/Header";
 import Breadcrumbs from "@/components/Breadcrumbs";
 import VideoPlayer from "@/components/VideoPlayer";
 import { getTitleBySlugOrFallback, type Title } from "@/data/titles.mock";
 import { useTheme } from "@/contexts/ThemeContext";
-import { getTitleBySlug, getEpisodesByTitleId, type Episode } from "@/lib/services/content.service";
+import {
+  getTitleBySlug,
+  getEpisodesByTitleId,
+  type Episode,
+} from "@/lib/services/content.service";
 import { useAuth } from "@/contexts/AuthContext";
 import {
   getUserWatchHistory,
   getGuestWatchHistory,
   upsertWatchProgress,
   saveGuestWatchProgress,
+  syncGuestWatchHistory,
 } from "@/lib/services/user.service";
 
 const EPISODES_PER_TAB = 40;
@@ -29,21 +35,42 @@ function buildReportMessage(title: string, episode: number) {
   return `[reporting from "${title}" - Episode ${episode} at "${date}"]\n\nPlease elaborate on the error you're experiencing below this line.\n=================\n`;
 }
 
-export default function WatchPage({
-  params,
-}: {
-  params: Promise<{ slug: string }>;
-}) {
+function WatchContent({ slug }: { slug: string }) {
   const { theme } = useTheme();
   const { user } = useAuth();
-  const { slug } = use(params);
+  const searchParams = useSearchParams();
+  const initialEpParam = searchParams.get("ep");
 
   const [drama, setDrama] = useState<Title>(() => getTitleBySlugOrFallback(slug));
   const [dbEpisodes, setDbEpisodes] = useState<Episode[]>([]);
-  const [currentEpisode, setCurrentEpisode] = useState(1);
+  const [currentEpisode, setCurrentEpisode] = useState<number>(() => {
+    if (initialEpParam) {
+      const parsed = parseInt(initialEpParam, 10);
+      if (!isNaN(parsed) && parsed > 0) return parsed;
+    }
+    return 1;
+  });
+  const [savedProgressRatio, setSavedProgressRatio] = useState<number | undefined>(undefined);
   const [activeTab, setActiveTab] = useState(0);
   const [autoPlayNext, setAutoPlayNext] = useState(false);
   const lastRecordedSecondRef = useRef<number>(-1);
+
+  // Latest progress ref for beforeunload and unmount flush
+  const currentProgressRef = useRef<{
+    episode: number;
+    progressRatio: number;
+  }>({ episode: currentEpisode, progressRatio: 0 });
+
+  useEffect(() => {
+    currentProgressRef.current.episode = currentEpisode;
+  }, [currentEpisode]);
+
+  // Sync any guest watch history if authenticated user exists
+  useEffect(() => {
+    if (user) {
+      syncGuestWatchHistory(user.id);
+    }
+  }, [user]);
 
   // Fetch drama and real episode data from database
   useEffect(() => {
@@ -59,8 +86,10 @@ export default function WatchPage({
     });
   }, [slug]);
 
-  // Load saved watch position for this drama
+  // Load saved watch position and resume point for this drama
   useEffect(() => {
+    let isMounted = true;
+
     async function loadResumePoint() {
       let historyRows = [];
       if (user) {
@@ -68,16 +97,40 @@ export default function WatchPage({
       } else {
         historyRows = getGuestWatchHistory();
       }
+
+      if (!isMounted) return;
+
       const match = historyRows.find(
         (r) => r.title_slug === slug || r.title_slug === drama.slug
       );
-      if (match && match.episode_number > 0) {
-        setCurrentEpisode(match.episode_number);
-        setActiveTab(Math.floor((match.episode_number - 1) / EPISODES_PER_TAB));
+
+      if (match) {
+        // If an explicit ?ep= query parameter was not passed, use the last watched episode
+        if (!initialEpParam && match.episode_number > 0) {
+          setCurrentEpisode(match.episode_number);
+          setActiveTab(Math.floor((match.episode_number - 1) / EPISODES_PER_TAB));
+        }
+
+        // Offer resume position if current episode matches saved progress and is between 2% and 95%
+        const epToCheck = initialEpParam ? parseInt(initialEpParam, 10) : match.episode_number;
+        if (epToCheck === match.episode_number && match.progress > 0.02 && match.progress < 0.95) {
+          setSavedProgressRatio(match.progress);
+        }
+      } else if (initialEpParam) {
+        const ep = parseInt(initialEpParam, 10);
+        if (!isNaN(ep) && ep > 0) {
+          setCurrentEpisode(ep);
+          setActiveTab(Math.floor((ep - 1) / EPISODES_PER_TAB));
+        }
       }
     }
+
     loadResumePoint();
-  }, [user, slug, drama.slug]);
+
+    return () => {
+      isMounted = false;
+    };
+  }, [user, slug, drama.slug, initialEpParam]);
 
   const recordProgress = useCallback(
     (epNum: number, progressRatio: number) => {
@@ -94,17 +147,37 @@ export default function WatchPage({
     (ep: number) => {
       setCurrentEpisode(ep);
       setAutoPlayNext(true);
+      setSavedProgressRatio(undefined); // Reset resume point when switching episodes
+
+      // Update URL query parameter without full reload
+      if (typeof window !== "undefined") {
+        const url = new URL(window.location.href);
+        url.searchParams.set("ep", ep.toString());
+        window.history.replaceState(null, "", url.toString());
+      }
+
       const progress = Math.min(1.0, ep / (drama.totalEpisodes || 1));
+      currentProgressRef.current = { episode: ep, progressRatio: progress };
       recordProgress(ep, progress);
     },
     [drama.totalEpisodes, recordProgress]
   );
 
+  // Throttled timeupdate progress recording (every 10 seconds)
   const handleTimeUpdate = useCallback(
     (currentTime: number, duration: number, progressRatio: number) => {
+      currentProgressRef.current = {
+        episode: currentEpisode,
+        progressRatio,
+      };
+
       const currentSec = Math.floor(currentTime);
-      // Record progress every 10 seconds
-      if (currentSec % 10 === 0 && currentSec !== lastRecordedSecondRef.current && duration > 0) {
+      if (
+        currentSec > 0 &&
+        currentSec % 10 === 0 &&
+        currentSec !== lastRecordedSecondRef.current &&
+        duration > 0
+      ) {
         lastRecordedSecondRef.current = currentSec;
         recordProgress(currentEpisode, progressRatio);
       }
@@ -112,9 +185,44 @@ export default function WatchPage({
     [currentEpisode, recordProgress]
   );
 
+  // Immediate save on pause
+  const handlePause = useCallback(
+    (currentTime: number, duration: number, progressRatio: number) => {
+      currentProgressRef.current = {
+        episode: currentEpisode,
+        progressRatio,
+      };
+      if (duration > 0) {
+        recordProgress(currentEpisode, progressRatio);
+      }
+    },
+    [currentEpisode, recordProgress]
+  );
+
+  // Immediate save on episode finished
   const handleVideoEnded = useCallback(() => {
+    currentProgressRef.current = {
+      episode: currentEpisode,
+      progressRatio: 1.0,
+    };
     recordProgress(currentEpisode, 1.0);
   }, [currentEpisode, recordProgress]);
+
+  // Flush watch progress immediately on beforeunload (tab close) or unmount
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      const { episode, progressRatio } = currentProgressRef.current;
+      if (progressRatio > 0 && progressRatio < 1.0) {
+        recordProgress(episode, progressRatio);
+      }
+    };
+
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => {
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+      handleBeforeUnload();
+    };
+  }, [recordProgress]);
 
   const currentEpData = dbEpisodes.find((e) => e.episodeNumber === currentEpisode);
   const videoSrc =
@@ -179,8 +287,10 @@ export default function WatchPage({
               dramaTitle={drama.title}
               currentEpisode={currentEpisode}
               totalEpisodes={totalEps}
+              initialProgressRatio={savedProgressRatio}
               autoPlay={autoPlayNext}
               onTimeUpdate={handleTimeUpdate}
+              onPause={handlePause}
               onEnded={handleVideoEnded}
               onNextEpisode={() => {
                 if (currentEpisode < totalEps) {
@@ -319,5 +429,34 @@ export default function WatchPage({
         </div>
       </main>
     </div>
+  );
+}
+
+function WatchSkeleton() {
+  return (
+    <div className="min-h-screen bg-bg text-text">
+      <Header />
+      <main className="max-w-[1240px] mx-auto px-4 sm:px-6 py-6 animate-pulse space-y-6">
+        <div className="h-6 w-48 bg-surface rounded" />
+        <div className="flex flex-col lg:flex-row gap-6">
+          <div className="flex-1 aspect-video bg-surface rounded-xl" />
+          <div className="w-full lg:w-80 h-96 bg-surface rounded-xl" />
+        </div>
+      </main>
+    </div>
+  );
+}
+
+export default function WatchPage({
+  params,
+}: {
+  params: Promise<{ slug: string }>;
+}) {
+  const { slug } = use(params);
+
+  return (
+    <Suspense fallback={<WatchSkeleton />}>
+      <WatchContent slug={slug} />
+    </Suspense>
   );
 }
