@@ -229,23 +229,29 @@ To eliminate ambiguity across product requirements, admin CMS, and codebase inte
 ---
 
 ### Task 4.5: Google OAuth Integration (C5)
-* **Target File**: `app/login/page.tsx`
-* **Problem**: The "Continue with Google" button is purely cosmetic and lacks an `onClick` handler.
-* **Implementation Plan**:
-  1. Implement click handler calling:
-     ```typescript
-     await supabase.auth.signInWithOAuth({
-       provider: 'google',
-       options: {
-         redirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(returnUrl || '/home')}`,
-       },
-     });
-     ```
-  2. Ensure `/app/auth/callback/route.ts` handles the OAuth code exchange properly.
-  3. Add loading spinner state to the Google button while redirect is initiating.
+* **Status**: ✅ Completed
+* **Target Files**: `contexts/AuthContext.tsx`, `app/login/page.tsx`, `app/signup/page.tsx`, `app/auth/callback/route.ts`, `components/GoogleIcon.tsx`
+* **Delivered Capabilities**:
+  1. Implemented `signInWithGoogle(customRedirect?)` in `AuthContext`:
+     - Initiates Supabase OAuth via `supabase.auth.signInWithOAuth({ provider: 'google', options: { redirectTo } })`.
+     - Redirects browser to Supabase / Google OAuth consent screen.
+  2. Created `/app/auth/callback/route.ts`:
+     - Server-side route handler using `createUserServerClient()`.
+     - Exchanges incoming OAuth `code` for user session cookies via `supabase.auth.exchangeCodeForSession(code)`.
+     - Validates `next` redirect path to protect against open redirect vulnerabilities.
+     - Gracefully redirects failure states to `/login?error=oauth_error`.
+  3. Created reusable SVG component `components/GoogleIcon.tsx`.
+  4. Enhanced `app/login/page.tsx`:
+     - Connected `handleGoogleSignIn` to "Continue with Google" button.
+     - Added interactive loading spinner (`Loader2`) and `Connecting to Google...` state.
+     - Disabled button during request submission to prevent double clicks.
+     - Displays error alert banner when redirected back with `?error=oauth_error`.
+  5. Enhanced `app/signup/page.tsx`:
+     - Added unified Google OAuth button with divider, matching login visual hierarchy.
 * **Verification**:
-  - Clicking "Continue with Google" initiates the OAuth redirect flow.
-  - Successful authorization redirects user to destination route with authenticated session.
+  - `npx tsc --noEmit` passed with 0 errors.
+  - `npm run lint` passed with 0 warnings.
+  - Redirection test on `/auth/callback` verified: 307 redirect to `/login?error=oauth_error` on absent/invalid code.
 
 ---
 

@@ -4,12 +4,15 @@ import { Suspense, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Image from "next/image";
 import Link from "next/link";
-import { Eye, EyeOff } from "lucide-react";
+import { Eye, EyeOff, Loader2 } from "lucide-react";
 import icon from "@/public/brand/dramashort-icon-circle.png";
+import GoogleIcon from "@/components/GoogleIcon";
+import { useAuth } from "@/contexts/AuthContext";
 
 function SignUpForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { signUp, signInWithGoogle } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -17,20 +20,43 @@ function SignUpForm() {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [agreed, setAgreed] = useState(false);
   const [passwordError, setPasswordError] = useState("");
+  const [generalError, setGeneralError] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isGoogleSubmitting, setIsGoogleSubmitting] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (password !== confirmPassword) {
       setPasswordError("Passwords don't match.");
       return;
     }
     setPasswordError("");
-    // TODO: wire up to the real auth API once it exists (create account,
-    // then trigger a real verification email).
+    setIsSubmitting(true);
+
+    const res = await signUp(email, password);
+    if (res.error) {
+      setPasswordError(res.error);
+      setIsSubmitting(false);
+      return;
+    }
+
     const redirect = searchParams.get("redirect");
     const params = new URLSearchParams({ email });
     if (redirect) params.set("redirect", redirect);
     router.push(`/verify-email?${params.toString()}`);
+  };
+
+  const handleGoogleSignIn = async () => {
+    setGeneralError("");
+    setIsGoogleSubmitting(true);
+    const returnPath = searchParams.get("redirect") || "/home";
+    const redirectUrl = `${window.location.origin}/auth/callback?next=${encodeURIComponent(returnPath)}`;
+
+    const res = await signInWithGoogle(redirectUrl);
+    if (res.error) {
+      setGeneralError(res.error);
+      setIsGoogleSubmitting(false);
+    }
   };
 
   return (
@@ -59,6 +85,12 @@ function SignUpForm() {
             <p className="text-sm text-text-muted mb-6">
               Join DramaShort to save favorites and pick up where you left off.
             </p>
+
+            {generalError && (
+              <div className="mb-4 rounded-md bg-danger/10 border border-danger/30 px-3.5 py-2.5 text-xs text-danger">
+                {generalError}
+              </div>
+            )}
 
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
@@ -173,11 +205,39 @@ function SignUpForm() {
 
               <button
                 type="submit"
-                className="w-full rounded-full bg-btn-primary hover:bg-btn-primary-hover text-btn-primary-text font-semibold text-sm py-3 shadow-sm transition-colors"
+                disabled={isSubmitting || isGoogleSubmitting}
+                className="w-full rounded-full bg-btn-primary hover:bg-btn-primary-hover disabled:opacity-50 text-btn-primary-text font-semibold text-sm py-3 shadow-sm transition-colors"
               >
-                Sign Up
+                {isSubmitting ? "Creating account..." : "Sign Up"}
               </button>
             </form>
+
+            <div className="flex items-center gap-3 my-6">
+              <div className="h-px flex-1 bg-border" />
+              <span className="text-xs font-medium text-text-muted whitespace-nowrap">
+                or sign up with
+              </span>
+              <div className="h-px flex-1 bg-border" />
+            </div>
+
+            <button
+              type="button"
+              onClick={handleGoogleSignIn}
+              disabled={isGoogleSubmitting || isSubmitting}
+              className="w-full flex items-center justify-center gap-2.5 rounded-full border border-border bg-bg hover:bg-surface disabled:opacity-50 text-text font-semibold text-sm py-3 transition-colors"
+            >
+              {isGoogleSubmitting ? (
+                <>
+                  <Loader2 size={17} className="animate-spin text-text-muted" />
+                  <span>Connecting to Google...</span>
+                </>
+              ) : (
+                <>
+                  <GoogleIcon />
+                  <span>Continue with Google</span>
+                </>
+              )}
+            </button>
 
             <p className="mt-6 text-center text-xs text-text-muted">
               Already have an account?{" "}

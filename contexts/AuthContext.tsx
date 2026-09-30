@@ -35,6 +35,9 @@ type AuthContextValue = {
     newEmail: string,
     token: string
   ) => Promise<{ error: string | null }>;
+  signInWithGoogle: (
+    customRedirect?: string
+  ) => Promise<{ error: string | null }>;
   refreshProfile: () => Promise<void>;
 };
 
@@ -238,6 +241,36 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  const signInWithGoogle = async (
+    customRedirect?: string
+  ): Promise<{ error: string | null }> => {
+    try {
+      const redirectUrl =
+        customRedirect || `${window.location.origin}/auth/callback?next=/home`;
+
+      const { data, error } = await supabase.auth.signInWithOAuth({
+        provider: "google",
+        options: {
+          redirectTo: redirectUrl,
+        },
+      });
+
+      if (error) {
+        return { error: error.message };
+      }
+
+      if (data?.url) {
+        window.location.href = data.url;
+      }
+
+      return { error: null };
+    } catch (err: unknown) {
+      const message =
+        err instanceof Error ? err.message : "Failed to initiate Google sign-in.";
+      return { error: message };
+    }
+  };
+
   const refreshProfile = async () => {
     if (user) {
       await fetchProfile(user.id);
@@ -259,6 +292,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         changePassword,
         requestEmailChange,
         verifyEmailChange,
+        signInWithGoogle,
         refreshProfile,
       }}
     >
