@@ -6,14 +6,14 @@ This plan outlines the specific fixes, cleanup tasks, and enhancements needed to
 
 ## 1. Issue Prioritization Matrix
 
-| Phase | Priority | Item | Impact |
-|---|---|---|---|
-| **Phase 1** | 🔴 Critical | Fix TypeScript `TS2783` in `FavoritePage` (`app/account/favorite/page.tsx`) | Restores `npm run build` and page compilation |
-| **Phase 1** | 🟡 High | Configure ESLint (`.eslintrc.json`) | Restores non-interactive linting in `npm run lint` |
-| **Phase 2** | 🟠 High | Implement Admin Title Edit Page (`/admin/titles/[id]/edit`) | Resolves 404 dead links from admin titles table and cards |
-| **Phase 2** | 🟡 Medium | Consolidate `/new` into `/new-release` | Eliminates duplicated route and legacy data source |
-| **Phase 3** | 🟢 Low | Clean up 5 orphaned legacy mock files (~42 KB) | Reduces tech debt, eliminates duplicate schema confusion |
-| **Phase 3** | 🟢 Low | Update `README.md` & Initialize Git | Reflects accurate project status and enables version tracking |
+| Phase | Priority | Item | Status | Impact |
+|---|---|---|---|---|
+| **Phase 1** | 🔴 Critical | Fix TypeScript `TS2783` in `FavoritePage` (`app/account/favorite/page.tsx`) | ✅ Done | Restored `npm run build` and page compilation |
+| **Phase 1** | 🟡 High | Configure ESLint (`.eslintrc.json`) | ✅ Done | Restored non-interactive linting in `npm run lint` |
+| **Phase 2** | 🟠 High | Implement Admin Title Edit Page (`/admin/titles/[id]/edit`) | ✅ Done | Resolved 404 dead links from admin titles table and cards |
+| **Phase 2** | 🟡 Medium | Consolidate `/new` into `/new-release` | ✅ Done | Eliminated duplicated route and legacy data source |
+| **Phase 3** | 🟢 Low | Clean up 5 orphaned legacy mock files (~42 KB) | ✅ Done | Reduced tech debt, eliminated duplicate schema confusion |
+| **Phase 3** | 🟢 Low | Update `README.md` & Initialize Git | ✅ Done | Reflected accurate project status and enabled version tracking |
 
 ---
 
