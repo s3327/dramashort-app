@@ -20,23 +20,40 @@ const RANK_ACCENTS = [
 ];
 
 export default function TopTrending() {
-  const [items, setItems] = useState<TrendingTitle[]>(fallbackTrendingTitles);
+  const [items, setItems] = useState<TrendingTitle[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const scrollerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    getTopTrendingTitles(10).then((titles) => {
-      if (titles && titles.length > 0) {
-        setItems(
-          titles.map((t, idx) => ({
-            id: t.id,
-            rank: idx + 1,
-            title: t.title,
-            poster: t.poster,
-            href: `/drama/${t.slug}`,
-          }))
-        );
-      }
-    });
+    let isMounted = true;
+    getTopTrendingTitles(10)
+      .then((titles) => {
+        if (!isMounted) return;
+        if (titles && titles.length > 0) {
+          setItems(
+            titles.map((t, idx) => ({
+              id: t.id,
+              rank: idx + 1,
+              title: t.title,
+              poster: t.poster,
+              href: `/drama/${t.slug}`,
+            }))
+          );
+        } else {
+          setItems(fallbackTrendingTitles);
+        }
+      })
+      .catch((err) => {
+        console.warn("Failed to load trending titles from DB, using fallback:", err);
+        if (isMounted) setItems(fallbackTrendingTitles);
+      })
+      .finally(() => {
+        if (isMounted) setIsLoading(false);
+      });
+
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
   const scrollByCards = (direction: 1 | -1) => {
@@ -54,10 +71,22 @@ export default function TopTrending() {
         Top Trending
       </h2>
 
-      <div className="relative">
-        {/* Arrow hints — clickable, and the row itself accepts native swipe/drag */}
-        <button
-          type="button"
+      {isLoading ? (
+        <div className="flex gap-4 overflow-hidden pb-2">
+          {Array.from({ length: 7 }).map((_, i) => (
+            <div key={i} className="shrink-0 w-32 sm:w-36 md:w-40 space-y-2">
+              <div className="aspect-[2/3] w-full rounded-md bg-surface border border-border/40 animate-pulse relative">
+                <div className="absolute top-2 left-2 w-7 h-7 rounded-sm bg-border/50 animate-pulse" />
+              </div>
+              <div className="h-4 w-3/4 rounded bg-surface border border-border/30 animate-pulse" />
+            </div>
+          ))}
+        </div>
+      ) : items.length === 0 ? null : (
+        <div className="relative">
+          {/* Arrow hints — clickable, and the row itself accepts native swipe/drag */}
+          <button
+            type="button"
           aria-label="Scroll left"
           onClick={() => scrollByCards(-1)}
           className="hidden sm:flex absolute -left-4 top-1/2 -translate-y-1/2 z-20 h-10 w-10 items-center justify-center rounded-full bg-black/45 text-text-light backdrop-blur-sm hover:bg-black/65 transition-colors"
@@ -125,6 +154,7 @@ export default function TopTrending() {
           })}
         </div>
       </div>
+      )}
     </section>
   );
 }

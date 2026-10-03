@@ -7,22 +7,41 @@ import { ChevronRight } from "lucide-react";
 import { newReleaseTitles as fallbackNewReleases, type NewReleaseTitle } from "@/data/new-release.mock";
 import { getNewReleaseTitles } from "@/lib/services/content.service";
 
+import { TitleCardSkeleton } from "@/components/TitleCard";
+
 export default function NewRelease() {
-  const [items, setItems] = useState<NewReleaseTitle[]>(fallbackNewReleases.slice(0, 12));
+  const [items, setItems] = useState<NewReleaseTitle[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    getNewReleaseTitles(12).then((titles) => {
-      if (titles && titles.length > 0) {
-        setItems(
-          titles.map((t) => ({
-            id: t.id,
-            title: t.title,
-            poster: t.poster,
-            href: `/drama/${t.slug}`,
-          }))
-        );
-      }
-    });
+    let isMounted = true;
+    getNewReleaseTitles(12)
+      .then((titles) => {
+        if (!isMounted) return;
+        if (titles && titles.length > 0) {
+          setItems(
+            titles.map((t) => ({
+              id: t.id,
+              title: t.title,
+              poster: t.poster,
+              href: `/drama/${t.slug}`,
+            }))
+          );
+        } else {
+          setItems(fallbackNewReleases.slice(0, 12));
+        }
+      })
+      .catch((err) => {
+        console.warn("Failed to load new release titles from DB, using fallback:", err);
+        if (isMounted) setItems(fallbackNewReleases.slice(0, 12));
+      })
+      .finally(() => {
+        if (isMounted) setIsLoading(false);
+      });
+
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
   return (
@@ -40,7 +59,14 @@ export default function NewRelease() {
         </Link>
       </div>
 
-      <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-6 gap-x-4 gap-y-6">
+      {isLoading ? (
+        <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-6 gap-x-4 gap-y-6">
+          {Array.from({ length: 12 }).map((_, i) => (
+            <TitleCardSkeleton key={i} />
+          ))}
+        </div>
+      ) : items.length === 0 ? null : (
+        <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-6 gap-x-4 gap-y-6">
         {items.map((item) => (
           <Link key={item.id} href={item.href} className="group">
             <div className="relative aspect-[2/3] rounded-md overflow-hidden bg-surface shadow-sm">
@@ -57,7 +83,8 @@ export default function NewRelease() {
             </p>
           </Link>
         ))}
-      </div>
+        </div>
+      )}
     </section>
   );
 }

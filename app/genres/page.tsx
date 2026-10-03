@@ -5,7 +5,7 @@ import { useSearchParams } from "next/navigation";
 import { ChevronDown } from "lucide-react";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
-import TitleCard from "@/components/TitleCard";
+import TitleCard, { TitleCardSkeleton } from "@/components/TitleCard";
 import Pagination from "@/components/Pagination";
 import { titles as fallbackTitles, type Title } from "@/data/titles.mock";
 import { useTheme } from "@/contexts/ThemeContext";
@@ -20,14 +20,31 @@ const CHIP_ROW_COLLAPSED_HEIGHT = 76;
 function GenresContent() {
   const { theme } = useTheme();
   const searchParams = useSearchParams();
-  const [titles, setTitles] = useState<Title[]>(fallbackTitles);
+  const [titles, setTitles] = useState<Title[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    getPublishedTitles().then((dbTitles) => {
-      if (dbTitles && dbTitles.length > 0) {
-        setTitles(dbTitles);
-      }
-    });
+    let isMounted = true;
+    getPublishedTitles()
+      .then((dbTitles) => {
+        if (!isMounted) return;
+        if (dbTitles && dbTitles.length > 0) {
+          setTitles(dbTitles);
+        } else {
+          setTitles(fallbackTitles);
+        }
+      })
+      .catch((err) => {
+        console.warn("Failed to load genres titles from DB, using fallback:", err);
+        if (isMounted) setTitles(fallbackTitles);
+      })
+      .finally(() => {
+        if (isMounted) setIsLoading(false);
+      });
+
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
   const genres = useMemo(
@@ -119,25 +136,31 @@ function GenresContent() {
         )}
 
         {/* Results */}
-        <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-6 gap-x-4 gap-y-6 mt-8">
-          {pageItems.map((item) => (
-            <TitleCard
-              key={item.id}
-              href={`/drama/${item.slug}`}
-              poster={item.poster}
-              title={item.title}
-            />
-          ))}
-        </div>
-
-        {filtered.length === 0 && (
+        {isLoading ? (
+          <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-6 gap-x-4 gap-y-6 mt-8">
+            {Array.from({ length: 18 }).map((_, i) => (
+              <TitleCardSkeleton key={i} />
+            ))}
+          </div>
+        ) : filtered.length === 0 ? (
           <p className="text-sm text-text-muted py-12 text-center">
             No titles found in this genre yet.
           </p>
-        )}
+        ) : (
+          <>
+            <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-6 gap-x-4 gap-y-6 mt-8">
+              {pageItems.map((item) => (
+                <TitleCard
+                  key={item.id}
+                  href={`/drama/${item.slug}`}
+                  poster={item.poster}
+                  title={item.title}
+                />
+              ))}
+            </div>
 
-        {filtered.length > 0 && (
-          <Pagination page={page} totalPages={totalPages} onPageChange={setPage} />
+            <Pagination page={page} totalPages={totalPages} onPageChange={setPage} />
+          </>
         )}
       </main>
 

@@ -11,22 +11,40 @@ const AUTOPLAY_DELAY_MS = 5000;
 const TRANSITION_MS = 700;
 
 export default function Hero() {
-  const [slides, setSlides] = useState<HeroSlide[]>(fallbackHeroSlides);
+  const [slides, setSlides] = useState<HeroSlide[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const [active, setActive] = useState(0);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    getHeroSlides().then((dbSlides) => {
-      if (dbSlides && dbSlides.length > 0) {
-        setSlides(dbSlides);
-      }
-    });
+    let isMounted = true;
+    getHeroSlides()
+      .then((dbSlides) => {
+        if (!isMounted) return;
+        if (dbSlides && dbSlides.length > 0) {
+          setSlides(dbSlides);
+        } else {
+          setSlides(fallbackHeroSlides);
+        }
+      })
+      .catch((err) => {
+        console.warn("Failed to load hero slides from DB, using fallback:", err);
+        if (isMounted) setSlides(fallbackHeroSlides);
+      })
+      .finally(() => {
+        if (isMounted) setIsLoading(false);
+      });
+
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
   const total = slides.length;
 
   const goTo = useCallback(
     (index: number) => {
+      if (total === 0) return;
       setActive(((index % total) + total) % total);
     },
     [total]
@@ -35,6 +53,7 @@ export default function Hero() {
   // Delayed auto-advance — resets whenever the active slide changes,
   // so a manual click restarts the countdown instead of jump-cutting.
   useEffect(() => {
+    if (total === 0 || isLoading) return;
     if (timerRef.current) clearTimeout(timerRef.current);
     timerRef.current = setTimeout(() => {
       goTo(active + 1);
@@ -42,7 +61,29 @@ export default function Hero() {
     return () => {
       if (timerRef.current) clearTimeout(timerRef.current);
     };
-  }, [active, goTo]);
+  }, [active, goTo, total, isLoading]);
+
+  if (isLoading) {
+    return (
+      <section className="relative h-[78vh] min-h-[520px] w-full overflow-hidden bg-surface animate-pulse">
+        <div className="absolute inset-0 bg-gradient-to-t from-bg via-bg/40 to-transparent" />
+        <div className="relative z-10 h-full max-w-[1200px] mx-auto px-6 flex flex-col justify-end pb-16 space-y-4">
+          <div className="h-6 w-32 rounded-full bg-border/60" />
+          <div className="h-10 sm:h-14 w-3/4 max-w-lg rounded-md bg-border/60" />
+          <div className="h-4 sm:h-5 w-full max-w-md rounded bg-border/40" />
+          <div className="h-4 sm:h-5 w-2/3 max-w-sm rounded bg-border/30" />
+          <div className="flex items-center gap-3 pt-4">
+            <div className="h-11 w-32 rounded-full bg-border/60" />
+            <div className="h-11 w-36 rounded-full bg-border/40" />
+          </div>
+        </div>
+      </section>
+    );
+  }
+
+  if (slides.length === 0) {
+    return null;
+  }
 
   return (
     <section className="relative h-[78vh] min-h-[520px] w-full overflow-hidden bg-bg">

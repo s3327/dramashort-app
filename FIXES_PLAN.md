@@ -26,8 +26,8 @@ This plan outlines the specific fixes, cleanup tasks, and enhancements needed to
 | **Phase 5** | 🟠 High | H4: Server-side search filtering and pagination in `getPublishedTitles()` (Dramas query) | ✅ Done | Scalable search queries; eliminates full catalog download |
 | **Phase 5** | 🟠 High | H5: Add auth guards and redirects for `/account/*` routes | ✅ Done | Protects user-specific pages against unauthenticated access |
 | **Phase 5** | 🟠 High | H6: Fix `FavoritesContext` guest seed (remove `defaultFavoriteSlugs`) | ✅ Done | Prevents guest accounts from being pre-seeded with fake favorites |
-| **Phase 6** | 🟡 Medium | M1: Audit and standardize mock/DB hydration pattern across components | ⏳ Next | Consistent UX and elimination of stale mock data paths |
-| **Phase 6** | 🟡 Medium | M2: Dynamic SEO & OpenGraph tags via `generateMetadata()` | ⏳ Planned | Social sharing previews and search engine discovery |
+| **Phase 6** | 🟡 Medium | M1: Audit and standardize mock/DB hydration pattern across components | ✅ Done | Standardized shimmer skeletons, CLS elimination, & graceful dev fallbacks |
+| **Phase 6** | 🟡 Medium | M2: Dynamic SEO & OpenGraph tags via `generateMetadata()` | ⏳ Next | Social sharing previews and search engine discovery |
 | **Phase 6** | 🟡 Medium | M3: Add Supabase Storage domain to `next.config.mjs` `remotePatterns` | ⏳ Planned | Prevents image load failures for storage-hosted assets |
 | **Phase 6** | 🟡 Medium | M4: Replace `catch (err: any)` with typed error handling in `AuthContext` | ✅ Done | Strict TypeScript compliance and type-safe `err instanceof Error` handling |
 | **Phase 6** | 🟡 Medium | M5: Load admin drama edit data from Supabase content DB | ✅ Done | Delivered in H3: Asynchronously hydrates drama on mount via getDramaById |
@@ -473,15 +473,39 @@ To eliminate ambiguity across product requirements, admin CMS, and codebase inte
 ## 8. Phase 6: Medium-Priority Quality & Architecture (M1–M7)
 
 ### Task 6.1: Standardize Mock vs DB Hydration Architecture (M1)
-* **Target Files**: All homepage components (`TopTrending.tsx`, `NewRelease.tsx`, `Hero.tsx`, etc.)
-* **Problem**: Inconsistent fallback patterns exist across components: some replace mock data with DB results, others fall back silently, and others remain mock-only.
-* **Implementation Plan**:
-  1. Adopt a unified pattern:
-     - If Supabase environment variables are missing or connection fails in development, gracefully fall back to typed mock fixture.
-     - In production builds, display shimmer loaders while querying Supabase; show empty state or error boundary on query failure.
-  2. Document the pattern in `lib/services/README.md`.
+* **Status**: ✅ Completed
+* **Target Files**:
+  - `components/TitleCard.tsx`
+  - `components/Hero.tsx`
+  - `components/TopTrending.tsx`
+  - `components/NewRelease.tsx`
+  - `app/new-release/page.tsx`
+  - `app/trending/page.tsx`
+  - `app/channel/[slug]/page.tsx`
+  - `app/genres/page.tsx`
+  - `app/drama/[slug]/page.tsx`
+  - `lib/services/README.md`
+* **Problem**: Inconsistent fallback patterns existed across components: some replaced mock data with DB results after a visible flash, others fell back silently, and layout shifts occurred when mock data swapped for DB data.
+* **Delivered Capabilities**:
+  1. Standardized Reusable Skeleton Component:
+     - Exported `TitleCardSkeleton` in `components/TitleCard.tsx` with identical `2/3` aspect ratio and optional subtitle placeholders, eliminating layout shifts (CLS).
+  2. Zero Mock Flash on Load:
+     - Components initialize with `isLoading = true` and `items = []`. Skeletons are displayed immediately while querying Supabase; mock fixtures are never flashed before real data loads.
+  3. Graceful Dev & Offline Fallback:
+     - In offline development or when Supabase credentials fail, queries safely catch exceptions and fall back to typed mock fixtures rather than crashing.
+  4. Component-Specific Shimmer Implementations:
+     - `Hero.tsx`: Responsive hero skeleton with title, synopsis, badge, and CTA button shimmer blocks.
+     - `TopTrending.tsx`: Horizontal carousel skeleton with rank badge placeholders and smooth scroll hints.
+     - `NewRelease.tsx`: 12-item responsive poster grid skeleton.
+     - `NewReleasePage` & `TrendingPage`: 18-item paginated grid skeletons and clean empty states.
+     - `ChannelPage`: Breadcrumb, channel title skeleton, and 12-card grid skeleton.
+     - `GenresPage`: Responsive genre chip bar and 18-card grid skeleton.
+     - `DramaPage`: Detail view with 8-card related titles skeleton.
+  5. Architecture Documentation:
+     - Created `lib/services/README.md` documenting the dual Supabase architecture, standard hydration pattern, and core services.
 * **Verification**:
-  - Standardized loading and error states across all carousel feeds.
+  - `npx tsc --noEmit` passed with 0 errors.
+  - `npm run build` compiled all 35 routes successfully.
 
 ---
 

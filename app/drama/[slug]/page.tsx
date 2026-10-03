@@ -10,7 +10,7 @@ import AddToListModal from "@/components/AddToListModal";
 import CreateListModal from "@/components/CreateListModal";
 import LoginRequiredModal from "@/components/LoginRequiredModal";
 import Breadcrumbs from "@/components/Breadcrumbs";
-import TitleCard from "@/components/TitleCard";
+import TitleCard, { TitleCardSkeleton } from "@/components/TitleCard";
 import Toast from "@/components/Toast";
 import { getTitleBySlugOrFallback, type Title } from "@/data/titles.mock";
 import { channels as fallbackChannels } from "@/data/channels.mock";
@@ -32,20 +32,45 @@ export default function DramaPage({
   const { slug } = use(params);
   const [drama, setDrama] = useState<Title>(() => getTitleBySlugOrFallback(slug));
   const [related, setRelated] = useState<Title[]>(() => getRelatedTitles(drama));
+  const [isLoading, setIsLoading] = useState(true);
   const [isSynopsisExpanded, setIsSynopsisExpanded] = useState(false);
   const isLongSynopsis = drama.synopsis.length > SYNOPSIS_TRUNCATE_LENGTH;
 
   useEffect(() => {
-    getTitleBySlug(slug).then((dbDrama) => {
-      if (dbDrama) {
-        setDrama(dbDrama);
-        getRelatedTitlesFromDb(dbDrama, 8).then((dbRelated) => {
+    let isMounted = true;
+    getTitleBySlug(slug)
+      .then(async (dbDrama) => {
+        if (!isMounted) return;
+        const resolvedDrama = dbDrama || getTitleBySlugOrFallback(slug);
+        setDrama(resolvedDrama);
+
+        if (dbDrama) {
+          const dbRelated = await getRelatedTitlesFromDb(dbDrama, 8);
+          if (!isMounted) return;
           if (dbRelated && dbRelated.length > 0) {
             setRelated(dbRelated);
+          } else {
+            setRelated(getRelatedTitles(resolvedDrama));
           }
-        });
-      }
-    });
+        } else {
+          setRelated(getRelatedTitles(resolvedDrama));
+        }
+      })
+      .catch((err) => {
+        console.warn("Failed to load drama from DB, using fallback:", err);
+        if (isMounted) {
+          const fallback = getTitleBySlugOrFallback(slug);
+          setDrama(fallback);
+          setRelated(getRelatedTitles(fallback));
+        }
+      })
+      .finally(() => {
+        if (isMounted) setIsLoading(false);
+      });
+
+    return () => {
+      isMounted = false;
+    };
   }, [slug]);
 
   const { isFavorited, toggleFavorite } = useFavorites();
@@ -207,12 +232,20 @@ export default function DramaPage({
           </div>
         </div>
 
-        {/* Related — matched by shared genre, tags, or channel for now */}
-        {relatedTitles.length > 0 && (
-          <div className="mt-12">
-            <h2 className="font-display font-bold text-lg sm:text-xl mb-4">
-              Related Titles
-            </h2>
+        {/* Related — matched by shared genre, tags, or channel */}
+        <div className="mt-12">
+          <h2 className="font-display font-bold text-lg sm:text-xl mb-4">
+            Related Titles
+          </h2>
+          {isLoading ? (
+            <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-8 gap-x-4 gap-y-6">
+              {Array.from({ length: 8 }).map((_, i) => (
+                <TitleCardSkeleton key={i} />
+              ))}
+            </div>
+          ) : relatedTitles.length === 0 ? (
+            <p className="text-sm text-text-muted">No related titles found.</p>
+          ) : (
             <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-8 gap-x-4 gap-y-6">
               {relatedTitles.map((item) => (
                 <TitleCard
@@ -225,8 +258,8 @@ export default function DramaPage({
                 />
               ))}
             </div>
-          </div>
-        )}
+          )}
+        </div>
       </main>
 
       <Footer />

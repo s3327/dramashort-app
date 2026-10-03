@@ -41,3 +41,21 @@ export default function TitleCard({
     </Link>
   );
 }
+
+export function TitleCardSkeleton({
+  hasSubtitle = false,
+  className = "",
+}: {
+  hasSubtitle?: boolean;
+  className?: string;
+}) {
+  return (
+    <div className={`space-y-2 ${className}`}>
+      <div className="aspect-[2/3] w-full rounded-md bg-surface border border-border/40 animate-pulse" />
+      <div className="h-4 w-3/4 rounded bg-surface border border-border/30 animate-pulse" />
+      {hasSubtitle ? (
+        <div className="h-3 w-1/2 rounded bg-surface border border-border/20 animate-pulse" />
+      ) : null}
+    </div>
+  );
+}
