@@ -325,3 +325,26 @@
   - Executed `npx tsx scripts/backfill-admin-roles.ts` (dry run): successfully scanned real accounts, identified legitimate admins (`staff@dramashort.com`, `admin@dramashort.com`), verified email confirmations, and preserved existing roles with 0 errors.
   - `npm test`: 19 / 19 tests pass (0 failures).
   - `npx tsc --noEmit`: 0 compilation errors.
+---
+
+## [2026-10-04] Task 10.1 Two-Pass Validation Architecture & Revoke Hardening
+* **Milestone**: Phase 10 (Security Hardening) — Task 10.1 Refinement
+* **Goal**: Refactor `scripts/backfill-admin-roles.ts` to execute validation prior to mutations, enforce strict mutual exclusion, and implement real revocation for unlisted admins.
+* **Implementation Steps Taken**:
+  1. Two-Pass Architecture:
+     - Pass 1 (Validation & Plan): Scans all accounts, validates email confirmations, detects missing/typo emails in `--promote`, verifies mutual exclusion, and resolves actions before touching the database. If any validation fails, halts with zero mutations performed.
+     - Pass 2 (Execution): Performs database mutations strictly after Pass 1 has succeeded with zero errors.
+  2. Implemented Real Revocation for `--revoke-unlisted-admins`:
+     - Accounts possessing `app_metadata.role = 'admin'` that are unlisted when `--revoke-unlisted-admins` is passed have `app_metadata.role` deleted, `user_metadata.role` deleted, and `profiles.role` reset to `'user'`.
+  3. Mutual Exclusion Check:
+     - Detects if an email is present in both `--promote` and `--revoke` and halts with a conflict error.
+  4. Profile Upsert Verification:
+     - Promoted users use `profiles.upsert(...).select()` and assert that a row returned.
+  5. Dry-Run Breakdown Summary:
+     - Audit summary displays detailed breakdown of planned actions (admins to keep, editors to keep, admins to promote, admins to revoke, rogue accounts to sanitize).
+* **Key File Diffs**:
+  - `scripts/backfill-admin-roles.ts`: Refactored to two-pass engine with atomic pre-validation and verified unlisted admin revocation.
+* **Verification**:
+  - `npx tsx scripts/backfill-admin-roles.ts` (dry run): 2 existing admins classified, 0 validation errors.
+  - `npm test`: 19 / 19 tests pass (0 failures).
+  - `npx tsc --noEmit`: 0 errors.
