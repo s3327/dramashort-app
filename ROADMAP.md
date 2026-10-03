@@ -1,10 +1,12 @@
-# DramaShort Project Remediation & Improvement Plan
+# DramaShort Development Roadmap & Master Plan
 
-This plan outlines the specific fixes, cleanup tasks, and enhancements needed to restore project health, fix broken user flows, and streamline the codebase.
+> **Document Role**: This file serves as the living master plan for current and upcoming platform development. All architectural requirements, feature breakdowns, and implementation steps needed to reach the project goals are planned and tracked here.
+> 
+> Implementation execution logs, code diffs, regression analyses, and historical records of completed steps are maintained in **[`CHANGELOG-DEV.md`](file:///c:/Telegram%20Project/dramashort/CHANGELOG-DEV.md)**.
 
 ---
 
-## 1. Issue Prioritization Matrix
+## 1. Issue Prioritization & Development Matrix
 
 | Phase | Priority | Item | Status | Impact |
 |---|---|---|---|---|
@@ -39,6 +41,8 @@ This plan outlines the specific fixes, cleanup tasks, and enhancements needed to
 | **Phase 7** | 🟢 Low | L4: Add root application error boundary (`app/error.tsx`) | ✅ Done | Catches unhandled runtime crashes globally |
 | **Phase 7** | 🟢 Low | L5: Audit `design-tokens/` CSS variables and unused tokens | ✅ Done | Maintains lean, consistent token foundation |
 | **Phase 7** | 🟢 Low | L6: Implement automated test suite (Auth, services, critical journeys) | ✅ Done | Regression prevention and verified end-to-end reliability |
+| **Phase 8** | 🔴 Critical | Monetization Engine: Freemium Paywall & Coin Economy | ⏳ Planned | Direct monetization, unlocks Ep 6+, daily streak rewards |
+| **Phase 9** | 🟠 High | Mobile PWA & Advanced Video Player UX | ⏳ Planned | Native app-like PWA, subtitles/VTT, keyboard hotkeys, PiP |
 
 ---
 
@@ -673,7 +677,208 @@ To eliminate ambiguity across product requirements, admin CMS, and codebase inte
 
 ---
 
-### 10. Completed Execution Workflow & Future Roadmap
+---
+
+## 10. Phase 8: Short Drama Monetization Engine ("Freemium" Coin Economy)
+
+> **Objective**: Implement the industry-standard short drama unlock model: the first 5 episodes are free to maximize user retention, while subsequent episodes (Episodes 6+) require coins or subscription. Includes a coin wallet, unlock gatekeeper in the player, 7-day daily check-in rewards, and top-up transaction infrastructure.
+
+### Task 8.1: Database Schema & Migration (User Database)
+* **Status**: ⏳ Planned
+* **Target Database**: User Database (`bpidsbcrvpkavvdvtpgh`)
+* **Planned Schema Changes**:
+  1. Add `coin_balance INTEGER NOT NULL DEFAULT 0` and `is_vip BOOLEAN NOT NULL DEFAULT false` to `public.profiles`.
+  2. Create `public.user_unlocked_episodes`:
+     ```sql
+     CREATE TABLE IF NOT EXISTS public.user_unlocked_episodes (
+         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+         user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+         drama_id UUID NOT NULL,
+         drama_slug TEXT NOT NULL,
+         episode_id UUID NOT NULL,
+         episode_number INTEGER NOT NULL,
+         coins_spent INTEGER NOT NULL DEFAULT 10,
+         unlocked_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now()),
+         UNIQUE(user_id, drama_id, episode_number)
+     );
+     CREATE INDEX IF NOT EXISTS idx_unlocked_user_drama ON public.user_unlocked_episodes(user_id, drama_slug);
+     ```
+  3. Create `public.coin_transactions` for audit and financial tracking:
+     ```sql
+     CREATE TABLE IF NOT EXISTS public.coin_transactions (
+         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+         user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+         amount INTEGER NOT NULL, -- positive for credit, negative for debit
+         balance_after INTEGER NOT NULL,
+         transaction_type TEXT NOT NULL, -- 'purchase', 'episode_unlock', 'daily_checkin', 'referral', 'admin_grant'
+         reference_id TEXT, -- e.g. payment intent id or episode id
+         description TEXT NOT NULL,
+         created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now())
+     );
+     ```
+  4. Create `public.daily_checkins` for streak persistence:
+     ```sql
+     CREATE TABLE IF NOT EXISTS public.daily_checkins (
+         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+         user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+         streak_count INTEGER NOT NULL DEFAULT 1,
+         last_checkin_date DATE NOT NULL DEFAULT CURRENT_DATE,
+         coins_awarded INTEGER NOT NULL DEFAULT 5,
+         created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now()),
+         UNIQUE(user_id, last_checkin_date)
+     );
+     ```
+  5. Row Level Security (RLS) policies:
+     - `profiles.coins_balance` read-only by user; mutations executed strictly via verified RPC or server-side service role.
+     - `user_unlocked_episodes` readable by owner (`auth.uid() = user_id`).
+
+### Task 8.2: Episode Lock & Paywall Rules Engine
+* **Status**: ⏳ Planned
+* **Target Files**: `lib/services/wallet.service.ts`, `lib/services/content.service.ts`
+* **Planned Specifications**:
+  1. Business Rule: Episodes $1 \le N \le 5$ are unconditionally **Free** (`is_locked = false`).
+  2. Episodes $N \ge 6$ are **Locked** (`is_locked = true`), requiring 10 coins per episode or active VIP status.
+  3. Content metadata configuration: allow `free_episodes_count` on `Drama` (defaults to 5) so creators or admins can offer custom free previews (e.g. 3 free episodes or 10 free episodes).
+  4. Service operations in `lib/services/wallet.service.ts`:
+     - `getUserCoinBalance(userId)`: retrieves current verified balance.
+     - `checkEpisodeUnlocked(userId, dramaSlug, episodeNumber)`: returns boolean flag.
+     - `unlockEpisode(userId, drama, episode, cost)`: atomic transaction deducting coins, recording transaction log, and inserting into `user_unlocked_episodes`.
+     - `unlockRemainingEpisodes(userId, drama, remainingEpisodes, discountedCost)`: bulk unlock with bundled discount.
+
+### Task 8.3: Custom Player Paywall Gatekeeper & Coin Unlock Modal
+* **Status**: ⏳ Planned
+* **Target Files**: `components/WatchVideo.tsx`, `components/modals/EpisodeUnlockModal.tsx`
+* **Planned Specifications**:
+  1. Player Interception:
+     - When navigating to a locked episode via swipe or episode drawer:
+     - If user is not authenticated: display quick login/signup prompt modal with progress retention.
+     - If user is authenticated and episode is locked: pause video playback, blur background player frame, and present the `EpisodeUnlockModal`.
+  2. Modal UX:
+     - Prominently displays: Episode number, Drama title, cost (e.g., 🪙 10 Coins).
+     - User's current balance displayed with live indicator (e.g., "Your Balance: 🪙 45").
+     - Primary Action: "Unlock Episode (🪙 10 Coins)" — instant deduction with particle/haptic feedback, immediate video unblur and resume.
+     - Secondary Action: "Unlock Full Drama (All remaining episodes with 20% discount)".
+     - Low Balance State: If `balance < cost`, render "Recharge Coins" button directing to top-up sheet.
+
+### Task 8.4: Gamified Daily Check-in & Reward Streak System
+* **Status**: ⏳ Planned
+* **Target Files**: `components/rewards/DailyCheckInModal.tsx`, `app/api/user/daily-checkin/route.ts`
+* **Planned Specifications**:
+  1. 7-Day Progressive Streak Rewards:
+     - Day 1: +5 coins
+     - Day 2: +10 coins
+     - Day 3: +10 coins
+     - Day 4: +15 coins
+     - Day 5: +15 coins
+     - Day 6: +20 coins
+     - Day 7: +50 coins + Mystery Chest Badge
+  2. API Validation:
+     - Validates check-in date against UTC midnight boundary.
+     - Detects consecutive days ($(\text{today} - \text{last\_date}) = 1$); increments streak up to Day 7 then loops.
+     - Resets streak to Day 1 if $> 48\text{ hours}$ have elapsed.
+     - Credits coins atomically to `profiles.coins_balance` and writes to `coin_transactions`.
+  3. UI Triggers:
+     - Floating daily gift badge on `/home` and `/account` when today's reward is unclaimed.
+
+### Task 8.5: Coin Top-Up Shop & Transaction Architecture
+* **Status**: ⏳ Planned
+* **Target Files**: `app/account/wallet/page.tsx`, `components/wallet/CoinPurchaseModal.tsx`, `app/api/payments/webhook/route.ts`
+* **Planned Specifications**:
+  1. Coin Packages:
+     - Pocket Starter: 100 Coins (\$0.99)
+     - Popular Pack: 350 Coins (\$2.99) — *(+50 Free Bonus)*
+     - Drama Binge: 800 Coins (\$5.99) — *(+200 Free Bonus)*
+     - VIP Weekly Pass: Unlimited Streaming 7 Days (\$9.99)
+  2. Payment Architecture:
+     - Modular payment adapter supporting Stripe / LemonSqueezy / digital wallets.
+     - Webhook handler with idempotency check (`reference_id` deduplication) ensuring no double-crediting.
+  3. Wallet Overview in `/account/wallet`:
+     - Displays current balance, transaction ledger (all purchases and episode spends), and refund/support contact.
+
+---
+
+## 11. Phase 9: Mobile PWA & Advanced Video Player UX
+
+> **Objective**: Upgrade DramaShort into an installable Progressive Web App (PWA) with native mobile fullscreen experience, add multi-language subtitle tracks (.vtt/.srt), complete desktop keyboard navigation, and wire Picture-in-Picture with the native OS Media Session API.
+
+### Task 9.1: Progressive Web App (PWA) Manifest & Service Worker
+* **Status**: ⏳ Planned
+* **Target Files**: `public/manifest.json`, `app/manifest.ts`, `public/sw.js`, `components/pwa/InstallPromptBanner.tsx`
+* **Planned Specifications**:
+  1. Web App Manifest:
+     - Configured with `display: "standalone"`, `orientation: "portrait"`, `theme_color: "#0a0a0c"`, `background_color: "#0a0a0c"`.
+     - Standard PWA maskable and splash icons (192x192, 512x512).
+  2. Service Worker (`public/sw.js`):
+     - Cache-first strategy for static UI assets, fonts, and icons.
+     - Network-first with cache fallback for drama metadata and catalog index.
+     - Streaming video chunks (.m3u8, .ts, .mp4) excluded from aggressive disk cache to prevent quota exhaustion.
+  3. In-App Install Banner:
+     - Captures `beforeinstallprompt` browser event.
+     - Displays non-intrusive bottom banner: *"Install DramaShort on your Home Screen for smooth, full-screen vertical viewing"*.
+     - Dismissal state remembered in `localStorage` for 14 days.
+
+### Task 9.2: Multi-Language Subtitles (.vtt / .srt) in Video Player
+* **Status**: ⏳ Planned
+* **Target Files**: `components/WatchVideo.tsx`, `components/player/SubtitleSettingsModal.tsx`
+* **Planned Specifications**:
+  1. Video Subtitle Engine:
+     - HTML5 `<track kind="subtitles">` synchronization inside custom player.
+     - Support for multi-lingual short drama subtitles: English (`en`), Indonesian (`id`), Spanish (`es`), Chinese (`zh`).
+  2. Custom Subtitle Overlay:
+     - Styled overlay with font readability guarantees against bright video frames:
+       - Font size toggle (Small, Medium, Large).
+       - Text color (White with black drop-shadow, High-contrast Yellow).
+       - Background opacity pill (Transparent, 50% Semi-black, Solid black).
+  3. User Preferences:
+     - Selected subtitle language and styling persisted in `localStorage` across episodes and dramas.
+
+### Task 9.3: Desktop Keyboard Navigation & Hotkeys
+* **Status**: ⏳ Planned
+* **Target Files**: `components/WatchVideo.tsx`, `components/player/KeyboardShortcutsModal.tsx`
+* **Planned Specifications**:
+  1. Global Key Event Listeners (disabled when focusing text inputs or modals):
+     - `Space` / `K`: Toggle Play / Pause.
+     - `ArrowUp`: Navigate to Previous Episode.
+     - `ArrowDown`: Navigate to Next Episode.
+     - `ArrowLeft` / `J`: Seek backward 5 seconds.
+     - `ArrowRight` / `L`: Seek forward 5 seconds.
+     - `M`: Toggle Audio Mute / Unmute.
+     - `F`: Toggle Fullscreen mode.
+     - `C`: Toggle Closed Captions / Subtitles on/off.
+     - `?`: Open keyboard shortcuts cheat-sheet modal.
+  2. Visual HUD Feedback:
+     - Brief center-screen HUD icon display upon shortcut trigger (e.g. volume mute icon, seek ±5s badge).
+
+### Task 9.4: Picture-in-Picture (PiP) & Native Media Session API
+* **Status**: ⏳ Planned
+* **Target Files**: `components/WatchVideo.tsx`, `hooks/useMediaSession.ts`
+* **Planned Specifications**:
+  1. Picture-in-Picture (PiP):
+     - Native `HTMLVideoElement.requestPictureInPicture()` integration with fallback for unsupported browsers.
+     - Floating PiP toggle button in player control bar.
+  2. Native OS Media Session API (`navigator.mediaSession`):
+     - Metadata integration:
+       - `title`: Current episode title (e.g., "Episode 4").
+       - `artist`: Drama title (e.g., "The CEO's Secret Wife").
+       - `album`: Channel name (e.g., "DramaBox Originals").
+       - `artwork`: 96x96, 128x128, 256x256, 512x512 drama poster images.
+     - Lock Screen & Peripheral Controls:
+       - Handles `play`, `pause`, `previoustrack`, `nexttrack`, `seekto`.
+       - Enables seamless playback control from smartphone lockscreens, smartwatch widgets, and Bluetooth car/headphone buttons.
+
+### Task 9.5: Automated Testing Suite Expansion
+* **Status**: ⏳ Planned
+* **Target Directory**: `__tests__/services/`, `__tests__/funnel/`
+* **Planned Specifications**:
+  1. `__tests__/services/wallet.service.test.ts`:
+     - Test coin balance queries, episode unlock deductions, insufficient balance rejection, and streak date math.
+  2. `__tests__/funnel/paywall-flow.test.ts`:
+     - Verify episode boundary rules (Ep 1–5 free, Ep 6 locked, unlock flow transitions).
+  3. Ensure `npm test` runs all existing 14 tests plus new monetization tests with 100% pass rate.
+
+---
+
+## 12. Master Execution Workflow & Roadmap
 
 ```mermaid
 flowchart TD
@@ -681,31 +886,38 @@ flowchart TD
         DS["Entity: Drama (Dramas)<br/>• Fields: title, desc, genre, taxonomy, channels<br/>• Actions: 'Add Drama' / 'Edit Drama'"]
     end
 
-    subgraph CompletedPhases["✅ 100% Completed Core Remediation (Phases 1–7)"]
-        P1["Phase 1: Build & Tooling Fixes<br/>• Fix TS2783 in FavoritePage<br/>• ESLint Config (.eslintrc.json)"]
-        P2["Phase 2: Route & Link Integrity<br/>• Admin Drama Edit Page<br/>• Consolidate /new to /new-release"]
-        P3["Phase 3: Codebase Cleanliness<br/>• Delete 5 Orphaned Mock Files<br/>• Update README & Git tracking"]
-        P4["Phase 4: Core Player & Auth Security (C1–C6)<br/>• Real Video Player (HLS, 9:16 vertical swipe navigation)<br/>• Supabase Admin SSR Route Guard<br/>• Password Change Verification<br/>• Email Change OTP Flow<br/>• Google OAuth Sign-In<br/>• Dynamic User Watch History"]
-        P5["Phase 5: High-Priority Persistence (H1–H6)<br/>• Real-time Watch Progress Tracking<br/>• Dynamic Continue Watching Component<br/>• Admin Drama Create/Edit Database Save<br/>• Server-Side Search Filtering & Pagination<br/>• Account Route Protection<br/>• Clean Guest Seed in FavoritesContext"]
-        P6["Phase 6: Quality & Architecture (M1–M7)<br/>• Mock/DB Hydration Standardization<br/>• Dynamic Metadata & OpenGraph SEO<br/>• Supabase Storage Domain in next.config<br/>• Type-Safe AuthContext Error Handling<br/>• Dynamic Admin Edit Data Retrieval<br/>• Admin Nomenclature Standardized ('Dramas')"]
-        P7["Phase 7: Polish & Automated Testing (L1–L6)<br/>• Reusable Custom Hooks (useMediaQuery, index barrel)<br/>• Shimmer Skeleton Loaders Library<br/>• Segment Error Boundaries (error.tsx)<br/>• Root Global Error Boundary<br/>• Design Token Verification<br/>• Automated Testing Suite (14 unit/integration tests)"]
+    subgraph CompletedCore["✅ Completed Core Platform (Phases 1–7)"]
+        P1["Phase 1: Build & Tooling (TS, ESLint)"]
+        P2["Phase 2: Route & Link Integrity (Admin edit, /new-release)"]
+        P3["Phase 3: Codebase Cleanliness (Mock cleanup, Git)"]
+        P4["Phase 4: Player & Auth Security (HLS player, SSR guards, OTP, OAuth)"]
+        P5["Phase 5: High-Priority Persistence (Watch progress, Continue Watching, Admin DB save)"]
+        P6["Phase 6: Quality & Architecture (Hydration patterns, SEO, typed errors, Admin naming)"]
+        P7["Phase 7: Polish & Automated Testing (Custom hooks, skeletons, error boundaries, 14 tests)"]
 
         P1 --> P2 --> P3 --> P4 --> P5 --> P6 --> P7
     end
 
-    subgraph FuturePlan["🔮 Future Plan: Advanced Ecosystem"]
+    subgraph ActiveDevelopment["🚀 Active Roadmap Development (Phases 8 & 9)"]
+        P8["Phase 8: Monetization Engine (Freemium Paywall & Coin Economy)<br/>• 8.1: User DB Migration (coins_balance, user_unlocked_episodes, transactions)<br/>• 8.2: Episode Lock Rules (Ep 1–5 Free, Ep 6+ Locked)<br/>• 8.3: Custom Player Paywall Gatekeeper & Coin Unlock Modal<br/>• 8.4: Gamified 7-Day Daily Check-in Streak Rewards<br/>• 8.5: Coin Top-Up Shop & Transaction Architecture"]
+        
+        P9["Phase 9: Mobile PWA & Advanced Player UX<br/>• 9.1: Progressive Web App Manifest & Service Worker<br/>• 9.2: Multi-Language Subtitles (.vtt / .srt overlay)<br/>• 9.3: Desktop Keyboard Navigation & Hotkeys (Space, Up/Down, M, F)<br/>• 9.4: Picture-in-Picture & OS Media Session API<br/>• 9.5: Automated Testing Suite Expansion"]
+        
+        P8 --> P9
+    end
+
+    subgraph FutureEcosystem["🔮 Future Ecosystem Plan"]
         FP["Telegram Ecosystem Integration<br/>• Telegram Bot (@DramaShortBot)<br/>• Account Linking (/account)<br/>• Telegram Login Widget (/login, /signup)<br/>• Episode Push Notifications<br/>• Telegram Mini App (TMA Embedded Streaming)<br/>👉 Detailed in FUTURE_PLAN.md"]
     end
 
-    DomainStandard -.-> CompletedPhases
-    P7 --> V["Final Validation: Production Build & Automated Tests Passed (14/14)"]
-    V --> Done["🚀 DramaShort Core Platform Production Ready"]
-    Done --> FuturePlan
+    DomainStandard -.-> CompletedCore
+    CompletedCore --> ActiveDevelopment
+    ActiveDevelopment --> FutureEcosystem
 ```
 
 ---
 
-## 11. Transition to Dedicated Future Plan (`FUTURE_PLAN.md`)
+## 13. Transition to Dedicated Future Plan (`FUTURE_PLAN.md`)
 
 > **Architectural Transition**: Per explicit project direction, all specifications, cryptographic verification algorithms, BotFather configurations, database migration scripts, and regression prevention analyses for the **Telegram Ecosystem** have been moved to:
 >
@@ -725,3 +937,4 @@ flowchart TD
    - **Content Security Policy (CSP)**: Safe whitelisting for `telegram.org` and `oauth.telegram.org`.
    - **Rate Limits & Webhooks**: Handling Telegram's 30 msg/sec global limit and 2-second webhook acknowledgment.
    - **Zero-Dependency Fallback**: Graceful degradation when `TELEGRAM_BOT_TOKEN` is unset in development or non-Telegram environments.
+
