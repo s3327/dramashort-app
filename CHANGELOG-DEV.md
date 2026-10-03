@@ -266,3 +266,34 @@
 * **Verification**:
   - `npm test`: 19 / 19 tests pass (14 existing + 5 new security tests) with 0 failures.
   - `npx tsc --noEmit`: 0 TypeScript compilation errors.
+---
+
+## [2026-10-04] Task 10.1 Refinements: Backfill Script Hardening & Import Cleanup
+* **Milestone**: Phase 10 (Security Hardening) — Task 10.1 Refinement
+* **Goal**: Correct security flaw in role backfill utility, clean up unused imports, align admin creation script, and clarify test verification scopes in documentation.
+* **Implementation Steps Taken**:
+  1. Rebuilt `scripts/backfill-admin-roles.ts`:
+     - Changed default execution to **DRY RUN**; requires explicit `--apply` flag to execute modifications.
+     - Implemented `--promote <email1,email2>` allowlist: only accounts explicitly specified are granted or confirmed with `app_metadata.role = 'admin'`.
+     - Flagged accounts not in `--promote` have rogue roles revoked: `user_metadata.role` stripped, rogue `app_metadata.role` stripped, and `profiles.role` reset to `'user'`.
+     - Implemented pagination loop through `supabase.auth.admin.listUsers({ page, perPage: 100 })` ensuring all user accounts across multiple pages are scanned.
+  2. Cleaned Route Handler Imports:
+     - `app/api/admin/dramas/route.ts`: Removed unused `createUserServerClient` import; moved `requireAdmin` import to top of file.
+     - `app/api/admin/dramas/[id]/route.ts`: Removed unused `createUserServerClient` import; moved `requireAdmin` import to top of file.
+  3. Sanitized Admin Provisioning Script:
+     - `scripts/create-admin.ts`: Stopped writing `user_metadata.role: "admin"`. Roles are strictly written to `app_metadata.role = "admin"` and mirrored to `profiles.role`.
+  4. Clarified Roadmap Verification Scope:
+     - Documented that Task 10.1 has unit tests verified (19/19 passing), while full integration testing with running servers will be conducted in Task 10.9.
+     - Explicitly noted that column-level write restriction on `profiles.role` will be enforced in Task 10.2 database migration.
+* **Key File Diffs**:
+  - `scripts/backfill-admin-roles.ts`: Rewritten with safe dry-run, whitelist promotion, revocation of unconfirmed accounts, and pagination.
+  - `scripts/create-admin.ts`: Removed rogue `user_metadata.role` assignment.
+  - `app/api/admin/dramas/route.ts`: Removed unused import and moved `requireAdmin` to top.
+  - `app/api/admin/dramas/[id]/route.ts`: Removed unused import and moved `requireAdmin` to top.
+  - `ROADMAP.md`: Clarified verification notes for Task 10.1.
+* **Regression Analysis**:
+  - Unused imports removed cleanly; no runtime impact.
+  - Backfill script now safely prevents self-promoted accounts from being inadvertently elevated to permanent admins.
+* **Verification**:
+  - `npm test`: 19 / 19 tests pass (0 failures).
+  - `npx tsc --noEmit`: 0 type errors.

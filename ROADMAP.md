@@ -965,19 +965,22 @@ These items stay ✅ for history; the gaps are tracked as new tasks.
 > **Objective**: Close every privilege-escalation and data-exposure path found in the audit, centralize authorization in one server-side helper, and lock the fixes in with automated regression tests and a CI gate. **Phase 8 must not start before this phase is complete**, because its wallet fields are planned on `profiles`, which is currently user-writable.
 
 ### Task 10.1: Admin Role Single Source of Truth & Shared `requireAdmin()` Guard
-* **Status**: ✅ Completed
-* **Target Files**: `lib/auth/roles.ts`, `lib/auth/require-admin.ts`, `middleware.ts`, `app/api/admin/dramas/route.ts`, `app/api/admin/dramas/[id]/route.ts`, `contexts/AdminAuthContext.tsx`, `scripts/backfill-admin-roles.ts`, `__tests__/auth/roles.test.ts`
+* **Status**: ✅ Completed (Unit verified; Integration check pending Task 10.9)
+* **Target Files**: `lib/auth/roles.ts`, `lib/auth/require-admin.ts`, `middleware.ts`, `app/api/admin/dramas/route.ts`, `app/api/admin/dramas/[id]/route.ts`, `contexts/AdminAuthContext.tsx`, `scripts/backfill-admin-roles.ts`, `scripts/create-admin.ts`, `__tests__/auth/roles.test.ts`
 * **Delivered Capabilities**:
   1. Authoritative Role Source: Implemented `lib/auth/roles.ts` exporting `getUserRole()` which reads **strictly** from `app_metadata.role`. Explicitly ignores client-writable `user_metadata.role` and `profiles.role` for authorization decisions.
   2. Centralized Server Guard: Implemented `lib/auth/require-admin.ts` exporting `requireAdmin()`. Performs server-side verification using `auth.getUser()` (never `getSession()`), returning `{ authorized: true, user, role }` or typed `401` / `403` JSON responses.
   3. API Route Lockdown: Replaced duplicate and insecure `verifyAdminAuth()` in `app/api/admin/dramas/route.ts` and `app/api/admin/dramas/[id]/route.ts` with `requireAdmin()`. Both `GET` and mutating `POST`/`PATCH` endpoints now strictly require administrative authentication; development bypass completely removed.
-  4. Middleware Hardening: Updated `middleware.ts` to evaluate `getUserRole(user) === 'admin'`, eliminating client self-elevation bypass.
+  4. Middleware Hardening: Updated `middleware.ts` to evaluate `getUserRole(user) === 'admin'`, eliminating client self-elevation bypass on standard `/admin/*` routes. (Admin subdomain guard ordering will be consolidated in Task 10.4).
   5. UI State Synchronization: Updated `contexts/AdminAuthContext.tsx` to resolve `getUserRole(authUser)` from `app_metadata`, with server routes remaining the true enforcement boundary.
-  6. Backfill & Sanitization Script: Created `scripts/backfill-admin-roles.ts` to audit all auth users, backfill `app_metadata.role = 'admin'`, and strip rogue `user_metadata.role` keys.
-  7. Automated Unit Test Suite: Added `__tests__/auth/roles.test.ts` testing role resolution, invalid roles, and explicitly asserting that client-side `user_metadata.role = 'admin'` cannot elevate privileges.
-* **Verification**:
-  - `npm test`: 19 / 19 tests pass (5 new tests in `Auth Roles & Privilege Security (Task 10.1)`).
+  6. Safe Backfill & Sanitization Script: Created `scripts/backfill-admin-roles.ts` with default dry-run mode, paginated user scanning, explicit `--promote <emails>` allowlisting for legitimate admins, and automatic revocation/sanitization of rogue self-promoted roles.
+  7. Admin Provisioning Cleanup: Updated `scripts/create-admin.ts` to stop writing `user_metadata.role`.
+  8. Automated Unit Test Suite: Added `__tests__/auth/roles.test.ts` testing role resolution, invalid roles, and explicitly asserting that client-side `user_metadata.role = 'admin'` cannot elevate privileges.
+* **Verification & Remaining Gaps**:
+  - `npm test`: 19 / 19 tests pass (5 security unit tests in `Auth Roles & Privilege Security (Task 10.1)`).
   - `npx tsc --noEmit`: compiles cleanly with 0 type errors.
+  - Integration check (forged `user_metadata.role` returning 403 on live endpoints and redirect from `/admin`) is pending the automated security regression suite in Task 10.9.
+  - Column-level write lockdown on `profiles.role` will be enforced in Task 10.2 via User DB RLS migration.
 
 ---
 

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createUserServerClient } from "@/lib/supabase/user-server";
+import { requireAdmin } from "@/lib/auth/require-admin";
 import { getContentAdminClient } from "@/lib/supabase/content";
 import { mapTitleRowToTitle } from "@/lib/services/content.service";
 import { titles as mockTitles } from "@/data/titles.mock";
@@ -22,8 +22,6 @@ export interface DramaUpdateBody {
   poster?: string;
   poster_url?: string;
 }
-
-import { requireAdmin } from "@/lib/auth/require-admin";
 
 /**
  * GET /api/admin/dramas/[id]

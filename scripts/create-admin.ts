@@ -59,7 +59,6 @@ async function main() {
       email_confirm: true,
       user_metadata: {
         ...existingUser.user_metadata,
-        role: "admin",
         full_name: existingUser.user_metadata?.full_name || "DramaShort Administrator",
       },
       app_metadata: {
@@ -78,7 +77,7 @@ async function main() {
       email,
       password,
       email_confirm: true,
-      user_metadata: { role: "admin", full_name: "DramaShort Administrator" },
+      user_metadata: { full_name: "DramaShort Administrator" },
       app_metadata: { role: "admin" },
     });
 
