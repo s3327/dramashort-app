@@ -36,7 +36,7 @@ This plan outlines the specific fixes, cleanup tasks, and enhancements needed to
 | **Phase 7** | 🟢 Low | L1: Reusable custom hooks (`useDebounce`, `useRequireAuth`, `useMediaQuery`) | ✅ Done | DRY code, standardized debounce, and cleaner component logic |
 | **Phase 7** | 🟢 Low | L2: Add shimmer/skeleton loading states for async data | ✅ Done | Smooth loading UX; prevents layout shifts and mock flashes |
 | **Phase 7** | 🟢 Low | L3: Implement route-segment error boundaries (`error.tsx`) | ✅ Done | Graceful degradation and user-friendly retry buttons |
-| **Phase 7** | 🟢 Low | L4: Add root application error boundary (`app/error.tsx`) | ⏳ Planned | Catches unhandled runtime crashes globally |
+| **Phase 7** | 🟢 Low | L4: Add root application error boundary (`app/error.tsx`) | ✅ Done | Catches unhandled runtime crashes globally |
 | **Phase 7** | 🟢 Low | L5: Audit `design-tokens/` CSS variables and unused tokens | ⏳ Planned | Maintains lean, consistent token foundation |
 | **Phase 7** | 🟢 Low | L6: Implement automated test suite (Auth, services, critical journeys) | ⏳ Planned | Regression prevention and verified end-to-end reliability |
 
@@ -637,12 +637,13 @@ To eliminate ambiguity across product requirements, admin CMS, and codebase inte
 ---
 
 ### Task 7.4: Global Uncaught Error Boundary (L4)
-* **Target File**: `app/error.tsx`
-* **Implementation Plan**:
-  1. Create root `app/error.tsx` matching application design system.
-  2. Provide options to return to `/home` or contact support.
+* **Status**: ✅ Completed
+* **Target Files**: `app/error.tsx`, `app/global-error.tsx`
+* **Delivered Changes**:
+  1. `app/error.tsx`: Root-level error boundary capturing uncaught runtime crashes within the application layout, featuring retry actions, home return, support contact links, and digest error code display.
+  2. `app/global-error.tsx`: Complete HTML/body fallback boundary catching critical crashes in the root layout itself with dark mode styling and session recovery options.
 * **Verification**:
-  - Unhandled root-level exceptions trigger custom error UI rather than generic Next.js error screen.
+  - `npx tsc --noEmit` verified with 0 type errors.
 
 ---
 
