@@ -191,3 +191,27 @@
   - Ensured Phase 8 and 9 plans strictly preserve the Dual-Database split: all coin wallets, transactions, and unlocks reside in User DB (`bpidsbcrvpkavvdvtpgh`), while Content DB remains decoupled.
   - Confirmed player modifications in Phase 8/9 will not break existing vertical swipe or HLS streaming.
 * **Verification**: `npm test` executed with 14 passing tests; `npx tsc --noEmit` verified 0 errors.
+
+---
+
+## [2026-10-04] Platform Audit & Remediation Roadmap (Phases 10–17)
+* **Milestone**: Master Plan Expansion — Audit Remediation Track
+* **Goal**: Record the findings of a full-platform audit (UI/UX, user workflows, admin workflows, backend architecture) as an executable plan, and sequence it ahead of Phases 8 and 9.
+* **Implementation Steps Taken**:
+  1. Audited the codebase, Supabase migrations, middleware, API routes, contexts, player, and admin console. At audit time `npx tsc --noEmit`, `npm run lint`, and `npm test` (14/14) all passed.
+  2. Added `ROADMAP.md` §12 **Platform Audit Remediation Track**: findings summary, execution order with phase gates, cross-task dependencies, and a corrections table for previously completed items (Tasks 4.2, 4.3, 5.1, 5.3/6.5, 6.1, 7.6, README status).
+  3. Added **Phase 10: Security Hardening & Access Control** (Tasks 10.1–10.9): `app_metadata`-only roles with a shared `requireAdmin()`, `profiles` RLS and column-level grants, admin API auth and removal of the development bypass, middleware subdomain guard ordering, safe redirects, episode media lockdown with a server playback endpoint, provisioning-script hardening, Auth settings and security headers, security regression tests and CI gate.
+  4. Added **Phase 11: Complete Stubbed User Flows** (Tasks 11.1–11.7): email verification, password recovery, account deletion, support pipeline, password-change hardening, real 404s and unavailable-episode states, notifications hidden until real.
+  5. Added **Phase 12: Functional Bug Fixes & Data Integrity** (Tasks 12.1–12.8): server pagination for discovery pages, admin reads through the authenticated API, watch-progress semantics, removal of production mock fallbacks, admin logout, favorites/lists consistency, content integrity rules, player streaming robustness.
+  6. Added **Phase 13: Backend Architecture Consolidation** (Tasks 13.1–13.6): ADR-0001 database topology decision gate and execution, server-rendered catalog, server/client service split, search and taxonomy scaling, observability and rate limiting.
+  7. Added **Phase 14: Mobile-First Vertical Watch Experience & UI Polish** (Tasks 14.1–14.9), **Phase 15: Product Analytics, Engagement Tracking & Real Trending** (Tasks 15.1–15.5), **Phase 16: Admin Content Operations Console** (Tasks 16.1–16.11), and **Phase 17: Quality Engineering, CI & Documentation Integrity** (Tasks 17.1–17.4).
+  8. Added a prerequisites block to Phase 8 (blocked by Phases 10, 13.1, 15, 16; server-side paywall enforcement; `coin_balance` / `coins_balance` naming conflict) and a scope-reconciliation block to Phase 9 (blocked by Phase 14; overlap with existing keyboard shortcuts and PiP).
+  9. Updated the prioritization matrix (rows for Phases 10–17, blocked status on Phases 8 and 9, execution-order note) and the master workflow diagram; renumbered §12 → §21 and §13 → §22.
+* **Key File Diffs**:
+  - `ROADMAP.md`: Added §12–§20 (Phases 10–17), updated §1 matrix, §10 and §11 notes, and the §21 diagram.
+  - `CHANGELOG-DEV.md`: Appended this entry.
+* **Regression Analysis & Cross-System Impact**:
+  - Documentation-only change; no application code, migrations, or configuration modified.
+  - Phase IDs 8 and 9 kept unchanged so earlier changelog references stay valid; execution order is stated explicitly instead of renumbering.
+  - Tasks 4.2, 4.3, 5.1, 5.3, 6.1, 6.5, and 7.6 remain ✅ for history; their gaps are tracked as new tasks per §12.3.
+* **Verification**: Heading sequence and section numbering checked (§1–§22, Tasks 10.1–17.4); line endings unchanged (LF).
