@@ -28,10 +28,10 @@ This plan outlines the specific fixes, cleanup tasks, and enhancements needed to
 | **Phase 5** | 🟠 High | H6: Fix `FavoritesContext` guest seed (remove `defaultFavoriteSlugs`) | ✅ Done | Prevents guest accounts from being pre-seeded with fake favorites |
 | **Phase 6** | 🟡 Medium | M1: Audit and standardize mock/DB hydration pattern across components | ✅ Done | Standardized shimmer skeletons, CLS elimination, & graceful dev fallbacks |
 | **Phase 6** | 🟡 Medium | M2: Dynamic SEO & OpenGraph tags via `generateMetadata()` | ✅ Done | Social sharing previews and search engine discovery via route layouts |
-| **Phase 6** | 🟡 Medium | M3: Add Supabase Storage domain to `next.config.mjs` `remotePatterns` | ⏳ Next | Prevents image load failures for storage-hosted assets |
+| **Phase 6** | 🟡 Medium | M3: Add Supabase Storage domain to `next.config.mjs` `remotePatterns` | ✅ Done | Prevents image load failures for Supabase Storage assets |
 | **Phase 6** | 🟡 Medium | M4: Replace `catch (err: any)` with typed error handling in `AuthContext` | ✅ Done | Strict TypeScript compliance and type-safe `err instanceof Error` handling |
 | **Phase 6** | 🟡 Medium | M5: Load admin drama edit data from Supabase content DB | ✅ Done | Delivered in H3: Asynchronously hydrates drama on mount via getDramaById |
-| **Phase 6** | 🟡 Medium | M6: Wire Telegram Connect integration in `app/account/page.tsx` | ⏳ Planned | Functional Telegram account linking / bot deep-linking |
+| **Phase 6** | 🟡 Medium | M6: Wire Telegram Connect integration in `app/account/page.tsx` | ⏳ Next | Functional Telegram account linking / bot deep-linking |
 | **Phase 6** | 🟡 Medium | M7: Standardize Admin nomenclature: "Dramas" & "Add Drama" in UI & routes | ⏳ Planned | Eliminates confusion between entity (Drama) and field (title) |
 | **Phase 7** | 🟢 Low | L1: Reusable custom hooks (`useDebounce`, `useRequireAuth`, `useMediaQuery`) | ⏳ Planned | DRY code, standardized debounce, and cleaner component logic |
 | **Phase 7** | 🟢 Low | L2: Add shimmer/skeleton loading states for async data | ⏳ Planned | Smooth loading UX; prevents layout shifts and mock flashes |
@@ -530,19 +530,15 @@ To eliminate ambiguity across product requirements, admin CMS, and codebase inte
 ---
 
 ### Task 6.3: Add Supabase Storage Domain to `next.config.mjs` (M3)
+* **Status**: ✅ Completed
 * **Target File**: `next.config.mjs`
-* **Problem**: `images.remotePatterns` only configures `images.unsplash.com`. Storing drama posters or avatars on Supabase Storage causes runtime image load exceptions.
-* **Implementation Plan**:
-  1. Add wildcard pattern or project-specific Supabase hostname:
-     ```javascript
-     {
-       protocol: 'https',
-       hostname: '*.supabase.co',
-       pathname: '/storage/v1/object/public/**',
-     }
-     ```
+* **Problem**: `images.remotePatterns` only configured `images.unsplash.com`. Storing drama posters or avatars on Supabase Storage caused runtime image load exceptions.
+* **Delivered Capabilities**:
+  1. Configured Wildcard & Project-Specific Supabase Storage Domains:
+     - Added wildcard `*.supabase.co` with pathname `/storage/v1/object/public/**`.
+     - Added explicit project hosts `czkkzoiuyqybafacpgsp.supabase.co` (Content DB) and `bpidsbcrvpkavvdvtpgh.supabase.co` (User DB).
 * **Verification**:
-  - Loading `<Image src="https://[project].supabase.co/storage/v1/object/public/posters/..." />` renders without Next.js hostname errors.
+  - `npm run build` compiled all routes successfully with the updated Next.js image configuration.
 
 ---
 
