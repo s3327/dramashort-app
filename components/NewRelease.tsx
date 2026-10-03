@@ -1,10 +1,29 @@
+"use client";
+
+import { useEffect, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { ChevronRight } from "lucide-react";
-import { newReleaseTitles } from "@/data/new-release.mock";
+import { newReleaseTitles as fallbackNewReleases, type NewReleaseTitle } from "@/data/new-release.mock";
+import { getNewReleaseTitles } from "@/lib/services/content.service";
 
 export default function NewRelease() {
-  const items = newReleaseTitles.slice(0, 12);
+  const [items, setItems] = useState<NewReleaseTitle[]>(fallbackNewReleases.slice(0, 12));
+
+  useEffect(() => {
+    getNewReleaseTitles(12).then((titles) => {
+      if (titles && titles.length > 0) {
+        setItems(
+          titles.map((t) => ({
+            id: t.id,
+            title: t.title,
+            poster: t.poster,
+            href: `/drama/${t.slug}`,
+          }))
+        );
+      }
+    });
+  }, []);
 
   return (
     <section className="max-w-[1200px] mx-auto px-6 py-8 sm:py-10">

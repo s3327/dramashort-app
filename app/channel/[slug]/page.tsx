@@ -1,14 +1,15 @@
 "use client";
 
-import { use, useMemo, useState } from "react";
+import { use, useEffect, useMemo, useState } from "react";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import Breadcrumbs from "@/components/Breadcrumbs";
 import TitleCard from "@/components/TitleCard";
 import Pagination from "@/components/Pagination";
-import { channels } from "@/data/channels.mock";
-import { titles } from "@/data/titles.mock";
+import { channels as fallbackChannels, type Channel } from "@/data/channels.mock";
+import { titles as fallbackTitles, type Title } from "@/data/titles.mock";
 import { useTheme } from "@/contexts/ThemeContext";
+import { getChannelBySlug, getPublishedTitles } from "@/lib/services/content.service";
 
 const PAGE_SIZE = 24;
 
@@ -19,19 +20,31 @@ export default function ChannelPage({
 }) {
   const { theme } = useTheme();
   const { slug } = use(params);
-  const channel = channels.find((c) => c.slug === slug);
+  const [channel, setChannel] = useState<Channel | null>(() =>
+    fallbackChannels.find((c) => c.slug === slug) || null
+  );
+  const [channelTitles, setChannelTitles] = useState<Title[]>(() =>
+    fallbackTitles
+      .filter((item) => item.status === "Published" && item.channel === channel?.name)
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+  );
   const [page, setPage] = useState(1);
 
-  const sorted = useMemo(
-    () =>
-      titles
-        .filter((item) => item.status === "Published" && item.channel === channel?.name)
-        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()),
-    [channel]
-  );
+  useEffect(() => {
+    getChannelBySlug(slug).then((ch) => {
+      if (ch) {
+        setChannel(ch);
+        getPublishedTitles({ channelName: ch.name, sort: "newest" }).then((dbTitles) => {
+          if (dbTitles && dbTitles.length > 0) {
+            setChannelTitles(dbTitles);
+          }
+        });
+      }
+    });
+  }, [slug]);
 
-  const totalPages = Math.max(1, Math.ceil(sorted.length / PAGE_SIZE));
-  const pageItems = sorted.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+  const totalPages = Math.max(1, Math.ceil(channelTitles.length / PAGE_SIZE));
+  const pageItems = channelTitles.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
   return (
     <div data-theme={theme} className="min-h-screen bg-bg text-text">
@@ -48,7 +61,7 @@ export default function ChannelPage({
           {channel ? channel.name : "Channel"}
         </h1>
 
-        {sorted.length === 0 ? (
+        {channelTitles.length === 0 ? (
           <p className="text-sm text-text-muted py-12 text-center">
             No titles from this channel yet.
           </p>

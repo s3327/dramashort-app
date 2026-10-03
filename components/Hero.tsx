@@ -4,15 +4,26 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { Play } from "lucide-react";
-import { heroSlides } from "@/data/hero-slides.mock";
+import { heroSlides as fallbackHeroSlides, type HeroSlide } from "@/data/hero-slides.mock";
+import { getHeroSlides } from "@/lib/services/content.service";
 
 const AUTOPLAY_DELAY_MS = 5000;
 const TRANSITION_MS = 700;
 
 export default function Hero() {
+  const [slides, setSlides] = useState<HeroSlide[]>(fallbackHeroSlides);
   const [active, setActive] = useState(0);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const total = heroSlides.length;
+
+  useEffect(() => {
+    getHeroSlides().then((dbSlides) => {
+      if (dbSlides && dbSlides.length > 0) {
+        setSlides(dbSlides);
+      }
+    });
+  }, []);
+
+  const total = slides.length;
 
   const goTo = useCallback(
     (index: number) => {
@@ -36,7 +47,7 @@ export default function Hero() {
   return (
     <section className="relative h-[78vh] min-h-[520px] w-full overflow-hidden bg-bg">
       {/* Slide backgrounds — stacked, crossfading via opacity */}
-      {heroSlides.map((slide, index) => (
+      {slides.map((slide, index) => (
         <div
           key={slide.id}
           className="absolute inset-0"
@@ -68,7 +79,7 @@ export default function Hero() {
       {/* Content */}
       <div className="relative z-10 h-full max-w-[1200px] mx-auto px-6 flex flex-col justify-end pb-16">
         <div className="grid max-w-xl">
-          {heroSlides.map((slide, index) => (
+          {slides.map((slide, index) => (
             <div
               key={slide.id}
               style={{
@@ -102,7 +113,7 @@ export default function Hero() {
 
         {/* Pagination dots */}
         <div className="mt-8 flex items-center gap-2">
-          {heroSlides.map((slide, index) => (
+          {slides.map((slide, index) => (
             <button
               key={slide.id}
               type="button"

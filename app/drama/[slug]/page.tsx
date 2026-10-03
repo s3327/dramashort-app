@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useState } from "react";
+import { use, useEffect, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { Play, Star, Tv, Layers, Heart, ListPlus } from "lucide-react";
@@ -12,13 +12,14 @@ import LoginRequiredModal from "@/components/LoginRequiredModal";
 import Breadcrumbs from "@/components/Breadcrumbs";
 import TitleCard from "@/components/TitleCard";
 import Toast from "@/components/Toast";
-import { getTitleBySlugOrFallback } from "@/data/titles.mock";
-import { channels } from "@/data/channels.mock";
+import { getTitleBySlugOrFallback, type Title } from "@/data/titles.mock";
+import { channels as fallbackChannels } from "@/data/channels.mock";
 import { getRelatedTitles } from "@/lib/getRelatedTitles";
 import { useTheme } from "@/contexts/ThemeContext";
 import { useFavorites } from "@/contexts/FavoritesContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/useToast";
+import { getTitleBySlug, getRelatedTitlesFromDb } from "@/lib/services/content.service";
 
 const SYNOPSIS_TRUNCATE_LENGTH = 220;
 
@@ -29,9 +30,23 @@ export default function DramaPage({
 }) {
   const { theme } = useTheme();
   const { slug } = use(params);
-  const drama = getTitleBySlugOrFallback(slug);
+  const [drama, setDrama] = useState<Title>(() => getTitleBySlugOrFallback(slug));
+  const [related, setRelated] = useState<Title[]>(() => getRelatedTitles(drama));
   const [isSynopsisExpanded, setIsSynopsisExpanded] = useState(false);
   const isLongSynopsis = drama.synopsis.length > SYNOPSIS_TRUNCATE_LENGTH;
+
+  useEffect(() => {
+    getTitleBySlug(slug).then((dbDrama) => {
+      if (dbDrama) {
+        setDrama(dbDrama);
+        getRelatedTitlesFromDb(dbDrama, 8).then((dbRelated) => {
+          if (dbRelated && dbRelated.length > 0) {
+            setRelated(dbRelated);
+          }
+        });
+      }
+    });
+  }, [slug]);
 
   const { isFavorited, toggleFavorite } = useFavorites();
   const { isLoggedIn } = useAuth();
@@ -60,8 +75,8 @@ export default function DramaPage({
     setIsAddToListOpen(true);
   };
 
-  const channelSlug = channels.find((c) => c.name === drama.channel)?.slug;
-  const relatedTitles = getRelatedTitles(drama);
+  const channelSlug = fallbackChannels.find((c) => c.name === drama.channel)?.slug;
+  const relatedTitles = related;
 
   return (
     <div data-theme={theme} className="min-h-screen bg-bg text-text">

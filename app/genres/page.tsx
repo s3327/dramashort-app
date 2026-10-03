@@ -7,8 +7,9 @@ import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import TitleCard from "@/components/TitleCard";
 import Pagination from "@/components/Pagination";
-import { titles as allTitles } from "@/data/titles.mock";
+import { titles as fallbackTitles, type Title } from "@/data/titles.mock";
 import { useTheme } from "@/contexts/ThemeContext";
+import { getPublishedTitles } from "@/lib/services/content.service";
 
 const PAGE_SIZE = 24;
 const ALL_GENRE = "All";
@@ -19,20 +20,24 @@ const CHIP_ROW_COLLAPSED_HEIGHT = 76;
 function GenresContent() {
   const { theme } = useTheme();
   const searchParams = useSearchParams();
+  const [titles, setTitles] = useState<Title[]>(fallbackTitles);
 
-  // Genres come from the same mock catalog used on Search, so this list
-  // reflects whatever genres actually exist "in the database." Draft
-  // titles' genres are still eligible so a genre isn't missing from this
-  // list purely because its only Published example hasn't shipped yet
-  // — worth revisiting once this is real data.
+  useEffect(() => {
+    getPublishedTitles().then((dbTitles) => {
+      if (dbTitles && dbTitles.length > 0) {
+        setTitles(dbTitles);
+      }
+    });
+  }, []);
+
   const genres = useMemo(
-    () => [ALL_GENRE, ...Array.from(new Set(allTitles.map((i) => i.genre))).sort()],
-    []
+    () => [ALL_GENRE, ...Array.from(new Set(titles.map((i) => i.genre))).sort()],
+    [titles]
   );
 
   const genreFromUrl = searchParams.get("genre");
   const [selectedGenre, setSelectedGenre] = useState(
-    genreFromUrl && allTitles.some((i) => i.genre === genreFromUrl) ? genreFromUrl : ALL_GENRE
+    genreFromUrl && titles.some((i) => i.genre === genreFromUrl) ? genreFromUrl : ALL_GENRE
   );
   const [page, setPage] = useState(1);
 
@@ -52,12 +57,12 @@ function GenresContent() {
 
   const filtered = useMemo(
     () =>
-      allTitles.filter(
+      titles.filter(
         (item) =>
           item.status === "Published" &&
           (selectedGenre === ALL_GENRE || item.genre === selectedGenre)
       ),
-    [selectedGenre]
+    [titles, selectedGenre]
   );
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));

@@ -1,10 +1,11 @@
 "use client";
 
-import { useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { ChevronLeft, ChevronRight, Flame } from "lucide-react";
-import { trendingTitles } from "@/data/top-trending.mock";
+import { trendingTitles as fallbackTrendingTitles, type TrendingTitle } from "@/data/top-trending.mock";
+import { getTopTrendingTitles } from "@/lib/services/content.service";
 
 const GAP_PX = 16; // matches gap-4
 
@@ -19,7 +20,24 @@ const RANK_ACCENTS = [
 ];
 
 export default function TopTrending() {
+  const [items, setItems] = useState<TrendingTitle[]>(fallbackTrendingTitles);
   const scrollerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    getTopTrendingTitles(10).then((titles) => {
+      if (titles && titles.length > 0) {
+        setItems(
+          titles.map((t, idx) => ({
+            id: t.id,
+            rank: idx + 1,
+            title: t.title,
+            poster: t.poster,
+            href: `/drama/${t.slug}`,
+          }))
+        );
+      }
+    });
+  }, []);
 
   const scrollByCards = (direction: 1 | -1) => {
     const el = scrollerRef.current;
@@ -59,7 +77,7 @@ export default function TopTrending() {
           ref={scrollerRef}
           className="flex gap-4 overflow-x-auto scroll-smooth snap-x snap-mandatory pb-2 touch-pan-x [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
         >
-          {trendingTitles.map((item, index) => {
+          {items.map((item, index) => {
             const accent = RANK_ACCENTS[index % RANK_ACCENTS.length];
             return (
               <Link

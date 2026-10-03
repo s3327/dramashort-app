@@ -1,36 +1,37 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Flame } from "lucide-react";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import TitleCard from "@/components/TitleCard";
 import Pagination from "@/components/Pagination";
-import { titles } from "@/data/titles.mock";
+import { titles as fallbackTitles, type Title } from "@/data/titles.mock";
 import { useTheme } from "@/contexts/ThemeContext";
 import { formatCompactNumber } from "@/lib/format";
+import { getPublishedTitles } from "@/lib/services/content.service";
 
 const PAGE_SIZE = 24;
 
 export default function TrendingPage() {
   const { theme } = useTheme();
   const [page, setPage] = useState(1);
-
-  // Always rank by view count, most to least — the period itself (weekly,
-  // monthly, etc.) will be chosen from an admin settings page later, so
-  // this just reflects whatever period the backend is currently counting.
-  // Only Published titles are eligible — Draft/Scheduled/Archived are
-  // admin-only states and shouldn't surface on the public site.
-  const ranked = useMemo(
-    () =>
-      titles
-        .filter((t) => t.status === "Published")
-        .sort((a, b) => b.views - a.views),
-    []
+  const [allRanked, setAllRanked] = useState<Title[]>(() =>
+    fallbackTitles
+      .filter((t) => t.status === "Published")
+      .sort((a, b) => b.views - a.views)
   );
 
-  const totalPages = Math.max(1, Math.ceil(ranked.length / PAGE_SIZE));
-  const pageItems = ranked.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+  useEffect(() => {
+    getPublishedTitles({ sort: "trending" }).then((dbTitles) => {
+      if (dbTitles && dbTitles.length > 0) {
+        setAllRanked(dbTitles);
+      }
+    });
+  }, []);
+
+  const totalPages = Math.max(1, Math.ceil(allRanked.length / PAGE_SIZE));
+  const pageItems = allRanked.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
   return (
     <div data-theme={theme} className="min-h-screen bg-bg text-text">
