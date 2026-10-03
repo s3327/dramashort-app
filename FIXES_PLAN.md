@@ -31,8 +31,8 @@ This plan outlines the specific fixes, cleanup tasks, and enhancements needed to
 | **Phase 6** | 🟡 Medium | M3: Add Supabase Storage domain to `next.config.mjs` `remotePatterns` | ✅ Done | Prevents image load failures for Supabase Storage assets |
 | **Phase 6** | 🟡 Medium | M4: Replace `catch (err: any)` with typed error handling in `AuthContext` | ✅ Done | Strict TypeScript compliance and type-safe `err instanceof Error` handling |
 | **Phase 6** | 🟡 Medium | M5: Load admin drama edit data from Supabase content DB | ✅ Done | Delivered in H3: Asynchronously hydrates drama on mount via getDramaById |
-| **Phase 6** | 🟡 Medium | M6: Wire Telegram Connect integration in `app/account/page.tsx` | ⏳ Next | Functional Telegram account linking / bot deep-linking |
-| **Phase 6** | 🟡 Medium | M7: Standardize Admin nomenclature: "Dramas" & "Add Drama" in UI & routes | ⏳ Planned | Eliminates confusion between entity (Drama) and field (title) |
+| **Phase 6** | 🟡 Medium | M6: Wire Telegram Connect integration in `app/account/page.tsx` | 📋 Deferred | Deferred to Future Plan per user instruction; UI feedback configured |
+| **Phase 6** | 🟡 Medium | M7: Standardize Admin nomenclature: "Dramas" & "Add Drama" in UI & routes | ⏳ Next | Eliminates confusion between entity (Drama) and field (title) |
 | **Phase 7** | 🟢 Low | L1: Reusable custom hooks (`useDebounce`, `useRequireAuth`, `useMediaQuery`) | ⏳ Planned | DRY code, standardized debounce, and cleaner component logic |
 | **Phase 7** | 🟢 Low | L2: Add shimmer/skeleton loading states for async data | ⏳ Planned | Smooth loading UX; prevents layout shifts and mock flashes |
 | **Phase 7** | 🟢 Low | L3: Implement route-segment error boundaries (`error.tsx`) | ⏳ Planned | Graceful degradation and user-friendly retry buttons |
@@ -571,13 +571,11 @@ To eliminate ambiguity across product requirements, admin CMS, and codebase inte
 ---
 
 ### Task 6.6: Telegram Account Connect Integration (M6)
+* **Status**: 📋 Deferred to Future Integration Plan (Per User Direction)
 * **Target File**: `app/account/page.tsx`
-* **Problem**: The "Connect Telegram" button is cosmetic.
-* **Implementation Plan**:
-  1. Implement Telegram Login Widget or Bot deep-link (`https://t.me/DramaShortBot?start=auth_[user_token]`).
-  2. Handle Telegram callback verifying user hash and persisting `telegram_user_id` to Supabase `profiles`.
-* **Verification**:
-  - Clicking Connect opens Telegram auth flow and associates Telegram identity with user profile.
+* **Current Status**:
+  - The "Connect Telegram" button in `app/account/page.tsx` is configured with user feedback toast informing users that Telegram Bot integration is scheduled for an upcoming release.
+  - Complete technical architecture, BotFather configuration, and API specifications are detailed in **Section 10: Future Plan: Telegram Account Connect & Bot Integration**.
 
 ---
 
@@ -695,4 +693,53 @@ flowchart TD
     P7 --> V["Final Validation: Next.js Production Build & Automated Tests"]
     V --> Done["🚀 DramaShort Production Ready"]
 ```
+
+---
+
+## 10. Future Plan: Telegram Account Connect & Bot Architecture
+
+> **Decision Record**: Per explicit user directive, live Telegram Account Connect is preserved as a dedicated **Future Plan** without active blocking dependencies on current releases.
+
+### 10.1 System Architecture
+```mermaid
+sequenceDiagram
+    autonumber
+    actor User as Web Viewer
+    participant Web as DramaShort Web App (/account)
+    participant API as /api/auth/telegram/callback
+    participant TG as Telegram Bot (@DramaShortBot)
+    participant DB as User Supabase DB (profiles)
+
+    User->>Web: Clicks "Connect Telegram"
+    Web->>TG: Redirects: https://t.me/DramaShortBot?start=auth_[user_jwt]
+    User->>TG: Taps "Start" in Telegram
+    TG->>API: Webhook: verifies user token + Telegram user metadata
+    API->>API: HMAC-SHA256 signature verification with BOT_TOKEN
+    API->>DB: Updates profiles.telegram_user_id & profiles.telegram_username
+    API->>TG: Bot replies "Account linked successfully! 🎬"
+    Web->>User: Account page displays connected Telegram username
+```
+
+### 10.2 Technical Implementation Roadmap
+1. **Telegram Bot Setup**:
+   - Register bot with [@BotFather](https://t.me/BotFather) to acquire `TELEGRAM_BOT_NAME` and `TELEGRAM_BOT_TOKEN`.
+   - Configure `/setdomain` to whitelist the DramaShort production URL for Telegram Login Widget support.
+2. **Database Schema Extension**:
+   - Add nullable fields to User DB `profiles` table:
+     ```sql
+     ALTER TABLE public.profiles 
+     ADD COLUMN IF NOT EXISTS telegram_user_id text UNIQUE,
+     ADD COLUMN IF NOT EXISTS telegram_username text,
+     ADD COLUMN IF NOT EXISTS telegram_connected_at timestamptz;
+     ```
+3. **Cryptographic Validation**:
+   - Verify Telegram data integrity using SHA-256 HMAC of data-check-string against secret key derived from bot token:
+     ```typescript
+     const secret = crypto.createHash("sha256").update(BOT_TOKEN).digest();
+     const hmac = crypto.createHmac("sha256", secret).update(dataCheckString).digest("hex");
+     const isValid = hmac === hash;
+     ```
+4. **Telegram Mini App / WebApp Support**:
+   - Expand into a full Telegram Mini App (`window.Telegram.WebApp`) permitting seamless playback and drama discovery directly inside Telegram desktop and mobile clients.
+
 

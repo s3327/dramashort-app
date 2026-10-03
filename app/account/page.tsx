@@ -54,6 +54,7 @@ export default function AccountPage() {
   const [otpError, setOtpError] = useState("");
   const [resendCooldown, setResendCooldown] = useState(0);
   const { message: emailToastMessage, show: showEmailToast } = useToast();
+  const { message: telegramToastMessage, show: showTelegramToast } = useToast();
 
   useEffect(() => {
     if (resendCooldown <= 0) return;
@@ -498,11 +499,11 @@ export default function AccountPage() {
                     </p>
                   </div>
                 </div>
-                {/* UI only — this will become the account-linking gateway
-                    between the public site and Telegram users once wired up. */}
+                {/* UI only — scheduled for future Telegram bot release */}
                 <button
                   type="button"
-                  className="flex items-center gap-1.5 shrink-0 rounded-full border border-[#229ED9] text-[#229ED9] hover:bg-[#229ED9]/10 font-semibold text-sm px-4 py-2 transition-colors"
+                  onClick={() => showTelegramToast("Telegram Bot integration is coming soon in the next release!")}
+                  className="flex items-center gap-1.5 shrink-0 rounded-full border border-[#229ED9] text-[#229ED9] hover:bg-[#229ED9]/10 font-semibold text-sm px-4 py-2 transition-colors cursor-pointer"
                 >
                   <Send size={14} strokeWidth={2.5} />
                   Connect Telegram
@@ -567,10 +568,12 @@ export default function AccountPage() {
       </Modal>
 
       <Toast
-        message={passwordToastMessage || emailToastMessage}
+        message={passwordToastMessage || emailToastMessage || telegramToastMessage}
         icon={
           passwordToastMessage ? (
             <Lock size={14} strokeWidth={2} />
+          ) : telegramToastMessage ? (
+            <Send size={14} strokeWidth={2} />
           ) : (
             <Check size={14} strokeWidth={2} />
           )
