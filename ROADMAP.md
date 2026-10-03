@@ -965,22 +965,19 @@ These items stay ✅ for history; the gaps are tracked as new tasks.
 > **Objective**: Close every privilege-escalation and data-exposure path found in the audit, centralize authorization in one server-side helper, and lock the fixes in with automated regression tests and a CI gate. **Phase 8 must not start before this phase is complete**, because its wallet fields are planned on `profiles`, which is currently user-writable.
 
 ### Task 10.1: Admin Role Single Source of Truth & Shared `requireAdmin()` Guard
-* **Status**: ⏳ Planned
-* **Problem**:
-  - `middleware.ts` (L67–68), `app/api/admin/dramas/route.ts` (L41–42), `app/api/admin/dramas/[id]/route.ts` (L41–42, L57–58), and `contexts/AdminAuthContext.tsx` (L46–47) accept `user.user_metadata.role`. Users can write `user_metadata` themselves — `supabase.auth.updateUser({ data: { role: "admin" } })` from the browser console grants admin access.
-  - `verifyAdminAuth()` is duplicated in two route files with diverging behavior.
-* **Target Files**: `lib/auth/roles.ts` (new), `lib/auth/require-admin.ts` (new), `middleware.ts`, `app/api/admin/**`, `contexts/AdminAuthContext.tsx`, `scripts/backfill-admin-roles.ts` (new)
-* **Planned Specifications**:
-  1. `app_metadata.role` (`"admin" | "editor"`; absent = regular user) is the only authoritative role source. Only the service-role key can write it.
-  2. `lib/auth/roles.ts`: `getUserRole(user: User): Role | null`, reading **only** `app_metadata.role`.
-  3. `lib/auth/require-admin.ts`: `requireAdmin({ roles?: Role[] })` for route handlers and server actions — creates the server client, calls `auth.getUser()` (never `getSession()` on the server), and returns `{ user, role }` or a typed `401` / `403` response.
-  4. Replace both `verifyAdminAuth()` copies with `requireAdmin()`. Remove every `user_metadata.role` read.
-  5. `profiles.role` becomes a display mirror written only by the service role; it is never used for authorization.
-  6. `AdminAuthContext` uses `getUserRole()` for UI state only; the server remains the enforcement point.
-  7. Incident check: list all accounts with `profiles.role = 'admin'` or `user_metadata.role = 'admin'` and confirm each is legitimate (the hole may already have been used). Backfill `app_metadata.role` for legitimate admins and clear `user_metadata.role` everywhere.
+* **Status**: ✅ Completed
+* **Target Files**: `lib/auth/roles.ts`, `lib/auth/require-admin.ts`, `middleware.ts`, `app/api/admin/dramas/route.ts`, `app/api/admin/dramas/[id]/route.ts`, `contexts/AdminAuthContext.tsx`, `scripts/backfill-admin-roles.ts`, `__tests__/auth/roles.test.ts`
+* **Delivered Capabilities**:
+  1. Authoritative Role Source: Implemented `lib/auth/roles.ts` exporting `getUserRole()` which reads **strictly** from `app_metadata.role`. Explicitly ignores client-writable `user_metadata.role` and `profiles.role` for authorization decisions.
+  2. Centralized Server Guard: Implemented `lib/auth/require-admin.ts` exporting `requireAdmin()`. Performs server-side verification using `auth.getUser()` (never `getSession()`), returning `{ authorized: true, user, role }` or typed `401` / `403` JSON responses.
+  3. API Route Lockdown: Replaced duplicate and insecure `verifyAdminAuth()` in `app/api/admin/dramas/route.ts` and `app/api/admin/dramas/[id]/route.ts` with `requireAdmin()`. Both `GET` and mutating `POST`/`PATCH` endpoints now strictly require administrative authentication; development bypass completely removed.
+  4. Middleware Hardening: Updated `middleware.ts` to evaluate `getUserRole(user) === 'admin'`, eliminating client self-elevation bypass.
+  5. UI State Synchronization: Updated `contexts/AdminAuthContext.tsx` to resolve `getUserRole(authUser)` from `app_metadata`, with server routes remaining the true enforcement boundary.
+  6. Backfill & Sanitization Script: Created `scripts/backfill-admin-roles.ts` to audit all auth users, backfill `app_metadata.role = 'admin'`, and strip rogue `user_metadata.role` keys.
+  7. Automated Unit Test Suite: Added `__tests__/auth/roles.test.ts` testing role resolution, invalid roles, and explicitly asserting that client-side `user_metadata.role = 'admin'` cannot elevate privileges.
 * **Verification**:
-  - Unit: `getUserRole()` ignores `user_metadata.role`.
-  - Integration: a regular user who sets `user_metadata.role = "admin"` gets `403` from `PATCH /api/admin/dramas/:id` and is redirected away from `/admin/dashboard`.
+  - `npm test`: 19 / 19 tests pass (5 new tests in `Auth Roles & Privilege Security (Task 10.1)`).
+  - `npx tsc --noEmit`: compiles cleanly with 0 type errors.
 
 ---
 

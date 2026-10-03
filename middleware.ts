@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 import type { Database } from "@/types/supabase-user";
+import { getUserRole } from "@/lib/auth/roles";
 
 const userUrl =
   process.env.NEXT_PUBLIC_USER_SUPABASE_URL || "https://placeholder.supabase.co";
@@ -63,20 +64,9 @@ export async function middleware(request: NextRequest) {
       return response;
     }
 
-    // Check if user has admin privileges
-    const metadataRole =
-      user.app_metadata?.role || user.user_metadata?.role;
-    let isAdmin = metadataRole === "admin";
-
-    if (!isAdmin) {
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("role")
-        .eq("id", user.id)
-        .maybeSingle();
-
-      isAdmin = profile?.role === "admin";
-    }
+    // Authoritative role check: ONLY app_metadata.role is trusted (prevents client self-elevation)
+    const role = getUserRole(user);
+    const isAdmin = role === "admin";
 
     // Authenticated non-admin trying to access admin pages
     if (!isAdmin) {

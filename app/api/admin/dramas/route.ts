@@ -23,42 +23,7 @@ export interface CreateDramaBody {
   poster_url?: string;
 }
 
-/**
- * Validates whether caller is authenticated with administrator privileges.
- */
-async function verifyAdminAuth(): Promise<{ isAuthorized: boolean; userId?: string }> {
-  try {
-    const userSupabase = await createUserServerClient();
-    const {
-      data: { user },
-    } = await userSupabase.auth.getUser();
-
-    // In production, strictly enforce admin session
-    if (process.env.NODE_ENV === "production") {
-      if (!user) {
-        return { isAuthorized: false };
-      }
-      const metadataRole =
-        user.app_metadata?.role || user.user_metadata?.role;
-      if (metadataRole === "admin") {
-        return { isAuthorized: true, userId: user.id };
-      }
-      const { data: profile } = await userSupabase
-        .from("profiles")
-        .select("role")
-        .eq("id", user.id)
-        .maybeSingle();
-
-      return { isAuthorized: profile?.role === "admin", userId: user.id };
-    }
-
-    // In dev without active cookies, allow mutation for local administrative workflows
-    return { isAuthorized: true };
-  } catch (err) {
-    console.warn("verifyAdminAuth error:", err);
-    return { isAuthorized: process.env.NODE_ENV !== "production" };
-  }
-}
+import { requireAdmin } from "@/lib/auth/require-admin";
 
 /**
  * Helper to slugify a drama title.
@@ -75,9 +40,14 @@ function slugifyTitle(title: string): string {
 
 /**
  * GET /api/admin/dramas
- * Fetch all dramas from Supabase Content DB.
+ * Fetch all dramas from Supabase Content DB (protected by requireAdmin).
  */
 export async function GET() {
+  const auth = await requireAdmin();
+  if (!auth.authorized) {
+    return auth.response;
+  }
+
   try {
     const adminClient = getContentAdminClient();
     const { data: rows, error } = await adminClient
@@ -106,16 +76,10 @@ export async function GET() {
  * Creates a new Drama in Supabase Content DB.
  */
 export async function POST(request: NextRequest) {
-  // 1. Verify admin authorization
-  const auth = await verifyAdminAuth();
-  if (!auth.isAuthorized) {
-    return NextResponse.json(
-      {
-        success: false,
-        error: "Access denied. Administrator privileges required.",
-      },
-      { status: 403 }
-    );
+  // 1. Verify admin authorization via authoritative app_metadata
+  const auth = await requireAdmin();
+  if (!auth.authorized) {
+    return auth.response;
   }
 
   // 2. Parse request payload

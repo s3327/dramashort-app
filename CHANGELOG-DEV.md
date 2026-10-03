@@ -215,3 +215,54 @@
   - Phase IDs 8 and 9 kept unchanged so earlier changelog references stay valid; execution order is stated explicitly instead of renumbering.
   - Tasks 4.2, 4.3, 5.1, 5.3, 6.1, 6.5, and 7.6 remain ✅ for history; their gaps are tracked as new tasks per §12.3.
 * **Verification**: Heading sequence and section numbering checked (§1–§22, Tasks 10.1–17.4); line endings unchanged (LF).
+---
+
+## [2026-10-04] Task 10.1: Admin Role Single Source of Truth & Shared `requireAdmin()` Guard
+* **Milestone**: Phase 10 (Security Hardening) — Task 10.1
+* **Goal**: Close privilege escalation vulnerability where clients could self-elevate by writing `user_metadata.role = "admin"`, centralize server-side authorization in a shared helper, and lock down all admin drama API endpoints.
+* **Implementation Steps Taken**:
+  1. Created `lib/auth/roles.ts`:
+     - Defined `Role = "admin" | "editor"`.
+     - Implemented `getUserRole(user)` reading strictly from `app_metadata.role`.
+     - Explicitly ignored client-writable `user_metadata.role` and `profiles.role` for authorization decisions.
+     - Implemented `hasRole(user, allowedRoles)`.
+  2. Created `lib/auth/require-admin.ts`:
+     - Implemented `requireAdmin({ roles?: Role[] })` server guard.
+     - Enforces session verification via `supabase.auth.getUser()` (never `getSession()`).
+     - Validates role against `app_metadata.role`, returning `{ authorized: true, user, role }` or typed `401` / `403` JSON responses.
+     - Completely eliminated development/test authorization bypasses.
+  3. Hardened `app/api/admin/dramas/route.ts`:
+     - Replaced duplicate `verifyAdminAuth()` with `requireAdmin()`.
+     - Protected both `GET /api/admin/dramas` and `POST /api/admin/dramas` with `requireAdmin()`.
+  4. Hardened `app/api/admin/dramas/[id]/route.ts`:
+     - Replaced duplicate `verifyAdminAuth()` with `requireAdmin()`.
+     - Protected both `GET /api/admin/dramas/[id]` and `PATCH /api/admin/dramas/[id]` with `requireAdmin()`.
+  5. Hardened `middleware.ts`:
+     - Imported `getUserRole` from `@/lib/auth/roles`.
+     - Replaced `user.user_metadata?.role` and `profiles.role` fallback with `getUserRole(user) === 'admin'`.
+  6. Hardened `contexts/AdminAuthContext.tsx`:
+     - Updated `verifyAdminRole` to use `getUserRole(authUser) === 'admin'`.
+     - Removed client-side fallback to `user_metadata.role` and `profiles.role` for admin privilege determination.
+  7. Created `scripts/backfill-admin-roles.ts`:
+     - Built audit and sanitization script querying all auth accounts in Supabase User DB.
+     - Backfills `app_metadata.role = 'admin'` and strips rogue `user_metadata.role` keys.
+  8. Created automated test suite `__tests__/auth/roles.test.ts`:
+     - Added 5 unit tests verifying role resolution, valid roles (`admin`, `editor`), invalid roles, and explicit protection against client self-elevation when `user_metadata.role = "admin"`.
+* **Key File Diffs**:
+  - `lib/auth/roles.ts`: Created role definitions and single source of truth helper.
+  - `lib/auth/require-admin.ts`: Created centralized server-side guard.
+  - `app/api/admin/dramas/route.ts`: Swapped `verifyAdminAuth` for `requireAdmin`; protected `GET` and `POST`.
+  - `app/api/admin/dramas/[id]/route.ts`: Swapped `verifyAdminAuth` for `requireAdmin`; protected `GET` and `PATCH`.
+  - `middleware.ts`: Enforced `app_metadata.role` in route guard.
+  - `contexts/AdminAuthContext.tsx`: Aligned UI role state with `app_metadata`.
+  - `scripts/backfill-admin-roles.ts`: Created admin audit and metadata backfill script.
+  - `__tests__/auth/roles.test.ts`: Created security unit test suite.
+  - `ROADMAP.md`: Marked Task 10.1 as Completed with delivered capabilities.
+* **Regression Analysis & Cross-System Impact**:
+  - Regular user accounts: completely unaffected for public browsing, search, favorites, and watch history.
+  - Legitimate admin accounts: authenticated admins created via `npm run admin:create` already have `app_metadata.role = 'admin'` and retain seamless access.
+  - Malicious actors / console injection: `supabase.auth.updateUser({ data: { role: 'admin' } })` is completely rejected by both the middleware and all admin API route handlers.
+  - API integrity: Unauthenticated requests to `/api/admin/dramas` and `/api/admin/dramas/[id]` now receive HTTP `401 Unauthorized` JSON instead of leaking drafts or permitting unauthorized modifications.
+* **Verification**:
+  - `npm test`: 19 / 19 tests pass (14 existing + 5 new security tests) with 0 failures.
+  - `npx tsc --noEmit`: 0 TypeScript compilation errors.

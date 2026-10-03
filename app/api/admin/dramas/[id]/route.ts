@@ -23,67 +23,22 @@ export interface DramaUpdateBody {
   poster_url?: string;
 }
 
-/**
- * Validates whether caller is authenticated with administrator privileges.
- */
-async function verifyAdminAuth(): Promise<{ isAuthorized: boolean; userId?: string }> {
-  try {
-    const userSupabase = await createUserServerClient();
-    const {
-      data: { user },
-    } = await userSupabase.auth.getUser();
-
-    // In production, strictly enforce admin session
-    if (process.env.NODE_ENV === "production") {
-      if (!user) {
-        return { isAuthorized: false };
-      }
-      const metadataRole =
-        user.app_metadata?.role || user.user_metadata?.role;
-      if (metadataRole === "admin") {
-        return { isAuthorized: true, userId: user.id };
-      }
-      const { data: profile } = await userSupabase
-        .from("profiles")
-        .select("role")
-        .eq("id", user.id)
-        .maybeSingle();
-
-      return { isAuthorized: profile?.role === "admin", userId: user.id };
-    }
-
-    // In local development: check user if present, or permit developer testing
-    if (user) {
-      const metadataRole =
-        user.app_metadata?.role || user.user_metadata?.role;
-      if (metadataRole === "admin") {
-        return { isAuthorized: true, userId: user.id };
-      }
-      const { data: profile } = await userSupabase
-        .from("profiles")
-        .select("role")
-        .eq("id", user.id)
-        .maybeSingle();
-
-      return { isAuthorized: profile?.role === "admin", userId: user.id };
-    }
-
-    // In dev without active cookies, allow mutation for local administrative workflows
-    return { isAuthorized: true };
-  } catch (err) {
-    console.warn("verifyAdminAuth error:", err);
-    return { isAuthorized: process.env.NODE_ENV !== "production" };
-  }
-}
+import { requireAdmin } from "@/lib/auth/require-admin";
 
 /**
  * GET /api/admin/dramas/[id]
  * Fetch a single drama by ID (Supabase DB first, mock fallback).
+ * Protected by requireAdmin.
  */
 export async function GET(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const auth = await requireAdmin();
+  if (!auth.authorized) {
+    return auth.response;
+  }
+
   const { id } = await params;
 
   try {
@@ -127,19 +82,12 @@ export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const { id } = await params;
-
-  // 1. Verify administrative access
-  const auth = await verifyAdminAuth();
-  if (!auth.isAuthorized) {
-    return NextResponse.json(
-      {
-        success: false,
-        error: "Access denied. Administrator privileges required.",
-      },
-      { status: 403 }
-    );
+  const auth = await requireAdmin();
+  if (!auth.authorized) {
+    return auth.response;
   }
+
+  const { id } = await params;
 
   // 2. Parse payload
   let body: DramaUpdateBody;

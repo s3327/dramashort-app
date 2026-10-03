@@ -11,6 +11,7 @@ import {
 import type { User, Session } from "@supabase/supabase-js";
 import { createUserClient } from "@/lib/supabase/user-client";
 import { getUserProfile, type ProfileRow } from "@/lib/services/user.service";
+import { getUserRole } from "@/lib/auth/roles";
 
 export type AdminAuthContextValue = {
   user: User | null;
@@ -42,29 +43,19 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
         return false;
       }
 
-      // 1. Check user metadata / app_metadata for fast path
-      const metadataRole =
-        authUser.app_metadata?.role || authUser.user_metadata?.role;
-      if (metadataRole === "admin") {
+      // Authoritative role check: ONLY app_metadata.role is trusted (prevents client self-elevation)
+      const role = getUserRole(authUser);
+      if (role === "admin") {
         setUser(authUser);
         setIsLoggedIn(true);
-        // fetch profile in background
+        // fetch profile in background for display purposes
         getUserProfile(authUser.id).then((p) => setProfile(p));
-        return true;
-      }
-
-      // 2. Check profiles database table
-      const prof = await getUserProfile(authUser.id);
-      setProfile(prof);
-
-      if (prof?.role === "admin") {
-        setUser(authUser);
-        setIsLoggedIn(true);
         return true;
       }
 
       // Not an admin
       setUser(null);
+      setProfile(null);
       setIsLoggedIn(false);
       return false;
     },
