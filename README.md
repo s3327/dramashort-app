@@ -106,9 +106,10 @@ dramashort/
 | User Account & Favorites Management | ✅ Complete |
 | Authentication Screens (Login, Signup, OTP) | ✅ Complete |
 | Admin Console & Title Management | ✅ Complete |
-| Unified Catalog (`titles.mock.ts`) | ✅ Complete |
-| Backend & Database Integration | ⬜ Next Phase |
-| Telegram Mini App Integration | ⬜ Next Phase |
+| Unified Catalog (`titles.mock.ts` + Supabase Content DB) | ✅ Complete |
+| Backend & Dual-Database Integration (Supabase SSR & Service Role) | ✅ Complete |
+| Automated Testing Suite (14 unit & journey tests) | ✅ Complete |
+| Telegram Mini App & Bot Ecosystem | 🔮 Future Plan (See [`FUTURE_PLAN.md`](FUTURE_PLAN.md)) |
 
 ---
 

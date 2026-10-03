@@ -31,7 +31,7 @@ This plan outlines the specific fixes, cleanup tasks, and enhancements needed to
 | **Phase 6** | 🟡 Medium | M3: Add Supabase Storage domain to `next.config.mjs` `remotePatterns` | ✅ Done | Prevents image load failures for Supabase Storage assets |
 | **Phase 6** | 🟡 Medium | M4: Replace `catch (err: any)` with typed error handling in `AuthContext` | ✅ Done | Strict TypeScript compliance and type-safe `err instanceof Error` handling |
 | **Phase 6** | 🟡 Medium | M5: Load admin drama edit data from Supabase content DB | ✅ Done | Delivered in H3: Asynchronously hydrates drama on mount via getDramaById |
-| **Phase 6** | 🟡 Medium | M6: Wire Telegram Connect integration in `app/account/page.tsx` | 📋 Deferred | Deferred to Future Plan per user instruction; UI feedback configured |
+| **Phase 6** | 🟡 Medium | M6: Telegram Connect Ecosystem Integration | 📋 Moved to Future Plan | Moved to dedicated `FUTURE_PLAN.md` per user directive |
 | **Phase 6** | 🟡 Medium | M7: Standardize Admin nomenclature: "Dramas" & "Add Drama" in UI & routes | ✅ Done | Eliminates confusion between entity (Drama) and field (title) |
 | **Phase 7** | 🟢 Low | L1: Reusable custom hooks (`useDebounce`, `useRequireAuth`, `useMediaQuery`) | ✅ Done | DRY code, standardized debounce, and cleaner component logic |
 | **Phase 7** | 🟢 Low | L2: Add shimmer/skeleton loading states for async data | ✅ Done | Smooth loading UX; prevents layout shifts and mock flashes |
@@ -571,11 +571,11 @@ To eliminate ambiguity across product requirements, admin CMS, and codebase inte
 ---
 
 ### Task 6.6: Telegram Account Connect Integration (M6)
-* **Status**: 📋 Deferred to Future Integration Plan (Per User Direction)
-* **Target File**: `app/account/page.tsx`
-* **Current Status**:
-  - The "Connect Telegram" button in `app/account/page.tsx` is configured with user feedback toast informing users that Telegram Bot integration is scheduled for an upcoming release.
-  - Complete technical architecture, BotFather configuration, and API specifications are detailed in **Section 10: Future Plan: Telegram Account Connect & Bot Integration**.
+* **Status**: 📋 Moved to Dedicated Future Plan
+* **Target File / Documentation**: Moved to [`FUTURE_PLAN.md`](file:///c:/Telegram%20Project/dramashort/FUTURE_PLAN.md)
+* **Details**:
+  - The "Connect Telegram" button in [`app/account/page.tsx`](file:///c:/Telegram%20Project/dramashort/app/account/page.tsx) is currently configured with non-blocking feedback toast informing users that Telegram Bot integration is scheduled for an upcoming release.
+  - The complete technical implementation roadmap, BotFather configuration, dual-database schema migration, cryptographic HMAC verification algorithms, API route handlers, and regression prevention audit have been moved to the dedicated [`FUTURE_PLAN.md`](file:///c:/Telegram%20Project/dramashort/FUTURE_PLAN.md).
 
 ---
 
@@ -673,7 +673,7 @@ To eliminate ambiguity across product requirements, admin CMS, and codebase inte
 
 ---
 
-## 10. Comprehensive Execution Workflow & Roadmap
+### 10. Completed Execution Workflow & Future Roadmap
 
 ```mermaid
 flowchart TD
@@ -681,81 +681,47 @@ flowchart TD
         DS["Entity: Drama (Dramas)<br/>• Fields: title, desc, genre, taxonomy, channels<br/>• Actions: 'Add Drama' / 'Edit Drama'"]
     end
 
-    subgraph Completed["✅ Completed Phases & Tasks"]
+    subgraph CompletedPhases["✅ 100% Completed Core Remediation (Phases 1–7)"]
         P1["Phase 1: Build & Tooling Fixes<br/>• Fix TS2783 in FavoritePage<br/>• ESLint Config (.eslintrc.json)"]
         P2["Phase 2: Route & Link Integrity<br/>• Admin Drama Edit Page<br/>• Consolidate /new to /new-release"]
         P3["Phase 3: Codebase Cleanliness<br/>• Delete 5 Orphaned Mock Files<br/>• Update README & Git tracking"]
-        P4A["Phase 4 (C1–C4): Core Player & Auth Security<br/>• C1: Video Player (HLS, 9:16/16:9, vertical swipe navigation)<br/>• C2: Supabase Role Admin Auth & SSR Middleware Route Guard<br/>• C3: Password Change with Credential Verification<br/>• C4: Email Change OTP Verification Flow<br/>• M4: Type-Safe Error Handling in AuthContext"]
-        P1 --> P2 --> P3 --> P4A
+        P4["Phase 4: Core Player & Auth Security (C1–C6)<br/>• Real Video Player (HLS, 9:16 vertical swipe navigation)<br/>• Supabase Admin SSR Route Guard<br/>• Password Change Verification<br/>• Email Change OTP Flow<br/>• Google OAuth Sign-In<br/>• Dynamic User Watch History"]
+        P5["Phase 5: High-Priority Persistence (H1–H6)<br/>• Real-time Watch Progress Tracking<br/>• Dynamic Continue Watching Component<br/>• Admin Drama Create/Edit Database Save<br/>• Server-Side Search Filtering & Pagination<br/>• Account Route Protection<br/>• Clean Guest Seed in FavoritesContext"]
+        P6["Phase 6: Quality & Architecture (M1–M7)<br/>• Mock/DB Hydration Standardization<br/>• Dynamic Metadata & OpenGraph SEO<br/>• Supabase Storage Domain in next.config<br/>• Type-Safe AuthContext Error Handling<br/>• Dynamic Admin Edit Data Retrieval<br/>• Admin Nomenclature Standardized ('Dramas')"]
+        P7["Phase 7: Polish & Automated Testing (L1–L6)<br/>• Reusable Custom Hooks (useMediaQuery, index barrel)<br/>• Shimmer Skeleton Loaders Library<br/>• Segment Error Boundaries (error.tsx)<br/>• Root Global Error Boundary<br/>• Design Token Verification<br/>• Automated Testing Suite (14 unit/integration tests)"]
+
+        P1 --> P2 --> P3 --> P4 --> P5 --> P6 --> P7
     end
 
-    subgraph ActivePhase["🚀 Active Phase 4 Execution (C5–C6)"]
-        P4B["Phase 4 (Remaining):<br/>• C5: Google OAuth Integration Button (⏳ Next)<br/>• C6: Dynamic Watch History DB Hydration"]
+    subgraph FuturePlan["🔮 Future Plan: Advanced Ecosystem"]
+        FP["Telegram Ecosystem Integration<br/>• Telegram Bot (@DramaShortBot)<br/>• Account Linking (/account)<br/>• Telegram Login Widget (/login, /signup)<br/>• Episode Push Notifications<br/>• Telegram Mini App (TMA Embedded Streaming)<br/>👉 Detailed in FUTURE_PLAN.md"]
     end
 
-    subgraph Upcoming["⏳ Upcoming Execution Phases"]
-        P5["Phase 5: High-Priority UX & Persistence (H1–H6)<br/>• Real-time Watch Progress Tracking<br/>• Dynamic Continue Watching Component<br/>• Admin Drama Edit/Create DB Save (title, desc, genre, taxonomy, channel)<br/>• Server-Side Search Filtering & Pagination<br/>• Account Route Protection (/account/*)<br/>• Clean Guest Seed in FavoritesContext"]
-        
-        P6["Phase 6: Medium-Priority Quality & Architecture (M1–M7)<br/>• Standardize Mock/DB Hydration Architecture<br/>• Dynamic Metadata & OpenGraph SEO<br/>• Supabase Storage Domain in next.config<br/>• Dynamic Admin Edit Data Retrieval<br/>• Telegram Connect Integration<br/>• Standardize Admin Nomenclature ('Dramas' & 'Add Drama')"]
-        
-        P7["Phase 7: Polish, DX & Testing (L1–L6)<br/>• Reusable Custom Hooks Library<br/>• Shimmer Skeleton Loaders<br/>• Segment Error Boundaries (error.tsx)<br/>• Root Global Error Boundary<br/>• Design Token Verification<br/>• Automated Testing Suite"]
-        
-        P5 --> P6 --> P7
-    end
-
-    DomainStandard -.-> ActivePhase
-    Completed --> ActivePhase
-    ActivePhase --> Upcoming
-    P7 --> V["Final Validation: Next.js Production Build & Automated Tests"]
-    V --> Done["🚀 DramaShort Production Ready"]
+    DomainStandard -.-> CompletedPhases
+    P7 --> V["Final Validation: Production Build & Automated Tests Passed (14/14)"]
+    V --> Done["🚀 DramaShort Core Platform Production Ready"]
+    Done --> FuturePlan
 ```
 
 ---
 
-## 10. Future Plan: Telegram Account Connect & Bot Architecture
+## 11. Transition to Dedicated Future Plan (`FUTURE_PLAN.md`)
 
-> **Decision Record**: Per explicit user directive, live Telegram Account Connect is preserved as a dedicated **Future Plan** without active blocking dependencies on current releases.
+> **Architectural Transition**: Per explicit project direction, all specifications, cryptographic verification algorithms, BotFather configurations, database migration scripts, and regression prevention analyses for the **Telegram Ecosystem** have been moved to:
+>
+> 📄 **[`FUTURE_PLAN.md`](file:///c:/Telegram%20Project/dramashort/FUTURE_PLAN.md)**
 
-### 10.1 System Architecture
-```mermaid
-sequenceDiagram
-    autonumber
-    actor User as Web Viewer
-    participant Web as DramaShort Web App (/account)
-    participant API as /api/auth/telegram/callback
-    participant TG as Telegram Bot (@DramaShortBot)
-    participant DB as User Supabase DB (profiles)
-
-    User->>Web: Clicks "Connect Telegram"
-    Web->>TG: Redirects: https://t.me/DramaShortBot?start=auth_[user_jwt]
-    User->>TG: Taps "Start" in Telegram
-    TG->>API: Webhook: verifies user token + Telegram user metadata
-    API->>API: HMAC-SHA256 signature verification with BOT_TOKEN
-    API->>DB: Updates profiles.telegram_user_id & profiles.telegram_username
-    API->>TG: Bot replies "Account linked successfully! 🎬"
-    Web->>User: Account page displays connected Telegram username
-```
-
-### 10.2 Technical Implementation Roadmap
-1. **Telegram Bot Setup**:
-   - Register bot with [@BotFather](https://t.me/BotFather) to acquire `TELEGRAM_BOT_NAME` and `TELEGRAM_BOT_TOKEN`.
-   - Configure `/setdomain` to whitelist the DramaShort production URL for Telegram Login Widget support.
-2. **Database Schema Extension**:
-   - Add nullable fields to User DB `profiles` table:
-     ```sql
-     ALTER TABLE public.profiles 
-     ADD COLUMN IF NOT EXISTS telegram_user_id text UNIQUE,
-     ADD COLUMN IF NOT EXISTS telegram_username text,
-     ADD COLUMN IF NOT EXISTS telegram_connected_at timestamptz;
-     ```
-3. **Cryptographic Validation**:
-   - Verify Telegram data integrity using SHA-256 HMAC of data-check-string against secret key derived from bot token:
-     ```typescript
-     const secret = crypto.createHash("sha256").update(BOT_TOKEN).digest();
-     const hmac = crypto.createHmac("sha256", secret).update(dataCheckString).digest("hex");
-     const isValid = hmac === hash;
-     ```
-4. **Telegram Mini App / WebApp Support**:
-   - Expand into a full Telegram Mini App (`window.Telegram.WebApp`) permitting seamless playback and drama discovery directly inside Telegram desktop and mobile clients.
-
-
+### Key Highlights Documented in `FUTURE_PLAN.md`:
+1. **End-to-End Implementation Steps**:
+   - Bot registration and platform setup via @BotFather (`/newbot`, `/setdomain`, `/setcommands`, `/newapp`).
+   - User database migration script (`public.profiles`, `public.telegram_link_tokens`, `public.telegram_subscriptions`).
+   - Cryptographic verification engine for Telegram Login Widget and Telegram Mini App (TMA) `initData`.
+   - Next.js API route handlers (`/api/telegram/link-token`, `/api/telegram/webhook`, `/api/auth/telegram/callback`, `/api/telegram/notify-episode`).
+   - Frontend components & hooks (`TelegramLoginButton`, `useTelegramWebApp`, interactive `/account` card).
+2. **Comprehensive Regression Prevention & Impact Analysis**:
+   - **Authentication Collisions**: Strategy for account linking, email-less Telegram users, and orphaned unlinking.
+   - **Dual-Database Integrity**: Strict isolation ensuring Telegram data lives solely in the User DB, leaving Content DB decoupled.
+   - **Watch History & Favorites Merging**: Guest localStorage migration to Supabase without loss or duplication.
+   - **Content Security Policy (CSP)**: Safe whitelisting for `telegram.org` and `oauth.telegram.org`.
+   - **Rate Limits & Webhooks**: Handling Telegram's 30 msg/sec global limit and 2-second webhook acknowledgment.
+   - **Zero-Dependency Fallback**: Graceful degradation when `TELEGRAM_BOT_TOKEN` is unset in development or non-Telegram environments.
