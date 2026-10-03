@@ -3,7 +3,7 @@ import AdminSidebar from "@/components/admin/AdminSidebar";
 
 // Mock overview numbers — stands in for a real "GET /admin/stats" response.
 const stats = [
-  { label: "Total Titles", value: "312", Icon: Clapperboard },
+  { label: "Total Dramas", value: "312", Icon: Clapperboard },
   { label: "Total Users", value: "48,204", Icon: Users },
   { label: "Views This Week", value: "6.2M", Icon: Eye },
   { label: "Active Channels", value: "4", Icon: Tv },
@@ -37,7 +37,7 @@ export default function AdminDashboardPage() {
 
         <div className="bg-surface border border-border rounded-lg shadow-sm p-8 text-center">
           <p className="text-sm text-text-muted">
-            Title management, channel management, and the other sections in the
+            Drama management, channel management, and the other sections in the
             sidebar aren&apos;t built yet — this is just the entry point into the admin area.
           </p>
         </div>

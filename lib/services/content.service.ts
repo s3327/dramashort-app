@@ -619,3 +619,57 @@ export async function updateDrama(
 /** Domain entity alias for updateDrama */
 export const updateTitle = updateDrama;
 
+export interface CreateDramaPayload {
+  title: string;
+  synopsis?: string;
+  genre?: string;
+  tags?: string[] | string;
+  channel?: string;
+  channel_name?: string;
+  totalEpisodes?: number;
+  total_episodes?: number;
+  poster?: string;
+  poster_url?: string;
+  status?: TitleStatus;
+}
+
+/**
+ * Creates a new Drama in the catalog via the administrative API.
+ */
+export async function createDrama(
+  payload: CreateDramaPayload
+): Promise<{ success: boolean; data?: Drama; error?: string }> {
+  try {
+    const res = await fetch("/api/admin/dramas", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+    });
+
+    const data = await res.json();
+    if (!res.ok || !data.success) {
+      return {
+        success: false,
+        error: data.error || `Creation failed with HTTP ${res.status}`,
+      };
+    }
+
+    return {
+      success: true,
+      data: data.data,
+    };
+  } catch (err: unknown) {
+    const msg =
+      err instanceof Error ? err.message : "Network error while creating drama";
+    return {
+      success: false,
+      error: msg,
+    };
+  }
+}
+
+/** Domain entity alias for createDrama */
+export const createTitle = createDrama;
+

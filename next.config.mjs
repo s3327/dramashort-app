@@ -29,6 +29,16 @@ const nextConfig = {
         destination: "/new-release",
         permanent: true,
       },
+      {
+        source: "/admin/titles",
+        destination: "/admin/dramas",
+        permanent: true,
+      },
+      {
+        source: "/admin/titles/:id/edit",
+        destination: "/admin/dramas/:id/edit",
+        permanent: true,
+      },
     ];
   },
 };

@@ -32,7 +32,7 @@ This plan outlines the specific fixes, cleanup tasks, and enhancements needed to
 | **Phase 6** | 🟡 Medium | M4: Replace `catch (err: any)` with typed error handling in `AuthContext` | ✅ Done | Strict TypeScript compliance and type-safe `err instanceof Error` handling |
 | **Phase 6** | 🟡 Medium | M5: Load admin drama edit data from Supabase content DB | ✅ Done | Delivered in H3: Asynchronously hydrates drama on mount via getDramaById |
 | **Phase 6** | 🟡 Medium | M6: Wire Telegram Connect integration in `app/account/page.tsx` | 📋 Deferred | Deferred to Future Plan per user instruction; UI feedback configured |
-| **Phase 6** | 🟡 Medium | M7: Standardize Admin nomenclature: "Dramas" & "Add Drama" in UI & routes | ⏳ Next | Eliminates confusion between entity (Drama) and field (title) |
+| **Phase 6** | 🟡 Medium | M7: Standardize Admin nomenclature: "Dramas" & "Add Drama" in UI & routes | ✅ Done | Eliminates confusion between entity (Drama) and field (title) |
 | **Phase 7** | 🟢 Low | L1: Reusable custom hooks (`useDebounce`, `useRequireAuth`, `useMediaQuery`) | ⏳ Planned | DRY code, standardized debounce, and cleaner component logic |
 | **Phase 7** | 🟢 Low | L2: Add shimmer/skeleton loading states for async data | ⏳ Planned | Smooth loading UX; prevents layout shifts and mock flashes |
 | **Phase 7** | 🟢 Low | L3: Implement route-segment error boundaries (`error.tsx`) | ⏳ Planned | Graceful degradation and user-friendly retry buttons |
@@ -580,16 +580,18 @@ To eliminate ambiguity across product requirements, admin CMS, and codebase inte
 ---
 
 ### Task 6.7: Standardize Admin Nomenclature & Route Aliases ('Dramas' / 'Add Drama') (M7)
-* **Target Files**: `components/admin/AdminSidebar.tsx`, `app/admin/titles/page.tsx`, `next.config.mjs`
-* **Problem**: Admin UI and code historically interchanged "Titles" and "Dramas", creating ambiguity regarding whether the action is "Add Title" or "Add Drama".
-* **Implementation Plan**:
-  1. In `AdminSidebar.tsx`, update menu item label from `"Titles"` to `"Dramas"`, pointing to `/admin/dramas`.
-  2. Set up route alias in `next.config.mjs` rewriting or redirecting `/admin/titles` to `/admin/dramas`.
-  3. Update page heading in `app/admin/titles/page.tsx` to `"Dramas"` and add a prominent `"Add Drama"` CTA button.
-  4. Clicking `"Add Drama"` opens a creation flow with inputs for: `title`, `desc`, `genre`, `taxonomy` (`tags`), and `channel`.
+* **Status**: ✅ Completed
+* **Target Files**: `components/admin/AdminSidebar.tsx`, `components/SidebarNavList.tsx`, `app/admin/titles/page.tsx`, `app/admin/titles/[id]/edit/page.tsx`, `app/admin/dashboard/page.tsx`, `app/api/admin/dramas/route.ts`, `lib/services/content.service.ts`, `next.config.mjs`
+* **Delivered Changes**:
+  1. Updated `AdminSidebar.tsx` navigation item to `"Dramas"` pointing directly to `/admin/dramas`.
+  2. Enhanced `SidebarNavList.tsx` active path resolution to keep parent navigation highlighted when viewing sub-routes (e.g. `/admin/dramas/[id]/edit`).
+  3. Configured route redirects in `next.config.mjs` routing `/admin/titles` &rarr; `/admin/dramas` and `/admin/titles/:id/edit` &rarr; `/admin/dramas/:id/edit`.
+  4. Updated page headers, descriptions, search placeholders, and empty states in `app/admin/titles/page.tsx` and `app/admin/dashboard/page.tsx` to standardized "Dramas" nomenclature.
+  5. Implemented `createDrama` administrative service in `lib/services/content.service.ts` and `POST /api/admin/dramas` endpoint with title slugification and channel affiliation.
+  6. Added prominent `"Add Drama"` CTA button and rich modal dialog with fields for title, synopsis, genre, taxonomy tags, channel affiliation, episode count, status, and poster URL.
 * **Verification**:
-  - Admin sidebar clearly displays "Dramas".
-  - Navigating to `/admin/dramas` renders the drama listing with the "Add Drama" action button.
+  - `npx tsc --noEmit` compiles cleanly with zero type errors.
+  - Production build verifies that all route aliases and pages render accurately.
 
 ---
 

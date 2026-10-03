@@ -139,7 +139,7 @@ export default function AdminTitleEditPage({
 
       // Seamless redirect back to admin list after verified confirmation
       setTimeout(() => {
-        router.push("/admin/titles");
+        router.push("/admin/dramas");
       }, 800);
     } else {
       setErrorMessage(
@@ -189,7 +189,7 @@ export default function AdminTitleEditPage({
           <Breadcrumbs
             items={[
               { label: "Dashboard", href: "/admin/dashboard" },
-              { label: "Titles", href: "/admin/titles" },
+              { label: "Dramas", href: "/admin/dramas" },
               { label: "Not Found" },
             ]}
           />
@@ -199,11 +199,11 @@ export default function AdminTitleEditPage({
               The drama you are trying to edit does not exist or has been removed from the catalog.
             </p>
             <Link
-              href="/admin/titles"
+              href="/admin/dramas"
               className="inline-flex items-center gap-2 rounded-md bg-primary text-text-light px-4 py-2 text-sm font-semibold hover:bg-primary-hover transition-colors"
             >
               <ArrowLeft size={16} />
-              Back to Titles
+              Back to Dramas
             </Link>
           </div>
         </main>
@@ -219,7 +219,7 @@ export default function AdminTitleEditPage({
         <Breadcrumbs
           items={[
             { label: "Dashboard", href: "/admin/dashboard" },
-            { label: "Titles", href: "/admin/titles" },
+            { label: "Dramas", href: "/admin/dramas" },
             { label: `Edit: ${drama.title}` },
           ]}
         />
@@ -235,7 +235,7 @@ export default function AdminTitleEditPage({
 
           <div className="flex items-center gap-2.5">
             <Link
-              href="/admin/titles"
+              href="/admin/dramas"
               className="inline-flex items-center gap-1.5 rounded-md border border-border bg-surface px-4 py-2 text-sm font-semibold text-text hover:bg-surface-raised transition-colors"
             >
               Cancel

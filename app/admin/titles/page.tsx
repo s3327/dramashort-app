@@ -3,12 +3,15 @@
 import { useEffect, useMemo, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { Search, List, LayoutGrid, Pencil } from "lucide-react";
+import { Search, List, LayoutGrid, Pencil, Plus, Loader2 } from "lucide-react";
 import AdminSidebar from "@/components/admin/AdminSidebar";
 import Pagination from "@/components/Pagination";
+import Modal from "@/components/Modal";
+import Toast from "@/components/Toast";
+import { useToast } from "@/hooks/useToast";
 import { channels as initialChannels, type Channel } from "@/data/channels.mock";
 import { titles as adminTitles, type TitleStatus, type Title } from "@/data/titles.mock";
-import { getAdminDramas, getChannels } from "@/lib/services/content.service";
+import { getAdminDramas, getChannels, createDrama } from "@/lib/services/content.service";
 
 const ALL_CHANNELS = "All Channels";
 const ROWS_PER_PAGE_OPTIONS = [20, 50, 75, 100, 250];
@@ -29,6 +32,21 @@ export default function AdminTitlesPage() {
   const [rowsPerPage, setRowsPerPage] = useState(20);
   const [page, setPage] = useState(1);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+
+  const { message: toastMessage, show: showToast } = useToast();
+  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [isSubmittingDrama, setIsSubmittingDrama] = useState(false);
+  const [dramaFormError, setDramaFormError] = useState("");
+  const [newDrama, setNewDrama] = useState({
+    title: "",
+    synopsis: "",
+    genre: "Romance",
+    tags: "",
+    channel: "",
+    totalEpisodes: 40,
+    poster: "",
+    status: "Draft" as TitleStatus,
+  });
 
   // Dynamic catalog hydration from Supabase Content DB
   useEffect(() => {
@@ -101,15 +119,75 @@ export default function AdminTitlesPage() {
     });
   };
 
+  const handleCreateDrama = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newDrama.title.trim()) {
+      setDramaFormError("Drama title cannot be empty");
+      return;
+    }
+
+    setIsSubmittingDrama(true);
+    setDramaFormError("");
+
+    const chosenChannel =
+      newDrama.channel || channelList[0]?.name || "DramaShort Originals";
+
+    const res = await createDrama({
+      title: newDrama.title.trim(),
+      synopsis: newDrama.synopsis.trim() || undefined,
+      genre: newDrama.genre,
+      tags: newDrama.tags,
+      channel: chosenChannel,
+      totalEpisodes: Number(newDrama.totalEpisodes) || 40,
+      poster: newDrama.poster.trim() || undefined,
+      status: newDrama.status,
+    });
+
+    setIsSubmittingDrama(false);
+
+    if (res.success && res.data) {
+      setDramas((prev) => [res.data!, ...prev]);
+      setIsAddModalOpen(false);
+      setNewDrama({
+        title: "",
+        synopsis: "",
+        genre: "Romance",
+        tags: "",
+        channel: channelList[0]?.name || "",
+        totalEpisodes: 40,
+        poster: "",
+        status: "Draft",
+      });
+      showToast("Drama created successfully");
+    } else {
+      setDramaFormError(res.error || "Failed to create drama");
+    }
+  };
+
   return (
     <div data-theme="light" className="min-h-screen bg-bg text-text flex">
       <AdminSidebar />
 
       <main className="flex-1 px-6 sm:px-8 py-8 max-w-[1200px]">
-        <h1 className="font-display font-bold text-2xl mb-1">Titles</h1>
-        <p className="text-sm text-text-muted mb-6">
-          All titles in the database.
-        </p>
+        <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
+          <div>
+            <h1 className="font-display font-bold text-2xl mb-1">Dramas</h1>
+            <p className="text-sm text-text-muted">
+              All dramas in the catalog.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              setDramaFormError("");
+              setIsAddModalOpen(true);
+            }}
+            className="flex items-center gap-1.5 rounded-full bg-btn-primary hover:bg-btn-primary-hover text-btn-primary-text font-semibold text-sm px-4 py-2 shadow-sm transition-colors cursor-pointer"
+          >
+            <Plus size={16} strokeWidth={2.5} />
+            Add Drama
+          </button>
+        </div>
 
         <form onSubmit={handleSearch} className="flex flex-wrap items-center gap-3 mb-6">
           <div className="relative flex-1 min-w-[220px]">
@@ -122,7 +200,7 @@ export default function AdminTitlesPage() {
               type="text"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search titles..."
+              placeholder="Search dramas..."
               className="w-full rounded-md border border-border bg-surface pl-9 pr-3.5 py-2.5 text-sm text-text placeholder:text-text-muted/60 focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-colors"
             />
           </div>
@@ -184,7 +262,7 @@ export default function AdminTitlesPage() {
           <p className="text-xs text-text-muted">
             {selectedIds.size > 0
               ? `${selectedIds.size} selected`
-              : `${filtered.length} title${filtered.length === 1 ? "" : "s"}`}
+              : `${filtered.length} drama${filtered.length === 1 ? "" : "s"}`}
           </p>
           <div className="flex items-center gap-2">
             <label htmlFor="rowsPerPage" className="text-xs text-text-muted">
@@ -207,7 +285,7 @@ export default function AdminTitlesPage() {
 
         {filtered.length === 0 ? (
           <div className="bg-surface border border-border rounded-lg shadow-sm p-12 text-center">
-            <p className="text-sm text-text-muted">No titles match your search or filters.</p>
+            <p className="text-sm text-text-muted">No dramas match your search or filters.</p>
           </div>
         ) : view === "list" ? (
           <div className="bg-surface border border-border rounded-lg shadow-sm overflow-hidden">
@@ -245,7 +323,7 @@ export default function AdminTitlesPage() {
                     </td>
                     <td className="px-3 py-3">
                       <Link
-                        href={`/admin/titles/${t.id}/edit`}
+                        href={`/admin/dramas/${t.id}/edit`}
                         className="font-semibold text-text hover:text-primary transition-colors line-clamp-1"
                       >
                         {t.title}
@@ -263,7 +341,7 @@ export default function AdminTitlesPage() {
                     </td>
                     <td className="px-3 py-3 text-right">
                       <Link
-                        href={`/admin/titles/${t.id}/edit`}
+                        href={`/admin/dramas/${t.id}/edit`}
                         aria-label={`Edit ${t.title}`}
                         className="inline-flex p-1.5 rounded-md text-text-muted hover:text-primary hover:bg-surface transition-colors"
                       >
@@ -298,7 +376,7 @@ export default function AdminTitlesPage() {
                     className="absolute top-2 left-2 h-4 w-4 accent-primary"
                   />
                   <Link
-                    href={`/admin/titles/${t.id}/edit`}
+                    href={`/admin/dramas/${t.id}/edit`}
                     aria-label={`Edit ${t.title}`}
                     className="absolute top-2 right-2 flex h-7 w-7 items-center justify-center rounded-full bg-black/60 text-text-light hover:bg-black/75 transition-colors"
                   >
@@ -307,7 +385,7 @@ export default function AdminTitlesPage() {
                 </div>
                 <div className="p-3">
                   <Link
-                    href={`/admin/titles/${t.id}/edit`}
+                    href={`/admin/dramas/${t.id}/edit`}
                     className="text-sm font-semibold text-text hover:text-primary transition-colors line-clamp-2 leading-snug"
                   >
                     {t.title}
@@ -327,6 +405,178 @@ export default function AdminTitlesPage() {
         )}
 
         <Pagination page={page} totalPages={totalPages} onPageChange={setPage} className="mt-6" />
+
+        {/* Add Drama Creation Modal */}
+        <Modal
+          open={isAddModalOpen}
+          onClose={() => setIsAddModalOpen(false)}
+          title="Add New Drama"
+        >
+          <form onSubmit={handleCreateDrama} className="space-y-4">
+            <div>
+              <label htmlFor="drama-title" className="block text-xs font-semibold text-text mb-1">
+                Drama Title <span className="text-danger">*</span>
+              </label>
+              <input
+                id="drama-title"
+                type="text"
+                required
+                value={newDrama.title}
+                onChange={(e) => setNewDrama({ ...newDrama, title: e.target.value })}
+                placeholder="e.g. My Secret Billionaire Husband"
+                className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm text-text placeholder:text-text-muted/60 focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-colors"
+              />
+            </div>
+
+            <div>
+              <label htmlFor="drama-synopsis" className="block text-xs font-semibold text-text mb-1">
+                Synopsis / Description
+              </label>
+              <textarea
+                id="drama-synopsis"
+                rows={3}
+                value={newDrama.synopsis}
+                onChange={(e) => setNewDrama({ ...newDrama, synopsis: e.target.value })}
+                placeholder="Brief synopsis of the drama storyline..."
+                className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm text-text placeholder:text-text-muted/60 focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-colors resize-none"
+              />
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label htmlFor="drama-genre" className="block text-xs font-semibold text-text mb-1">
+                  Genre
+                </label>
+                <select
+                  id="drama-genre"
+                  value={newDrama.genre}
+                  onChange={(e) => setNewDrama({ ...newDrama, genre: e.target.value })}
+                  className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm text-text focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-colors"
+                >
+                  <option value="Romance">Romance</option>
+                  <option value="CEO">CEO</option>
+                  <option value="Revenge">Revenge</option>
+                  <option value="Werewolf">Werewolf</option>
+                  <option value="Urban">Urban</option>
+                  <option value="Fantasy">Fantasy</option>
+                  <option value="Drama">Drama</option>
+                  <option value="Action">Action</option>
+                  <option value="Thriller">Thriller</option>
+                  <option value="Comedy">Comedy</option>
+                </select>
+              </div>
+
+              <div>
+                <label htmlFor="drama-channel" className="block text-xs font-semibold text-text mb-1">
+                  Channel
+                </label>
+                <select
+                  id="drama-channel"
+                  value={newDrama.channel || (channelList[0]?.name || "")}
+                  onChange={(e) => setNewDrama({ ...newDrama, channel: e.target.value })}
+                  className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm text-text focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-colors"
+                >
+                  {channelList.map((c) => (
+                    <option key={c.slug} value={c.name}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div>
+              <label htmlFor="drama-tags" className="block text-xs font-semibold text-text mb-1">
+                Taxonomy / Tags (comma separated)
+              </label>
+              <input
+                id="drama-tags"
+                type="text"
+                value={newDrama.tags}
+                onChange={(e) => setNewDrama({ ...newDrama, tags: e.target.value })}
+                placeholder="Billionaire, Secret Identity, Love Triangle"
+                className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm text-text placeholder:text-text-muted/60 focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-colors"
+              />
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label htmlFor="drama-episodes" className="block text-xs font-semibold text-text mb-1">
+                  Total Episodes
+                </label>
+                <input
+                  id="drama-episodes"
+                  type="number"
+                  min={1}
+                  value={newDrama.totalEpisodes}
+                  onChange={(e) => setNewDrama({ ...newDrama, totalEpisodes: Number(e.target.value) || 1 })}
+                  className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm text-text focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-colors"
+                />
+              </div>
+
+              <div>
+                <label htmlFor="drama-status" className="block text-xs font-semibold text-text mb-1">
+                  Status
+                </label>
+                <select
+                  id="drama-status"
+                  value={newDrama.status}
+                  onChange={(e) => setNewDrama({ ...newDrama, status: e.target.value as TitleStatus })}
+                  className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm text-text focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-colors"
+                >
+                  <option value="Draft">Draft</option>
+                  <option value="Published">Published</option>
+                  <option value="Scheduled">Scheduled</option>
+                  <option value="Archived">Archived</option>
+                </select>
+              </div>
+            </div>
+
+            <div>
+              <label htmlFor="drama-poster" className="block text-xs font-semibold text-text mb-1">
+                Poster Image URL (optional)
+              </label>
+              <input
+                id="drama-poster"
+                type="url"
+                value={newDrama.poster}
+                onChange={(e) => setNewDrama({ ...newDrama, poster: e.target.value })}
+                placeholder="https://images.unsplash.com/... or Supabase storage URL"
+                className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm text-text placeholder:text-text-muted/60 focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-colors"
+              />
+            </div>
+
+            {dramaFormError && (
+              <p className="text-xs font-semibold text-danger">{dramaFormError}</p>
+            )}
+
+            <div className="flex items-center justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setIsAddModalOpen(false)}
+                className="rounded-md border border-border bg-surface px-4 py-2 text-sm font-semibold text-text hover:bg-surface-raised transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={isSubmittingDrama}
+                className="rounded-md bg-btn-primary hover:bg-btn-primary-hover disabled:opacity-50 text-btn-primary-text font-semibold text-sm px-4 py-2 shadow-sm transition-colors flex items-center justify-center gap-2 cursor-pointer"
+              >
+                {isSubmittingDrama ? (
+                  <>
+                    <Loader2 size={16} className="animate-spin" />
+                    <span>Creating...</span>
+                  </>
+                ) : (
+                  "Create Drama"
+                )}
+              </button>
+            </div>
+          </form>
+        </Modal>
+
+        <Toast message={toastMessage} />
       </main>
     </div>
   );

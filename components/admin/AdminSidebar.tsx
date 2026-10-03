@@ -20,7 +20,7 @@ import { useAdminAuth } from "@/contexts/AdminAuthContext";
 const adminNavItems = [
   { label: "Dashboard", href: "/admin/dashboard", Icon: LayoutDashboard },
   { label: "Import", href: "/admin/import", Icon: Upload },
-  { label: "Titles", href: "/admin/titles", Icon: Clapperboard },
+  { label: "Dramas", href: "/admin/dramas", Icon: Clapperboard },
   { label: "Channels", href: "/admin/channels", Icon: Tv },
   { label: "Genres", href: "/admin/genres", Icon: Tags },
   { label: "Users", href: "/admin/users", Icon: Users },

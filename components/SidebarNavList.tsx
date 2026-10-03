@@ -24,7 +24,12 @@ export default function SidebarNavList({
   return (
     <>
       {items.map(({ label, href, Icon }) => {
-        const active = pathname === href;
+        const active =
+          pathname === href ||
+          (href !== "/admin" &&
+            href !== "/admin/dashboard" &&
+            href !== "/" &&
+            pathname.startsWith(href + "/"));
         return (
           <Link
             key={href}
