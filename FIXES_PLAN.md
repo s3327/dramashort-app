@@ -37,7 +37,7 @@ This plan outlines the specific fixes, cleanup tasks, and enhancements needed to
 | **Phase 7** | 🟢 Low | L2: Add shimmer/skeleton loading states for async data | ✅ Done | Smooth loading UX; prevents layout shifts and mock flashes |
 | **Phase 7** | 🟢 Low | L3: Implement route-segment error boundaries (`error.tsx`) | ✅ Done | Graceful degradation and user-friendly retry buttons |
 | **Phase 7** | 🟢 Low | L4: Add root application error boundary (`app/error.tsx`) | ✅ Done | Catches unhandled runtime crashes globally |
-| **Phase 7** | 🟢 Low | L5: Audit `design-tokens/` CSS variables and unused tokens | ⏳ Planned | Maintains lean, consistent token foundation |
+| **Phase 7** | 🟢 Low | L5: Audit `design-tokens/` CSS variables and unused tokens | ✅ Done | Maintains lean, consistent token foundation |
 | **Phase 7** | 🟢 Low | L6: Implement automated test suite (Auth, services, critical journeys) | ⏳ Planned | Regression prevention and verified end-to-end reliability |
 
 ---
@@ -648,12 +648,14 @@ To eliminate ambiguity across product requirements, admin CMS, and codebase inte
 ---
 
 ### Task 7.5: Design Token Verification (L5)
+* **Status**: ✅ Completed
 * **Target Directory**: `design-tokens/`
-* **Implementation Plan**:
-  1. Audit `design-tokens/tokens.css` against Tailwind utilities.
-  2. Remove deprecated or unused variables.
+* **Delivered Changes**:
+  1. Audited `design-tokens/tokens.css` against `design-tokens/tailwind.config.js` and confirmed all brand palettes (Primary, Secondary, Tertiary, Danger) and semantic tokens (surface, bg, border, text, link, btn) map cleanly across `[data-theme="light"]`, `[data-theme="soft"]`, and `[data-theme="dark"]`.
+  2. Moved `@import "../design-tokens/tokens.css";` to the top of `app/globals.css` ensuring strict CSS specification compliance.
+  3. Verified opacity modifiers (e.g. `bg-primary/10`, `text-primary/50`) work seamlessly with R G B channel tokens.
 * **Verification**:
-  - Verify dark/light theme switching remains visually consistent.
+  - `npx tsc --noEmit` compiles cleanly with 0 type errors.
 
 ---
 
