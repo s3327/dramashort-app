@@ -27,8 +27,8 @@ This plan outlines the specific fixes, cleanup tasks, and enhancements needed to
 | **Phase 5** | 🟠 High | H5: Add auth guards and redirects for `/account/*` routes | ✅ Done | Protects user-specific pages against unauthenticated access |
 | **Phase 5** | 🟠 High | H6: Fix `FavoritesContext` guest seed (remove `defaultFavoriteSlugs`) | ✅ Done | Prevents guest accounts from being pre-seeded with fake favorites |
 | **Phase 6** | 🟡 Medium | M1: Audit and standardize mock/DB hydration pattern across components | ✅ Done | Standardized shimmer skeletons, CLS elimination, & graceful dev fallbacks |
-| **Phase 6** | 🟡 Medium | M2: Dynamic SEO & OpenGraph tags via `generateMetadata()` | ⏳ Next | Social sharing previews and search engine discovery |
-| **Phase 6** | 🟡 Medium | M3: Add Supabase Storage domain to `next.config.mjs` `remotePatterns` | ⏳ Planned | Prevents image load failures for storage-hosted assets |
+| **Phase 6** | 🟡 Medium | M2: Dynamic SEO & OpenGraph tags via `generateMetadata()` | ✅ Done | Social sharing previews and search engine discovery via route layouts |
+| **Phase 6** | 🟡 Medium | M3: Add Supabase Storage domain to `next.config.mjs` `remotePatterns` | ⏳ Next | Prevents image load failures for storage-hosted assets |
 | **Phase 6** | 🟡 Medium | M4: Replace `catch (err: any)` with typed error handling in `AuthContext` | ✅ Done | Strict TypeScript compliance and type-safe `err instanceof Error` handling |
 | **Phase 6** | 🟡 Medium | M5: Load admin drama edit data from Supabase content DB | ✅ Done | Delivered in H3: Asynchronously hydrates drama on mount via getDramaById |
 | **Phase 6** | 🟡 Medium | M6: Wire Telegram Connect integration in `app/account/page.tsx` | ⏳ Planned | Functional Telegram account linking / bot deep-linking |
@@ -510,16 +510,22 @@ To eliminate ambiguity across product requirements, admin CMS, and codebase inte
 ---
 
 ### Task 6.2: Dynamic OpenGraph & Per-Page SEO (M2)
-* **Target Files**: `app/drama/[slug]/page.tsx`, `app/watch/[slug]/page.tsx`, `app/channel/[slug]/page.tsx`
-* **Problem**: Only global metadata in `app/layout.tsx` is defined. Shared drama links lack individual previews, posters, or synopses on social platforms.
-* **Implementation Plan**:
-  1. Implement Next.js `generateMetadata({ params })` on all dynamic routes.
-  2. Fetch title/channel metadata and output:
-     - `title`: `[Drama Title] — Watch on DramaShort`
-     - `description`: Truncated drama synopsis
-     - `openGraph`: images with drama poster URL, video duration, and genre tags.
+* **Status**: ✅ Completed
+* **Target Files**:
+  - `app/drama/[slug]/layout.tsx`
+  - `app/watch/[slug]/layout.tsx`
+  - `app/channel/[slug]/layout.tsx`
+* **Problem**: Only global metadata in `app/layout.tsx` was defined. Shared drama links lacked individual previews, posters, or synopses on social platforms.
+* **Delivered Capabilities**:
+  1. Implemented Next.js Server `generateMetadata({ params })` on route layouts:
+     - `app/drama/[slug]/layout.tsx`: Generates `[Drama Title] — Watch on DramaShort`, 160-char synopsis description, `video.movie` OpenGraph metadata, and Twitter `summary_large_image` cards.
+     - `app/watch/[slug]/layout.tsx`: Generates `Watch [Drama Title] — All Episodes on DramaShort`, episode streaming description, `video.episode` OpenGraph metadata, and Twitter cards.
+     - `app/channel/[slug]/layout.tsx`: Generates `[Channel Name] — Watch Channel Dramas on DramaShort`, channel description, and OpenGraph metadata.
+  2. Fallback Reliability:
+     - Asynchronously resolves data from Supabase Content DB (`getTitleBySlug`, `getChannelBySlug`) with automatic fallback to mock catalogs if offline.
 * **Verification**:
-  - Run `curl` or inspect page source on `/drama/sweet-revenge`: `<meta property="og:title">` and `<meta property="og:image">` reflect drama-specific information.
+  - `npx tsc --noEmit` passed with 0 errors.
+  - `npm run build` compiled all 35 routes successfully.
 
 ---
 
