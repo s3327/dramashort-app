@@ -54,12 +54,15 @@ async function main() {
     console.log(`👤 User exists (ID: ${existingUser.id}). Promoting to admin...`);
     userId = existingUser.id;
 
+    const sanitizedUserMeta = { ...(existingUser.user_metadata || {}) };
+    delete sanitizedUserMeta.role;
+
     const { error: updateError } = await supabase.auth.admin.updateUserById(userId, {
       password,
       email_confirm: true,
       user_metadata: {
-        ...existingUser.user_metadata,
-        full_name: existingUser.user_metadata?.full_name || "DramaShort Administrator",
+        ...sanitizedUserMeta,
+        full_name: sanitizedUserMeta.full_name || "DramaShort Administrator",
       },
       app_metadata: {
         ...existingUser.app_metadata,

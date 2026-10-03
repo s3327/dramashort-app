@@ -297,3 +297,31 @@
 * **Verification**:
   - `npm test`: 19 / 19 tests pass (0 failures).
   - `npx tsc --noEmit`: 0 type errors.
+---
+
+## [2026-10-04] Task 10.1 Safety & Production Safeguards: Role Backfill Engine
+* **Milestone**: Phase 10 (Security Hardening) — Task 10.1 Production Safeguards
+* **Goal**: Harden `scripts/backfill-admin-roles.ts` with strict production safety gates, typo protection, confirmed-email enforcement, role preservation, and batch performance optimizations.
+* **Implementation Steps Taken**:
+  1. Guarded Live Apply:
+     - Enforced safety gate requiring `--promote <emails>`, `--revoke <emails>`, or `--revoke-all-unconfirmed` when running with `--apply`. Prevents catastrophic admin wipeouts if flags are omitted.
+  2. Preserved Existing Legitimate Roles:
+     - Accounts possessing authoritative `app_metadata.role = 'admin'` are preserved as admins by default unless explicitly revoked via `--revoke`.
+     - Accounts possessing `app_metadata.role = 'editor'` maintain their editor role and are not stripped.
+  3. Typo Protection & Email Matching:
+     - Tracks matched promote/revoke emails against auth accounts. If any `--promote` email does not exist in the database, halts `--apply` with error to prevent unintended lockouts due to typos.
+  4. Verified Identity Gate:
+     - Promotion requires `email_confirmed_at` to be populated. Rejects unverified email accounts from elevation.
+  5. Performance Optimization:
+     - Replaced per-user profile queries with a single batch query (`SELECT id, role FROM profiles WHERE role = 'admin'`), eliminating N+1 round-trips.
+  6. Checked Profile Updates:
+     - Profile table mutations explicitly check for returned errors and log failures.
+  7. Sanitized Existing User Promotion:
+     - In `scripts/create-admin.ts`, explicitly removed `role` from `existingUser.user_metadata` prior to spread/update.
+* **Key File Diffs**:
+  - `scripts/backfill-admin-roles.ts`: Upgraded with typo protection, email confirmation check, role preservation, batch profile query, and checked error returns.
+  - `scripts/create-admin.ts`: Sanitized `user_metadata` spread.
+* **Verification**:
+  - Executed `npx tsx scripts/backfill-admin-roles.ts` (dry run): successfully scanned real accounts, identified legitimate admins (`staff@dramashort.com`, `admin@dramashort.com`), verified email confirmations, and preserved existing roles with 0 errors.
+  - `npm test`: 19 / 19 tests pass (0 failures).
+  - `npx tsc --noEmit`: 0 compilation errors.
