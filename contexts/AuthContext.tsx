@@ -109,8 +109,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         await fetchProfile(data.user.id);
       }
       return { error: null };
-    } catch (err: any) {
-      return { error: err?.message || "An unexpected error occurred during login." };
+    } catch (err: unknown) {
+      const message =
+        err instanceof Error ? err.message : "An unexpected error occurred during login.";
+      return { error: message };
     }
   };
 
@@ -131,8 +133,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       return { error: null };
-    } catch (err: any) {
-      return { error: err?.message || "An unexpected error occurred during signup." };
+    } catch (err: unknown) {
+      const message =
+        err instanceof Error ? err.message : "An unexpected error occurred during signup.";
+      return { error: message };
     }
   };
 
