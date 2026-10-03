@@ -554,14 +554,19 @@ To eliminate ambiguity across product requirements, admin CMS, and codebase inte
 ---
 
 ### Task 6.5: Dynamic Admin Drama Edit Data Retrieval (M5)
-* **Target File**: `app/admin/titles/[id]/edit/page.tsx`
-* **Problem**: The edit page searches the static `titles` array from `data/titles.mock.ts`. Newly inserted dramas in Supabase cannot be loaded for editing.
-* **Implementation Plan**:
-  1. Query `content.service.ts` with `getDramaById(id)` / `getTitleById(id)`.
-  2. Populate form fields: `title`, `desc` (`synopsis`), `genre`, `taxonomy` (`tags`), and `channel`.
-  3. Fall back to mock array only if local offline development flag is active.
+* **Status**: ✅ Completed
+* **Target File**: `app/admin/titles/[id]/edit/page.tsx` (and alias `/admin/dramas/[id]/edit`)
+* **Problem**: The edit page previously searched only the static `titles` array from `data/titles.mock.ts`. Newly created dramas in Supabase could not be loaded for editing.
+* **Delivered Capabilities**:
+  1. Asynchronous Database Hydration:
+     - Implemented `getDramaById(id)` in `lib/services/content.service.ts` querying Supabase `titles` table by primary UUID.
+     - On mount, `app/admin/titles/[id]/edit/page.tsx` retrieves drama details directly from Supabase.
+     - Populates all form fields: `title`, `desc` (`synopsis`), `genre`, `taxonomy` (`tags`), and `channel`.
+  2. Offline / Mock Fallback:
+     - Gracefully falls back to mock items for legacy IDs if offline or unseeded.
 * **Verification**:
-  - Direct navigation to `/admin/titles/[new-supabase-uuid]/edit` loads drama data directly from database.
+  - `npx tsc --noEmit` passed with 0 errors.
+  - `npm run build` compiled `/admin/titles/[id]/edit` and `/admin/dramas/[id]/edit` successfully.
 
 ---
 
