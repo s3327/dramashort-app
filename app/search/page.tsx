@@ -7,6 +7,7 @@ import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import TitleCard from "@/components/TitleCard";
 import Pagination from "@/components/Pagination";
+import { DramaGridSkeleton } from "@/components/skeletons";
 import { channels as initialChannels, type Channel } from "@/data/channels.mock";
 import { useTheme } from "@/contexts/ThemeContext";
 import { useDebounce } from "@/hooks/useDebounce";
@@ -307,15 +308,7 @@ function SearchContent() {
 
         {/* Results Grid / Shimmer Skeleton */}
         {isLoading ? (
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-x-4 gap-y-6">
-            {Array.from({ length: PAGE_SIZE }).map((_, i) => (
-              <div key={i} className="space-y-2">
-                <div className="aspect-[2/3] w-full rounded-md bg-surface border border-border/40 animate-pulse" />
-                <div className="h-4 w-3/4 rounded bg-surface border border-border/30 animate-pulse" />
-                <div className="h-3 w-1/2 rounded bg-surface border border-border/20 animate-pulse" />
-              </div>
-            ))}
-          </div>
+          <DramaGridSkeleton count={PAGE_SIZE} hasSubtitle />
         ) : results.items.length === 0 ? (
           <div className="bg-surface border border-border rounded-xl p-12 text-center my-6 max-w-lg mx-auto shadow-sm">
             <div className="w-12 h-12 rounded-full bg-surface-raised flex items-center justify-center mx-auto mb-4 text-text-muted">

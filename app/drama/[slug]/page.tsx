@@ -10,7 +10,8 @@ import AddToListModal from "@/components/AddToListModal";
 import CreateListModal from "@/components/CreateListModal";
 import LoginRequiredModal from "@/components/LoginRequiredModal";
 import Breadcrumbs from "@/components/Breadcrumbs";
-import TitleCard, { TitleCardSkeleton } from "@/components/TitleCard";
+import TitleCard from "@/components/TitleCard";
+import { DramaDetailSkeleton, DramaCardSkeleton } from "@/components/skeletons";
 import Toast from "@/components/Toast";
 import { getTitleBySlugOrFallback, type Title } from "@/data/titles.mock";
 import { channels as fallbackChannels } from "@/data/channels.mock";
@@ -108,129 +109,135 @@ export default function DramaPage({
       <Header />
 
       <main className="max-w-[1000px] mx-auto px-6 pt-10 pb-16">
-        <Breadcrumbs
-          items={[
-            { label: "Home", href: "/home" },
-            { label: "Genres", href: "/genres" },
-            { label: drama.genre, href: `/genres?genre=${encodeURIComponent(drama.genre)}` },
-            { label: drama.title },
-          ]}
-        />
-        <div className="flex flex-col sm:flex-row gap-6 sm:gap-8">
-          <div className="w-40 sm:w-56 shrink-0 mx-auto sm:mx-0">
-            <div className="relative aspect-[2/3] rounded-lg overflow-hidden shadow-md bg-surface">
-              <Image
-                src={drama.poster}
-                alt={drama.title}
-                fill
-                sizes="(min-width: 640px) 224px, 160px"
-                className="object-cover"
-                priority
-              />
-            </div>
-          </div>
+        {isLoading ? (
+          <DramaDetailSkeleton />
+        ) : (
+          <>
+            <Breadcrumbs
+              items={[
+                { label: "Home", href: "/home" },
+                { label: "Genres", href: "/genres" },
+                { label: drama.genre, href: `/genres?genre=${encodeURIComponent(drama.genre)}` },
+                { label: drama.title },
+              ]}
+            />
+            <div className="flex flex-col sm:flex-row gap-6 sm:gap-8">
+              <div className="w-40 sm:w-56 shrink-0 mx-auto sm:mx-0">
+                <div className="relative aspect-[2/3] rounded-lg overflow-hidden shadow-md bg-surface">
+                  <Image
+                    src={drama.poster}
+                    alt={drama.title}
+                    fill
+                    sizes="(min-width: 640px) 224px, 160px"
+                    className="object-cover"
+                    priority
+                  />
+                </div>
+              </div>
 
-          <div className="flex-1 min-w-0">
-            <h1 className="font-display font-bold text-2xl sm:text-3xl mb-3">
-              {drama.title}
-            </h1>
+              <div className="flex-1 min-w-0">
+                <h1 className="font-display font-bold text-2xl sm:text-3xl mb-3">
+                  {drama.title}
+                </h1>
 
-            <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-sm text-text-muted mb-4">
-              <span className="flex items-center gap-1.5">
-                <Tv size={15} strokeWidth={2} />
-                {channelSlug ? (
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-sm text-text-muted mb-4">
+                  <span className="flex items-center gap-1.5">
+                    <Tv size={15} strokeWidth={2} />
+                    {channelSlug ? (
+                      <Link
+                        href={`/channel/${channelSlug}`}
+                        className="hover:text-primary transition-colors"
+                      >
+                        {drama.channel}
+                      </Link>
+                    ) : (
+                      drama.channel
+                    )}
+                  </span>
+                  <span className="flex items-center gap-1.5">
+                    <Layers size={15} strokeWidth={2} />
+                    {drama.totalEpisodes} Episodes
+                  </span>
+                  {/* Rating is only shown when the title actually has one */}
+                  {drama.rating !== undefined && (
+                    <span className="flex items-center gap-1.5 font-semibold text-text">
+                      <Star size={15} strokeWidth={0} className="fill-tertiary text-tertiary" />
+                      {drama.rating.toFixed(1)}
+                    </span>
+                  )}
+                </div>
+
+                <div className="flex flex-wrap gap-2 mb-5">
+                  {/* Genre — one primary category, visually distinct from tags below */}
                   <Link
-                    href={`/channel/${channelSlug}`}
-                    className="hover:text-primary transition-colors"
+                    href={`/genres?genre=${encodeURIComponent(drama.genre)}`}
+                    className="rounded-pill bg-primary text-text-light text-xs font-semibold px-3 py-1 hover:bg-primary-hover transition-colors"
                   >
-                    {drama.channel}
+                    {drama.genre}
                   </Link>
-                ) : (
-                  drama.channel
-                )}
-              </span>
-              <span className="flex items-center gap-1.5">
-                <Layers size={15} strokeWidth={2} />
-                {drama.totalEpisodes} Episodes
-              </span>
-              {/* Rating is only shown when the title actually has one */}
-              {drama.rating !== undefined && (
-                <span className="flex items-center gap-1.5 font-semibold text-text">
-                  <Star size={15} strokeWidth={0} className="fill-tertiary text-tertiary" />
-                  {drama.rating.toFixed(1)}
-                </span>
-              )}
-            </div>
+                  {drama.tags.map((tag) => (
+                    <span
+                      key={tag}
+                      className="rounded-pill bg-surface border border-border text-text-muted text-xs font-semibold px-3 py-1"
+                    >
+                      {tag}
+                    </span>
+                  ))}
+                </div>
 
-            <div className="flex flex-wrap gap-2 mb-5">
-              {/* Genre — one primary category, visually distinct from tags below */}
-              <Link
-                href={`/genres?genre=${encodeURIComponent(drama.genre)}`}
-                className="rounded-pill bg-primary text-text-light text-xs font-semibold px-3 py-1 hover:bg-primary-hover transition-colors"
-              >
-                {drama.genre}
-              </Link>
-              {drama.tags.map((tag) => (
-                <span
-                  key={tag}
-                  className="rounded-pill bg-surface border border-border text-text-muted text-xs font-semibold px-3 py-1"
-                >
-                  {tag}
-                </span>
-              ))}
-            </div>
+                <div className="mb-6 max-w-2xl">
+                  <p
+                    className={`text-sm leading-relaxed text-text-muted ${
+                      isLongSynopsis && !isSynopsisExpanded ? "line-clamp-4" : ""
+                    }`}
+                  >
+                    {drama.synopsis}
+                  </p>
+                  {isLongSynopsis && (
+                    <button
+                      type="button"
+                      onClick={() => setIsSynopsisExpanded((v) => !v)}
+                      className="mt-1.5 text-sm font-semibold text-link hover:text-link-hover transition-colors"
+                    >
+                      {isSynopsisExpanded ? "Read less" : "Read more"}
+                    </button>
+                  )}
+                </div>
 
-            <div className="mb-6 max-w-2xl">
-              <p
-                className={`text-sm leading-relaxed text-text-muted ${
-                  isLongSynopsis && !isSynopsisExpanded ? "line-clamp-4" : ""
-                }`}
-              >
-                {drama.synopsis}
-              </p>
-              {isLongSynopsis && (
-                <button
-                  type="button"
-                  onClick={() => setIsSynopsisExpanded((v) => !v)}
-                  className="mt-1.5 text-sm font-semibold text-link hover:text-link-hover transition-colors"
-                >
-                  {isSynopsisExpanded ? "Read less" : "Read more"}
-                </button>
-              )}
+                <div className="flex items-center gap-3">
+                  <Link
+                    href={`/watch/${drama.slug}`}
+                    className="inline-flex items-center gap-2 rounded-full bg-btn-primary hover:bg-btn-primary-hover text-btn-primary-text font-semibold px-6 py-3 text-sm shadow-sm transition-colors"
+                  >
+                    <Play size={16} strokeWidth={2.5} fill="currentColor" />
+                    Watch Now
+                  </Link>
+                  <button
+                    type="button"
+                    onClick={handleToggleFavorite}
+                    aria-pressed={favorited}
+                    aria-label={favorited ? "Remove from favorites" : "Add to favorites"}
+                    className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-border hover:bg-surface transition-colors"
+                  >
+                    <Heart
+                      size={18}
+                      strokeWidth={2}
+                      className={favorited ? "fill-primary text-primary" : "text-text-muted"}
+                    />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleOpenAddToList}
+                    className="flex items-center gap-1.5 h-11 shrink-0 rounded-full border border-border hover:bg-surface font-semibold text-sm px-4 transition-colors"
+                  >
+                    <ListPlus size={16} strokeWidth={2} />
+                    Add to List
+                  </button>
+                </div>
+              </div>
             </div>
-
-            <div className="flex items-center gap-3">
-              <Link
-                href={`/watch/${drama.slug}`}
-                className="inline-flex items-center gap-2 rounded-full bg-btn-primary hover:bg-btn-primary-hover text-btn-primary-text font-semibold px-6 py-3 text-sm shadow-sm transition-colors"
-              >
-                <Play size={16} strokeWidth={2.5} fill="currentColor" />
-                Watch Now
-              </Link>
-              <button
-                type="button"
-                onClick={handleToggleFavorite}
-                aria-pressed={favorited}
-                aria-label={favorited ? "Remove from favorites" : "Add to favorites"}
-                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-border hover:bg-surface transition-colors"
-              >
-                <Heart
-                  size={18}
-                  strokeWidth={2}
-                  className={favorited ? "fill-primary text-primary" : "text-text-muted"}
-                />
-              </button>
-              <button
-                type="button"
-                onClick={handleOpenAddToList}
-                className="flex items-center gap-1.5 h-11 shrink-0 rounded-full border border-border hover:bg-surface font-semibold text-sm px-4 transition-colors"
-              >
-                <ListPlus size={16} strokeWidth={2} />
-                Add to List
-              </button>
-            </div>
-          </div>
-        </div>
+          </>
+        )}
 
         {/* Related — matched by shared genre, tags, or channel */}
         <div className="mt-12">
@@ -240,7 +247,7 @@ export default function DramaPage({
           {isLoading ? (
             <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-8 gap-x-4 gap-y-6">
               {Array.from({ length: 8 }).map((_, i) => (
-                <TitleCardSkeleton key={i} />
+                <DramaCardSkeleton key={i} />
               ))}
             </div>
           ) : relatedTitles.length === 0 ? (

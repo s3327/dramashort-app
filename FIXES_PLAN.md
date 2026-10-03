@@ -34,7 +34,7 @@ This plan outlines the specific fixes, cleanup tasks, and enhancements needed to
 | **Phase 6** | 🟡 Medium | M6: Wire Telegram Connect integration in `app/account/page.tsx` | 📋 Deferred | Deferred to Future Plan per user instruction; UI feedback configured |
 | **Phase 6** | 🟡 Medium | M7: Standardize Admin nomenclature: "Dramas" & "Add Drama" in UI & routes | ✅ Done | Eliminates confusion between entity (Drama) and field (title) |
 | **Phase 7** | 🟢 Low | L1: Reusable custom hooks (`useDebounce`, `useRequireAuth`, `useMediaQuery`) | ✅ Done | DRY code, standardized debounce, and cleaner component logic |
-| **Phase 7** | 🟢 Low | L2: Add shimmer/skeleton loading states for async data | ⏳ Planned | Smooth loading UX; prevents layout shifts and mock flashes |
+| **Phase 7** | 🟢 Low | L2: Add shimmer/skeleton loading states for async data | ✅ Done | Smooth loading UX; prevents layout shifts and mock flashes |
 | **Phase 7** | 🟢 Low | L3: Implement route-segment error boundaries (`error.tsx`) | ⏳ Planned | Graceful degradation and user-friendly retry buttons |
 | **Phase 7** | 🟢 Low | L4: Add root application error boundary (`app/error.tsx`) | ⏳ Planned | Catches unhandled runtime crashes globally |
 | **Phase 7** | 🟢 Low | L5: Audit `design-tokens/` CSS variables and unused tokens | ⏳ Planned | Maintains lean, consistent token foundation |
@@ -611,12 +611,16 @@ To eliminate ambiguity across product requirements, admin CMS, and codebase inte
 ---
 
 ### Task 7.2: Shimmer Skeleton Loaders (L2)
+* **Status**: ✅ Completed
 * **Target Files**: `components/skeletons/`
-* **Implementation Plan**:
-  1. Build reusable skeleton components: `DramaCardSkeleton`, `CarouselSkeleton`, `EpisodeListSkeleton`.
-  2. Apply skeletons to `/home`, `/drama/[slug]`, and `/search` during async state.
+* **Delivered Changes**:
+  1. `DramaCardSkeleton` & `DramaGridSkeleton`: Reusable 2:3 poster and metadata shimmer placeholders with configurable card counts.
+  2. `CarouselSkeleton`: Full banner and hero carousel shimmer loader matching desktop & mobile responsive dimensions.
+  3. `EpisodeListSkeleton`: Episode grid and tab selector shimmer placeholders for player navigation.
+  4. `DramaDetailSkeleton`: Comprehensive drama header skeleton for `/drama/[slug]` details view.
+  5. Integrated skeletons across `/home` (`Hero.tsx`), `/drama/[slug]`, `/search`, and re-exported `TitleCardSkeleton` for backward compatibility.
 * **Verification**:
-  - Throttled network displays elegant pulsing skeletons without layout shifts.
+  - `npx tsc --noEmit` verified with 0 type errors.
 
 ---
 
