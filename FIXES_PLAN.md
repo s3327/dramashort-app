@@ -33,7 +33,7 @@ This plan outlines the specific fixes, cleanup tasks, and enhancements needed to
 | **Phase 6** | 🟡 Medium | M5: Load admin drama edit data from Supabase content DB | ✅ Done | Delivered in H3: Asynchronously hydrates drama on mount via getDramaById |
 | **Phase 6** | 🟡 Medium | M6: Wire Telegram Connect integration in `app/account/page.tsx` | 📋 Deferred | Deferred to Future Plan per user instruction; UI feedback configured |
 | **Phase 6** | 🟡 Medium | M7: Standardize Admin nomenclature: "Dramas" & "Add Drama" in UI & routes | ✅ Done | Eliminates confusion between entity (Drama) and field (title) |
-| **Phase 7** | 🟢 Low | L1: Reusable custom hooks (`useDebounce`, `useRequireAuth`, `useMediaQuery`) | ⏳ Planned | DRY code, standardized debounce, and cleaner component logic |
+| **Phase 7** | 🟢 Low | L1: Reusable custom hooks (`useDebounce`, `useRequireAuth`, `useMediaQuery`) | ✅ Done | DRY code, standardized debounce, and cleaner component logic |
 | **Phase 7** | 🟢 Low | L2: Add shimmer/skeleton loading states for async data | ⏳ Planned | Smooth loading UX; prevents layout shifts and mock flashes |
 | **Phase 7** | 🟢 Low | L3: Implement route-segment error boundaries (`error.tsx`) | ⏳ Planned | Graceful degradation and user-friendly retry buttons |
 | **Phase 7** | 🟢 Low | L4: Add root application error boundary (`app/error.tsx`) | ⏳ Planned | Catches unhandled runtime crashes globally |
@@ -598,13 +598,15 @@ To eliminate ambiguity across product requirements, admin CMS, and codebase inte
 ## 9. Phase 7: Polish, Developer Experience & Testing (L1–L6)
 
 ### Task 7.1: Reusable Custom Hook Library (L1)
+* **Status**: ✅ Completed
 * **Target Directory**: `hooks/`
-* **Implementation Plan**:
-  1. `useDebounce<T>(value: T, delay: number)`: For search and filter inputs.
-  2. `useRequireAuth(redirectTo?: string)`: For guarding account routes.
-  3. `useMediaQuery(query: string)`: For dynamic layout switching.
+* **Delivered Changes**:
+  1. `useDebounce<T>(value: T, delay: number)`: Standardized debouncing state updates, integrated into `app/search/page.tsx` for real-time throttled catalog queries.
+  2. `useRequireAuth(redirectTo?: string)`: Client-side auth guard protecting `app/account/` sub-routes and redirecting unauthenticated users with returnUrl.
+  3. `useMediaQuery(query: string, defaultValue?: boolean)`: Universal media query hook for responsive layout switching, SSR-safe with clean event listener cleanup.
+  4. `hooks/index.ts`: Barrel export consolidating all custom hooks (`useDebounce`, `useRequireAuth`, `useMediaQuery`, `useToast`).
 * **Verification**:
-  - Integrate `useDebounce` into `app/search/page.tsx` and confirm reduction in search queries.
+  - `npx tsc --noEmit` verified with 0 type errors.
 
 ---
 
