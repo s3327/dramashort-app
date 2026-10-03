@@ -14,7 +14,8 @@
     "types:all": "npm run types:content && npm run types:user",
     "db:seed:dev": "tsx scripts/seed-dev-content.ts",
     "db:clean:dev": "tsx scripts/seed-dev-content.ts --clean",
-    "admin:create": "tsx scripts/create-admin.ts"
+    "admin:create": "tsx scripts/create-admin.ts",
+    "test": "tsx --test \"__tests__/**/*.test.ts\""
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.7",

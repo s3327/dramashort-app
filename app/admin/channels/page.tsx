@@ -1,3 +1,4 @@
+import Image from "next/image";
 import { MoreHorizontal } from "lucide-react";
 import AdminSidebar from "@/components/admin/AdminSidebar";
 import { channels } from "@/data/channels.mock";
@@ -32,9 +33,11 @@ export default function AdminChannelsPage() {
                 <div className="flex items-center gap-3 min-w-0">
                   {/* Logo if the channel has one synced, otherwise initials */}
                   {c.logo ? (
-                    <img
+                    <Image
                       src={c.logo}
                       alt={c.name}
+                      width={44}
+                      height={44}
                       className="h-11 w-11 shrink-0 rounded-md object-cover border border-border"
                     />
                   ) : (

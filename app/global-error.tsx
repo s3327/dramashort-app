@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import Link from "next/link";
 import { AlertTriangle, RefreshCw, Home } from "lucide-react";
 
 export default function GlobalRootError({
@@ -43,13 +44,13 @@ export default function GlobalRootError({
             <RefreshCw size={15} strokeWidth={2.5} />
             Try Again
           </button>
-          <a
+          <Link
             href="/"
             className="inline-flex items-center gap-2 rounded-full border border-gray-800 bg-gray-900 hover:bg-gray-800 text-gray-200 font-semibold text-sm px-5 py-2.5 transition-colors"
           >
             <Home size={15} strokeWidth={2} />
             Reload Home
-          </a>
+          </Link>
         </div>
       </body>
     </html>
