@@ -480,3 +480,28 @@
   - `npm test`: 40 / 40 pass. `npx tsc --noEmit`: 0 errors. `next lint`: clean. `npm run build`: success.
   - End-to-end on `next start -p 3100` against the production databases (throwaway regular user with forged `user_metadata.role` and throwaway admin, both deleted afterwards; only reads and rejected writes): 21 / 21 PASS — 401 JSON without a session on all 5 routes; 403 for the regular user; admin list returned 35 real dramas across Published, Archived, Draft, Scheduled; `t-1` → 400; unknown UUID GET/PATCH → 404; invalid PATCH → 400 with `poster, status, title, totalEpisodes`; empty PATCH, malformed JSON, missing title → 400; the drama targeted by the rejected PATCH was unchanged.
   - Not exercised: a successful `POST` / `PATCH` write (avoided touching catalog data); the admin create/edit forms in a browser.
+
+---
+
+## [2026-10-04] Task 10.4: Middleware Rewrite — Admin Subdomain Guard, Session Refresh & Safe returnUrl
+* **Milestone**: Phase 10 (Security Hardening) — Task 10.4
+* **Goal**: Close the admin-subdomain bypass (rewrite returned before the guard ran), stop rewriting `/api/*` and `/auth/*` on the admin host, refresh sessions on every matched route, and validate the post-login `returnUrl`.
+* **Implementation Steps Taken**:
+  1. `lib/navigation/safe-redirect.ts`: `getSafeRedirect(value, fallback)` accepts only same-origin relative paths (rejects absolute and protocol-relative URLs, `/\` tricks, control characters, non-strings, > 2,048 chars); `getSafeAdminRedirect()` additionally requires `/admin` and rejects `/admin/login` (loop).
+  2. `lib/middleware/route-decision.ts`: pure `resolveRoute()` / `decideRoute()`; admin-host paths map to `/admin/*` before any decision, with `/api`, `/auth`, `/_next` passing through; areas use segment matching (`/administrator` is public).
+  3. `lib/supabase/middleware.ts`: `updateSession(request, { verify })` with `getUser()` for protected areas and cookie-gated `getSession()` refresh for public pages; `withSessionCookies()` replays refreshed cookies onto any response.
+  4. `middleware.ts` rewritten around those modules; Task 10.3's `/api/admin/*` 401/403 JSON behavior preserved; admin `/admin` → `/admin/dashboard` added (Task 12.5 item 2).
+  5. Tests: `__tests__/middleware/route-decision.test.ts` and `__tests__/navigation/safe-redirect.test.ts` (41 new).
+  6. Docs: `ROADMAP.md` Task 10.4 ✅ (with the item 3 deviation), Task 10.5 🚧 partially delivered, Task 12.5 item 2 noted, Phase 10 matrix row.
+* **Key File Diffs**:
+  - Created: `lib/navigation/safe-redirect.ts`, `lib/middleware/route-decision.ts`, `lib/supabase/middleware.ts`, `__tests__/middleware/route-decision.test.ts`, `__tests__/navigation/safe-redirect.test.ts`.
+  - Modified: `middleware.ts` (rewritten), `ROADMAP.md`, `CHANGELOG-DEV.md`.
+* **Regression Analysis & Cross-System Impact**:
+  - Main-host behavior for `/admin/*`, `/account/*`, and `/api/admin/*` is unchanged except: admin-login `returnUrl` is now validated; the login redirect keeps the query string; an admin at `/admin` is redirected server-side.
+  - Admin host: `/api/*` and `/auth/*` now reach their real routes (previously 404); every console path requires login; public paths resolve under `/admin` (login, then 404) instead of an immediate 404 — documented deviation.
+  - Public pages: guests incur no Supabase call; signed-in users get a token refresh only when it is expiring (no per-request Auth round trip). `getSession()` results are never used for authorization.
+  - Refresh-token rotation is safe: refreshed cookies are forwarded to the request and set on the response, so Server Components, route handlers, and the browser share the new token.
+* **Verification**:
+  - `npm test`: 81 / 81 pass. `npx tsc --noEmit`: 0 errors. `next lint`: clean. `npm run build`: success.
+  - End-to-end on `next start -p 3100` using `Host` headers (throwaway admin and regular user, deleted afterwards; read-only requests): 15 / 15 PASS — admin host `/dashboard` and `/` without login → login redirect; `/login` → 200; `/api/admin/dramas` → 401 JSON without login, 200 JSON as admin; regular user → `/admin/login?error=unauthorized`; admin `/` → `/admin/dashboard`; `returnUrl=//evil.example` → `/admin/dashboard`; `returnUrl=/admin/dramas` honored; main `/account` guest → `/login?returnUrl=%2Faccount`; guest `/home` → 200 with no `Set-Cookie`; `/home` with an expired session → 200 with a refreshed `sb-…-auth-token` cookie.
+  - Not exercised: a real deployed `admin.` DNS host (tested via `Host` header only).

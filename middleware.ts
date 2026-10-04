@@ -1,132 +1,47 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createServerClient } from "@supabase/ssr";
-import type { Database } from "@/types/supabase-user";
 import { getUserRole } from "@/lib/auth/roles";
 import { apiError } from "@/lib/api/responses";
-
-const userUrl =
-  process.env.NEXT_PUBLIC_USER_SUPABASE_URL || "https://placeholder.supabase.co";
-const userAnonKey =
-  process.env.NEXT_PUBLIC_USER_SUPABASE_ANON_KEY || "placeholder-anon-key";
+import { updateSession } from "@/lib/supabase/middleware";
+import {
+  decideRoute,
+  resolveRoute,
+  type SessionState,
+} from "@/lib/middleware/route-decision";
 
 /**
- * Supabase client bound to the middleware request. Refreshed auth cookies are
- * written to both the forwarded request and the response returned by
- * getResponse(), so route handlers and the browser see the same session.
+ * 1. Resolve the effective path (admin.* hosts serve the console from /admin;
+ *    /api, /auth and /_next pass through unchanged).
+ * 2. Refresh the Supabase session; verify the user only where access depends on it.
+ * 3. Apply the decision from lib/middleware/route-decision.ts, carrying any
+ *    refreshed auth cookies on the response.
  */
-function createMiddlewareSupabase(request: NextRequest) {
-  let response = NextResponse.next({ request: { headers: request.headers } });
-
-  const supabase = createServerClient<Database>(userUrl, userAnonKey, {
-    cookies: {
-      getAll() {
-        return request.cookies.getAll();
-      },
-      setAll(cookiesToSet) {
-        cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value));
-        response = NextResponse.next({ request });
-        cookiesToSet.forEach(({ name, value, options }) =>
-          response.cookies.set(name, value, options)
-        );
-      },
-    },
-  });
-
-  return { supabase, getResponse: () => response };
-}
-
 export async function middleware(request: NextRequest) {
-  const hostname = request.headers.get("host") || "";
-  const url = request.nextUrl.clone();
+  const { pathname, search, searchParams } = request.nextUrl;
+  const route = resolveRoute(request.headers.get("host"), pathname);
 
-  // 1. Subdomain Routing: rewrite admin.yourdomain.com into /admin
-  const isAdminHost = hostname.startsWith("admin.");
-  if (isAdminHost && !url.pathname.startsWith("/admin")) {
-    url.pathname = url.pathname === "/" ? "/admin" : `/admin${url.pathname}`;
-    return NextResponse.rewrite(url);
+  const session = await updateSession(request, { verify: route.requiresSession });
+
+  let state: SessionState = "none";
+  if (session.user) {
+    state = getUserRole(session.user) === "admin" ? "admin" : "user";
   }
 
-  // 2. Admin API Protection (/api/admin/*): JSON errors, never redirects.
-  // Defense in depth; every handler also calls requireAdmin().
-  if (url.pathname === "/api/admin" || url.pathname.startsWith("/api/admin/")) {
-    const { supabase, getResponse } = createMiddlewareSupabase(request);
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
+  const decision = decideRoute(route, state, search, searchParams.get("returnUrl"));
+  const forwardedRequest = { request: { headers: request.headers } };
 
-    if (!user) {
-      return apiError("UNAUTHORIZED", "Authentication session required.", 401);
-    }
-    if (getUserRole(user) !== "admin") {
-      return apiError("FORBIDDEN", "Administrator privileges required.", 403);
-    }
-    return getResponse();
+  switch (decision.type) {
+    case "json":
+      return session.withSessionCookies(apiError(decision.code, decision.message, decision.status));
+    case "redirect":
+      return session.withSessionCookies(NextResponse.redirect(new URL(decision.location, request.url)));
+    case "rewrite":
+      return session.withSessionCookies(
+        NextResponse.rewrite(new URL(decision.pathname, request.url), forwardedRequest)
+      );
+    case "next":
+    default:
+      return session.withSessionCookies(NextResponse.next(forwardedRequest));
   }
-
-  // 3. Admin Route Protection (/admin/*)
-  if (url.pathname.startsWith("/admin")) {
-    const { supabase, getResponse } = createMiddlewareSupabase(request);
-
-    // Verify session user from Supabase Auth
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-
-    const isLoginPage = url.pathname === "/admin/login";
-
-    // If unauthenticated:
-    if (!user) {
-      if (!isLoginPage) {
-        const loginUrl = new URL("/admin/login", request.url);
-        loginUrl.searchParams.set("returnUrl", url.pathname);
-        loginUrl.searchParams.set("error", "session_required");
-        return NextResponse.redirect(loginUrl);
-      }
-      return getResponse();
-    }
-
-    // Authoritative role check: ONLY app_metadata.role is trusted (prevents client self-elevation)
-    const role = getUserRole(user);
-    const isAdmin = role === "admin";
-
-    // Authenticated non-admin trying to access admin pages
-    if (!isAdmin) {
-      if (!isLoginPage) {
-        const loginUrl = new URL("/admin/login", request.url);
-        loginUrl.searchParams.set("error", "unauthorized");
-        return NextResponse.redirect(loginUrl);
-      }
-      return getResponse();
-    }
-
-    // If authenticated admin visits /admin/login, redirect to /admin/dashboard
-    if (isLoginPage) {
-      const returnUrl = url.searchParams.get("returnUrl") || "/admin/dashboard";
-      return NextResponse.redirect(new URL(returnUrl, request.url));
-    }
-
-    return getResponse();
-  }
-
-  // 4. User Account Route Protection (/account, /account/*)
-  if (url.pathname === "/account" || url.pathname.startsWith("/account/")) {
-    const { supabase, getResponse } = createMiddlewareSupabase(request);
-
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-
-    // If unauthenticated guest visits /account/*, redirect to /login with returnUrl
-    if (!user) {
-      const loginUrl = new URL("/login", request.url);
-      loginUrl.searchParams.set("returnUrl", url.pathname);
-      return NextResponse.redirect(loginUrl);
-    }
-
-    return getResponse();
-  }
-
-  return NextResponse.next();
 }
 
 export const config = {

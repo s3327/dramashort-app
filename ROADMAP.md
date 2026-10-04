@@ -43,7 +43,7 @@
 | **Phase 7** | 🟢 Low | L6: Implement automated test suite (Auth, services, critical journeys) | ✅ Done | Regression prevention and verified end-to-end reliability |
 | **Phase 8** | 🔴 Critical | Monetization Engine: Freemium Paywall & Coin Economy | ⏳ Planned · 🔒 Blocked by 10, 13.1, 15, 16 | Direct monetization, unlocks Ep 6+, daily streak rewards |
 | **Phase 9** | 🟠 High | Mobile PWA & Advanced Video Player UX | ⏳ Planned · 🔒 Blocked by 14 | Native app-like PWA, subtitles/VTT, keyboard hotkeys, PiP |
-| **Phase 10** | 🔴 Critical | Security Hardening & Access Control (admin role escalation, RLS & grants, admin API auth, subdomain guard, open redirect, episode media lockdown) | 🚧 In progress (10.1 ✅, 10.2 ✅, 10.3 ✅) | Closes privilege escalation and data exposure; gate for all further work |
+| **Phase 10** | 🔴 Critical | Security Hardening & Access Control (admin role escalation, RLS & grants, admin API auth, subdomain guard, open redirect, episode media lockdown) | 🚧 In progress (10.1–10.4 ✅, 10.5 🚧) | Closes privilege escalation and data exposure; gate for all further work |
 | **Phase 11** | 🔴 Critical | Complete Stubbed User Flows (email verification, password recovery, account deletion, support pipeline, real 404s) | ⏳ Planned | Every visible action performs a real operation |
 | **Phase 12** | 🟠 High | Functional Bug Fixes & Data Integrity (12-item cap, admin drafts, progress semantics, no production mocks) | ⏳ Planned | Full catalog visible; admins see all content; trustworthy data |
 | **Phase 13** | 🟠 High | Backend Architecture Consolidation (database topology ADR, server-rendered catalog, service split, observability) | ⏳ Planned | Decision gate for Phase 8; faster pages; operability |
@@ -1058,7 +1058,7 @@ These items stay ✅ for history; the gaps are tracked as new tasks.
 ---
 
 ### Task 10.4: Middleware — Admin Subdomain Guard Ordering & Session Refresh
-* **Status**: ⏳ Planned
+* **Status**: ✅ Completed — 41 matrix/redirect unit tests and 15/15 end-to-end checks on a production build
 * **Problem**:
   - `middleware.ts` L15–19 returns `NextResponse.rewrite()` for `admin.*` hosts before the admin guard runs. Middleware is not re-run for the rewritten path, so `admin.<domain>/dashboard` renders without login.
   - The same rewrite prefixes `/api/*` and `/auth/*`, turning them into `/admin/api/...` (404), which breaks admin saves on the subdomain.
@@ -1072,11 +1072,23 @@ These items stay ✅ for history; the gaps are tracked as new tasks.
   4. Extract `updateSession(request)` into `lib/supabase/middleware.ts` (the Supabase SSR pattern) and refresh the session on every matched route.
   5. Validate `returnUrl` with the admin variant of the helper from Task 10.5.
 * **Verification**: table-driven middleware tests covering host (main / admin) × path (`/`, `/dashboard`, `/admin/*`, `/api/admin/*`, `/account`) × session (none / user / admin).
+* **Delivered Capabilities (2026-10-04)**:
+  1. `lib/middleware/route-decision.ts` (pure, no Next/Supabase imports): `resolveRoute(host, pathname)` computes the effective path and area (`admin-api` / `admin` / `account` / `public`); `decideRoute(route, session, search, returnUrl)` returns `next` / `rewrite` / `redirect` / `json`. The guard now runs on the effective path, so `admin.<domain>/dashboard` requires login.
+  2. Admin hosts never rewrite `/api/*`, `/auth/*`, `/_next/*` (static assets are excluded by the matcher), so admin saves and auth callbacks work on the subdomain.
+  3. `lib/supabase/middleware.ts` `updateSession(request, { verify })`: verified `auth.getUser()` on admin, account, and admin-API paths; on public paths an expiring token is refreshed through `getSession()` only when an auth cookie exists (guests trigger no Auth call). Refreshed cookies go to the forwarded request and are replayed onto every response type, including redirects, rewrites, and JSON errors.
+  4. `returnUrl` on `/admin/login` is validated with `getSafeAdminRedirect()` (`lib/navigation/safe-redirect.ts`, also the base for Task 10.5); off-site, public, and login-loop targets fall back to `/admin/dashboard`. The redirect to login now preserves the query string.
+  5. `middleware.ts` reduced to: resolve route → update session → decide → respond. The `createMiddlewareSupabase()` helper from Task 10.3 is replaced.
+  6. Also delivers Task 12.5 item 2: an admin requesting `/admin` is redirected to `/admin/dashboard` server-side.
+* **Deviation from item 3**: public paths on the admin host (e.g. `/home`) resolve under `/admin` (`/admin/home`), so visitors are sent to login first and get a 404 after signing in, rather than an immediate 404. This avoids revealing which paths exist on the console host.
+* **Verification Results**:
+  - Unit: `__tests__/middleware/route-decision.test.ts` (33 matrix cases + host/area resolution) and `__tests__/navigation/safe-redirect.test.ts`; `npm test` 81/81.
+  - `npx tsc --noEmit` 0 errors; lint clean; `npm run build` succeeds (middleware 95.7 kB).
+  - End-to-end on `next start` with `Host: admin.localhost` (throwaway admin and regular user, deleted afterwards): admin-host `/dashboard` without login → login redirect (bypass closed); `/login` → 200; `/api/admin/dramas` → 401 JSON without login and 200 JSON as admin; regular user → unauthorized; admin `/` → dashboard; `returnUrl=//evil.example` → `/admin/dashboard`; `returnUrl=/admin/dramas` honored; `/account` guest → `/login?returnUrl`; guest `/home` sets no cookies; `/home` with an expired session returns a refreshed auth cookie.
 
 ---
 
 ### Task 10.5: Safe Redirect Handling & Unified `returnUrl` Parameter
-* **Status**: ⏳ Planned
+* **Status**: 🚧 Partially delivered — `lib/navigation/safe-redirect.ts` (`getSafeRedirect`, `getSafeAdminRedirect`, tested) exists and middleware uses it (Task 10.4); the login, signup, verify-email, and admin login pages, the `auth/callback` route, and the `redirect` → `returnUrl` unification remain
 * **Problem**: `app/login/page.tsx` L41–43 calls `router.push(searchParams.get("returnUrl") || searchParams.get("redirect"))` without validation, so `/login?redirect=https://evil.example` sends a user to an attacker's page right after a real login. The same pattern exists in `app/verify-email/page.tsx` (L25), `app/signup/page.tsx`, and `app/admin/login/page.tsx` (L13). Two parameter names, `redirect` and `returnUrl`, are in use.
 * **Target Files**: `lib/navigation/safe-redirect.ts` (new), `app/login/page.tsx`, `app/signup/page.tsx`, `app/verify-email/page.tsx`, `app/admin/login/page.tsx`, `components/header/HeaderActions.tsx`, `components/LoginRequiredModal.tsx`, `hooks/useRequireAuth.ts`, `middleware.ts`, `app/auth/callback/route.ts`
 * **Planned Specifications**:
@@ -1309,7 +1321,7 @@ These items stay ✅ for history; the gaps are tracked as new tasks.
 ---
 
 ### Task 12.5: Admin Session Lifecycle Fixes
-* **Status**: ⏳ Planned
+* **Status**: ⏳ Planned (item 2 delivered by Task 10.4)
 * **Problem**: `components/admin/AdminSidebar.tsx` L34–37 calls `logout()` without awaiting it before `router.push("/admin/login")`. Cookies are still present when middleware evaluates the navigation, so it likely redirects the still-authenticated admin back to the dashboard. `app/admin/page.tsx` redirects client-side, which causes a visible flash.
 * **Planned Specifications**:
   1. `await logout()`, then `router.replace("/admin/login")` and `router.refresh()`.
