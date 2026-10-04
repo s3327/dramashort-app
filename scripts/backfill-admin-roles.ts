@@ -10,7 +10,7 @@
  *   3. Guarded Apply: --apply requires either --promote <emails>, --revoke <emails>, or --revoke-unlisted-admins.
  *   4. Mutual Exclusion: The same email cannot appear in both --promote and --revoke.
  *   5. Unlisted Admin Revocation: --revoke-unlisted-admins explicitly strips app_metadata.role = 'admin'
- *      for accounts not present in --promote.
+ *      for accounts not present in --promote. It is refused unless --promote names at least one admin to keep.
  *   6. Verified Identity Gate: Accounts in --promote must have email_confirmed_at populated.
  *   7. Role Preservation: Legitimate existing app_metadata.role ('admin' or 'editor') is preserved by default.
  *   8. Single Batch Query: Queries profiles table once upfront, eliminating N+1 DB calls.
@@ -117,9 +117,7 @@ interface PlannedAction {
 
 async function main() {
   const isApply = process.argv.includes("--apply");
-  const allowRevokeUnlisted =
-    process.argv.includes("--revoke-unlisted-admins") ||
-    process.argv.includes("--revoke-all-unconfirmed"); // backward compatibility
+  const allowRevokeUnlisted = process.argv.includes("--revoke-unlisted-admins");
   const promoteEmails = parseEmailListFlag("--promote");
   const revokeEmails = parseEmailListFlag("--revoke");
 
@@ -143,6 +141,12 @@ async function main() {
     process.exit(1);
   }
 
+  // Safety Gate 3: Revoking every unlisted admin without naming a keeper would lock everyone out
+  if (allowRevokeUnlisted && promoteEmails.size === 0) {
+    console.error("❌ SAFETY ERROR: --revoke-unlisted-admins requires at least one --promote <email> to keep as admin.");
+    process.exit(1);
+  }
+
   if (promoteEmails.size > 0) {
     console.log(`✅ Authorized admin emails to confirm/promote (${promoteEmails.size}):`);
     for (const email of promoteEmails) {
@@ -163,17 +167,26 @@ async function main() {
 
   // 1. Batch query profiles table for admin records (eliminates N+1 lookups)
   console.log("\n📡 Querying profiles table for admin records...");
-  const { data: adminProfiles, error: profQueryError } = await supabase
-    .from("profiles")
-    .select("id, role")
-    .eq("role", "admin");
+  // Paged so results beyond PostgREST's default 1,000-row cap are not silently dropped
+  const adminProfileUserIds = new Set<string>();
+  const profilePageSize = 1000;
+  for (let from = 0; ; from += profilePageSize) {
+    const { data: adminProfiles, error: profQueryError } = await supabase
+      .from("profiles")
+      .select("id")
+      .eq("role", "admin")
+      .order("id")
+      .range(from, from + profilePageSize - 1);
 
-  if (profQueryError) {
-    console.error("❌ Failed to query profiles table:", profQueryError.message);
-    process.exit(1);
+    if (profQueryError) {
+      console.error("❌ Failed to query profiles table:", profQueryError.message);
+      process.exit(1);
+    }
+
+    (adminProfiles || []).forEach((p) => adminProfileUserIds.add(p.id));
+    if (!adminProfiles || adminProfiles.length < profilePageSize) break;
   }
 
-  const adminProfileUserIds = new Set<string>((adminProfiles || []).map((p) => p.id));
   console.log(`✓ Found ${adminProfileUserIds.size} profile rows with role = 'admin'.`);
 
   // 2. Fetch all auth users with pagination
@@ -320,6 +333,12 @@ async function main() {
   let promotedCount = 0;
   let revokedCount = 0;
   let sanitizedCount = 0;
+  let failureCount = 0;
+
+  const fail = (message: string) => {
+    failureCount++;
+    console.error(`   ❌ ${message}`);
+  };
 
   if (isApply) {
     console.log(`\n🚀 Pass 2: Executing database updates...`);
@@ -339,7 +358,7 @@ async function main() {
         });
 
         if (authErr) {
-          console.error(`   ❌ Failed to update auth metadata for ${user.email}: ${authErr.message}`);
+          fail(`Failed to update auth metadata for ${user.email}: ${authErr.message}`);
           continue;
         }
 
@@ -357,7 +376,7 @@ async function main() {
           .select();
 
         if (profErr || !upsertData || upsertData.length === 0) {
-          console.error(`   ❌ Failed to update profile record: ${profErr?.message || "No row returned"}`);
+          fail(`Failed to update profile record: ${profErr?.message || "No row returned"}`);
         } else {
           console.log(`   ✅ Promoted ${user.email} -> app_metadata.role = 'admin', profiles.role = 'admin'`);
           promotedCount++;
@@ -372,7 +391,7 @@ async function main() {
         });
 
         if (authErr) {
-          console.error(`   ❌ Failed to revoke auth metadata for ${user.email}: ${authErr.message}`);
+          fail(`Failed to revoke auth metadata for ${user.email}: ${authErr.message}`);
           continue;
         }
 
@@ -382,7 +401,7 @@ async function main() {
           .eq("id", user.id);
 
         if (profErr) {
-          console.error(`   ❌ Failed to reset profile role: ${profErr.message}`);
+          fail(`Failed to reset profile role: ${profErr.message}`);
         } else {
           console.log(`   ✅ Revoked ${user.email} -> stripped app_metadata.role, reset profiles.role = 'user'`);
           revokedCount++;
@@ -393,7 +412,7 @@ async function main() {
             user_metadata: sanitizedUserMeta,
           });
           if (authErr) {
-            console.error(`   ❌ Failed to sanitize user_metadata for ${user.email}: ${authErr.message}`);
+            fail(`Failed to sanitize user_metadata for ${user.email}: ${authErr.message}`);
           } else {
             console.log(`   ✅ Cleaned duplicate user_metadata.role for ${user.email}`);
           }
@@ -407,7 +426,7 @@ async function main() {
               { onConflict: "id" }
             );
           if (profErr) {
-            console.error(`   ❌ Failed to mirror profiles.role for ${user.email}: ${profErr.message}`);
+            fail(`Failed to mirror profiles.role for ${user.email}: ${profErr.message}`);
           }
         }
         preservedCount++;
@@ -417,18 +436,19 @@ async function main() {
             user_metadata: sanitizedUserMeta,
           });
           if (authErr) {
-            console.error(`   ❌ Failed to sanitize user_metadata for ${user.email}: ${authErr.message}`);
+            fail(`Failed to sanitize user_metadata for ${user.email}: ${authErr.message}`);
           } else {
             console.log(`   ✅ Stripped rogue user_metadata.role for editor ${user.email}`);
           }
         }
       } else if (item.type === "SANITIZE_ROGUE") {
+        const failuresBefore = failureCount;
         if (item.hasUserMetaRole) {
           const { error: authErr } = await supabase.auth.admin.updateUserById(user.id, {
             user_metadata: sanitizedUserMeta,
           });
           if (authErr) {
-            console.error(`   ❌ Failed to sanitize user_metadata for ${user.email}: ${authErr.message}`);
+            fail(`Failed to sanitize user_metadata for ${user.email}: ${authErr.message}`);
           } else {
             console.log(`   ✅ Stripped rogue user_metadata.role for ${user.email}`);
           }
@@ -440,12 +460,12 @@ async function main() {
             .update({ role: "user" })
             .eq("id", user.id);
           if (profErr) {
-            console.error(`   ❌ Failed to reset profile role for ${user.email}: ${profErr.message}`);
+            fail(`Failed to reset profile role for ${user.email}: ${profErr.message}`);
           } else {
             console.log(`   ✅ Reset profiles.role to 'user' for ${user.email}`);
           }
         }
-        sanitizedCount++;
+        if (failureCount === failuresBefore) sanitizedCount++;
       }
     }
   }
@@ -465,6 +485,7 @@ async function main() {
     console.log(`   • Confirmed / Promoted admins:  ${promotedCount}`);
     console.log(`   • Revoked admins:               ${revokedCount}`);
     console.log(`   • Sanitized rogue accounts:     ${sanitizedCount}`);
+    console.log(`   • Failed updates:               ${failureCount}`);
   } else {
     console.log(`   • Existing admins to keep:      ${plannedKeepAdminCount}`);
     if (plannedKeepEditorCount > 0) {
@@ -476,6 +497,11 @@ async function main() {
     console.log(`   • Status:                      Dry run only. 0 modifications performed.`);
   }
   console.log(`==================================================================\n`);
+
+  if (failureCount > 0) {
+    console.error(`❌ Finished with ${failureCount} failed update(s). Re-run to retry; completed changes are not rolled back.`);
+    process.exit(1);
+  }
 }
 
 main().catch((err) => {

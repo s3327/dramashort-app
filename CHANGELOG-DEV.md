@@ -348,3 +348,31 @@
   - `npx tsx scripts/backfill-admin-roles.ts` (dry run): 2 existing admins classified, 0 validation errors.
   - `npm test`: 19 / 19 tests pass (0 failures).
   - `npx tsc --noEmit`: 0 errors.
+
+---
+
+## [2026-10-04] Task 10.1 Final Safeguards: Lockout Gate, Failure Exit Codes & Paged Profile Lookup
+* **Milestone**: Phase 10 (Security Hardening) — Task 10.1 Refinement
+* **Goal**: Close the remaining gaps found in the review of the two-pass backfill script: a possible full admin lockout, a misleading legacy flag, silent partial failures, and a profile lookup capped at 1,000 rows.
+* **Implementation Steps Taken**:
+  1. Lockout Gate (Safety Gate 3):
+     - `--revoke-unlisted-admins` is now refused unless `--promote` names at least one admin to keep. Combined with Pass 1 validation (promote emails must exist and be confirmed), at least one valid admin always remains after an apply.
+  2. Removed the `--revoke-all-unconfirmed` alias:
+     - The alias had silently mapped to "revoke all unlisted admins", a destructive meaning the original flag never had. It is no longer recognized.
+  3. Failure Tracking & Exit Code:
+     - Added a `fail()` helper in Pass 2; all 9 error paths now increment `failureCount`.
+     - Summary prints `Failed updates: N`; the script exits with code `1` when any update failed. Completed updates are not rolled back; re-running retries the rest.
+  4. Accurate Sanitize Count:
+     - `Sanitized rogue accounts` counts an account only when all of its updates succeeded.
+  5. Paged Profile Lookup:
+     - The `profiles.role = 'admin'` query pages with `.order("id").range(...)` in 1,000-row pages, so rows beyond PostgREST's default cap are no longer dropped.
+  6. Header comment rule 5 updated to document the new gate.
+* **Key File Diffs**:
+  - `scripts/backfill-admin-roles.ts`: Safety Gate 3, alias removal, `fail()` helper and exit code, success-only sanitize count, paged profile query (+48 / −22 lines).
+* **Regression Analysis & Cross-System Impact**:
+  - Script-only change; no application code, migrations, or runtime routes affected.
+  - Invocations using `--apply --promote <emails>` and `--revoke <emails>` behave as before. Invocations using `--revoke-all-unconfirmed` must switch to `--revoke-unlisted-admins` together with `--promote`.
+* **Verification**:
+  - `npx tsc --noEmit`: 0 errors.
+  - `npm test`: 19 / 19 tests pass (the script itself has no automated tests).
+  - Not yet executed against a database (dry run or apply) after this change; run a dry run before the next apply.
