@@ -8,6 +8,7 @@ import { Eye, EyeOff, Loader2 } from "lucide-react";
 import icon from "@/public/brand/dramashort-icon-circle.png";
 import GoogleIcon from "@/components/GoogleIcon";
 import { useAuth } from "@/contexts/AuthContext";
+import { readReturnUrl, returnUrlQuery } from "@/lib/navigation/safe-redirect";
 
 function SignUpForm() {
   const router = useRouter();
@@ -40,18 +41,16 @@ function SignUpForm() {
       return;
     }
 
-    const redirect =
-      searchParams.get("returnUrl") || searchParams.get("redirect");
+    const returnUrl = readReturnUrl(searchParams);
     const params = new URLSearchParams({ email });
-    if (redirect) params.set("redirect", redirect);
+    if (returnUrl !== "/home") params.set("returnUrl", returnUrl);
     router.push(`/verify-email?${params.toString()}`);
   };
 
   const handleGoogleSignIn = async () => {
     setGeneralError("");
     setIsGoogleSubmitting(true);
-    const returnPath =
-      searchParams.get("returnUrl") || searchParams.get("redirect") || "/home";
+    const returnPath = readReturnUrl(searchParams);
     const redirectUrl = `${window.location.origin}/auth/callback?next=${encodeURIComponent(returnPath)}`;
 
     const res = await signInWithGoogle(redirectUrl);
@@ -244,7 +243,7 @@ function SignUpForm() {
             <p className="mt-6 text-center text-xs text-text-muted">
               Already have an account?{" "}
               <Link
-                href={`/login${searchParams.get("redirect") ? `?redirect=${encodeURIComponent(searchParams.get("redirect")!)}` : ""}`}
+                href={`/login${returnUrlQuery(readReturnUrl(searchParams))}`}
                 className="font-semibold text-link hover:text-link-hover transition-colors"
               >
                 Log in

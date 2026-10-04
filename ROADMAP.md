@@ -43,7 +43,7 @@
 | **Phase 7** | 🟢 Low | L6: Implement automated test suite (Auth, services, critical journeys) | ✅ Done | Regression prevention and verified end-to-end reliability |
 | **Phase 8** | 🔴 Critical | Monetization Engine: Freemium Paywall & Coin Economy | ⏳ Planned · 🔒 Blocked by 10, 13.1, 15, 16 | Direct monetization, unlocks Ep 6+, daily streak rewards |
 | **Phase 9** | 🟠 High | Mobile PWA & Advanced Video Player UX | ⏳ Planned · 🔒 Blocked by 14 | Native app-like PWA, subtitles/VTT, keyboard hotkeys, PiP |
-| **Phase 10** | 🔴 Critical | Security Hardening & Access Control (admin role escalation, RLS & grants, admin API auth, subdomain guard, open redirect, episode media lockdown) | 🚧 In progress (10.1–10.4 ✅, 10.5 🚧) | Closes privilege escalation and data exposure; gate for all further work |
+| **Phase 10** | 🔴 Critical | Security Hardening & Access Control (admin role escalation, RLS & grants, admin API auth, subdomain guard, open redirect, episode media lockdown) | 🚧 In progress (10.1–10.5 ✅) | Closes privilege escalation and data exposure; gate for all further work |
 | **Phase 11** | 🔴 Critical | Complete Stubbed User Flows (email verification, password recovery, account deletion, support pipeline, real 404s) | ⏳ Planned | Every visible action performs a real operation |
 | **Phase 12** | 🟠 High | Functional Bug Fixes & Data Integrity (12-item cap, admin drafts, progress semantics, no production mocks) | ⏳ Planned | Full catalog visible; admins see all content; trustworthy data |
 | **Phase 13** | 🟠 High | Backend Architecture Consolidation (database topology ADR, server-rendered catalog, service split, observability) | ⏳ Planned | Decision gate for Phase 8; faster pages; operability |
@@ -1088,7 +1088,7 @@ These items stay ✅ for history; the gaps are tracked as new tasks.
 ---
 
 ### Task 10.5: Safe Redirect Handling & Unified `returnUrl` Parameter
-* **Status**: 🚧 Partially delivered — `lib/navigation/safe-redirect.ts` (`getSafeRedirect`, `getSafeAdminRedirect`, tested) exists and middleware uses it (Task 10.4); the login, signup, verify-email, and admin login pages, the `auth/callback` route, and the `redirect` → `returnUrl` unification remain
+* **Status**: ✅ Completed — verified in a real browser (headless Edge, 11/11 checks)
 * **Problem**: `app/login/page.tsx` L41–43 calls `router.push(searchParams.get("returnUrl") || searchParams.get("redirect"))` without validation, so `/login?redirect=https://evil.example` sends a user to an attacker's page right after a real login. The same pattern exists in `app/verify-email/page.tsx` (L25), `app/signup/page.tsx`, and `app/admin/login/page.tsx` (L13). Two parameter names, `redirect` and `returnUrl`, are in use.
 * **Target Files**: `lib/navigation/safe-redirect.ts` (new), `app/login/page.tsx`, `app/signup/page.tsx`, `app/verify-email/page.tsx`, `app/admin/login/page.tsx`, `components/header/HeaderActions.tsx`, `components/LoginRequiredModal.tsx`, `hooks/useRequireAuth.ts`, `middleware.ts`, `app/auth/callback/route.ts`
 * **Planned Specifications**:
@@ -1097,6 +1097,20 @@ These items stay ✅ for history; the gaps are tracked as new tasks.
   3. Standardize on `returnUrl` everywhere; keep reading `redirect` for one release for backward compatibility.
   4. Replace the inline check in `app/auth/callback/route.ts` with the shared helper.
 * **Verification**: table test — `https://evil.example`, `//evil.example`, `/\evil.example`, `javascript:alert(1)`, `%2F%2Fevil.example`, and `/\t/evil.example` all resolve to the fallback.
+* **Delivered Capabilities (2026-10-04)**:
+  1. Items 1–2 delivered with Task 10.4 (`getSafeRedirect`, `getSafeAdminRedirect`).
+  2. New helpers in `lib/navigation/safe-redirect.ts`: `readReturnUrl(searchParams, fallback)` reads `returnUrl`, falls back to the legacy `redirect` parameter (item 3 compatibility), validates it, and never returns an auth page (`/login`, `/signup`, `/verify-email`, `/forgot-password`); `returnUrlQuery(value)` builds `?returnUrl=…` for links, or `""` when the target is missing, default, or unsafe.
+  3. `app/login/page.tsx`, `app/signup/page.tsx`, `app/verify-email/page.tsx`: post-login, Google OAuth `next`, and signup → verify-email destinations all go through `readReturnUrl()`; signup now forwards `returnUrl` (not `redirect`) to verify-email.
+  4. Login ↔ signup links forward the validated `returnUrl` (previously only the legacy `redirect` was forwarded, so a middleware-issued `returnUrl` was lost when switching pages).
+  5. `components/header/HeaderActions.tsx` and `components/LoginRequiredModal.tsx` link to `/login?returnUrl=…` (item 3).
+  6. `app/admin/login/page.tsx` validates `returnUrl` with `getSafeAdminRedirect()` before `router.replace`.
+  7. `app/auth/callback/route.ts` uses `getSafeRedirect()` instead of its inline check (item 4). The old check was not exploitable because the destination is always prefixed with the request origin.
+  8. `hooks/useRequireAuth.ts` already used `returnUrl`; unchanged.
+* **Verification Results**:
+  - Unit: `__tests__/navigation/safe-redirect.test.ts` extended for `readReturnUrl` / `returnUrlQuery`; `npm test` 86/86; `tsc` 0 errors; lint clean; `npm run build` succeeds.
+  - Real browser (headless Edge via the DevTools Protocol against `next start`, throwaway user and admin, deleted afterwards): login with `?redirect=https://example.com/phish` and with `?returnUrl=//example.com` both landed on `/home`; `?returnUrl=/account/history` was honored; the login → signup link kept `returnUrl=/drama/ceo-secret-wife` and dropped an unsafe `redirect`; admin login with `returnUrl=//example.com` landed on `/admin/dashboard`, and `returnUrl=/admin/dramas` was honored.
+  - Not exercised: the Google OAuth round trip (needs a real Google sign-in) and the verify-email redirect (that page is still a stub until Task 11.1). No negative control was run against the pre-fix build.
+  - Follow-up: remove the legacy `redirect` fallback in `readReturnUrl()` after one release.
 
 ---
 

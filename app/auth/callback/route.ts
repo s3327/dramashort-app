@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createUserServerClient } from "@/lib/supabase/user-server";
+import { getSafeRedirect } from "@/lib/navigation/safe-redirect";
 
 /**
  * Route handler for Supabase OAuth callback (e.g. Google OAuth code exchange).
@@ -8,12 +9,8 @@ import { createUserServerClient } from "@/lib/supabase/user-server";
 export async function GET(request: NextRequest) {
   const { searchParams, origin } = new URL(request.url);
   const code = searchParams.get("code");
-  let next = searchParams.get("next") || "/home";
-
-  // Prevent open redirect vulnerabilities
-  if (!next.startsWith("/") || next.startsWith("//")) {
-    next = "/home";
-  }
+  // Same-origin relative paths only (shared open-redirect rule, Task 10.5)
+  const next = getSafeRedirect(searchParams.get("next"), "/home");
 
   if (code) {
     const supabase = await createUserServerClient();

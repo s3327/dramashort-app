@@ -34,6 +34,34 @@ export function getSafeRedirect(value: unknown, fallback = "/home"): string {
   return `${parsed.pathname}${parsed.search}${parsed.hash}`;
 }
 
+/** Auth pages are never useful post-login destinations (they would show the form again). */
+const AUTH_PAGES = ["/login", "/signup", "/verify-email", "/forgot-password"];
+
+interface SearchParamsLike {
+  get(name: string): string | null;
+}
+
+/**
+ * Reads the post-login destination from `returnUrl`, falling back to the legacy
+ * `redirect` parameter (kept for one release), and validates it. Auth pages
+ * resolve to the fallback.
+ */
+export function readReturnUrl(searchParams: SearchParamsLike, fallback = "/home"): string {
+  const raw = searchParams.get("returnUrl") ?? searchParams.get("redirect");
+  const path = getSafeRedirect(raw, fallback);
+  const pathname = path.split(/[?#]/)[0];
+  return AUTH_PAGES.includes(pathname) ? fallback : path;
+}
+
+/**
+ * Builds `?returnUrl=...` for links into the auth pages, or "" when the
+ * destination is missing, unsafe, or the default.
+ */
+export function returnUrlQuery(value: string | null | undefined, fallback = "/home"): string {
+  const path = readReturnUrl({ get: (name) => (name === "returnUrl" ? value ?? null : null) }, fallback);
+  return path === fallback ? "" : `?${new URLSearchParams({ returnUrl: path }).toString()}`;
+}
+
 /**
  * Admin variant: destination must stay inside the admin console and must not be
  * the login page itself (which would loop for an authenticated admin).

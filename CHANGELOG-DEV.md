@@ -505,3 +505,30 @@
   - `npm test`: 81 / 81 pass. `npx tsc --noEmit`: 0 errors. `next lint`: clean. `npm run build`: success.
   - End-to-end on `next start -p 3100` using `Host` headers (throwaway admin and regular user, deleted afterwards; read-only requests): 15 / 15 PASS — admin host `/dashboard` and `/` without login → login redirect; `/login` → 200; `/api/admin/dramas` → 401 JSON without login, 200 JSON as admin; regular user → `/admin/login?error=unauthorized`; admin `/` → `/admin/dashboard`; `returnUrl=//evil.example` → `/admin/dashboard`; `returnUrl=/admin/dramas` honored; main `/account` guest → `/login?returnUrl=%2Faccount`; guest `/home` → 200 with no `Set-Cookie`; `/home` with an expired session → 200 with a refreshed `sb-…-auth-token` cookie.
   - Not exercised: a real deployed `admin.` DNS host (tested via `Host` header only).
+
+---
+
+## [2026-10-04] Task 10.5: Safe Post-Login Redirects & Unified `returnUrl`
+* **Milestone**: Phase 10 (Security Hardening) — Task 10.5
+* **Goal**: Close the client-side open redirect on the login pages (`/login?redirect=https://evil.example` sent users off-site after a real login) and standardize on the `returnUrl` parameter.
+* **Implementation Steps Taken**:
+  1. `lib/navigation/safe-redirect.ts`: added `readReturnUrl(searchParams, fallback)` (reads `returnUrl`, then legacy `redirect`; validates via `getSafeRedirect`; rejects auth pages) and `returnUrlQuery(value)` (builds `?returnUrl=…` or `""`).
+  2. `app/login/page.tsx`: password login and Google OAuth `next` use `readReturnUrl()`; signup link forwards the validated `returnUrl`.
+  3. `app/signup/page.tsx`: Google OAuth `next` and the verify-email hand-off use `readReturnUrl()`; the hand-off parameter is now `returnUrl`; login link forwards the validated `returnUrl`.
+  4. `app/verify-email/page.tsx`: post-verify destination uses `readReturnUrl()` (the page itself remains a stub until Task 11.1).
+  5. `app/admin/login/page.tsx`: `returnUrl` validated with `getSafeAdminRedirect()` before `router.replace`.
+  6. `components/header/HeaderActions.tsx`, `components/LoginRequiredModal.tsx`: links switched from `?redirect=` to `returnUrlQuery()`.
+  7. `app/auth/callback/route.ts`: inline open-redirect check replaced by `getSafeRedirect()`.
+  8. Tests: extended `__tests__/navigation/safe-redirect.test.ts` (5 new).
+  9. Docs: `ROADMAP.md` Task 10.5 ✅ with delivered capabilities and results; Phase 10 matrix row.
+* **Key File Diffs**:
+  - Modified: `lib/navigation/safe-redirect.ts`, `app/login/page.tsx`, `app/signup/page.tsx`, `app/verify-email/page.tsx`, `app/admin/login/page.tsx`, `components/header/HeaderActions.tsx`, `components/LoginRequiredModal.tsx`, `app/auth/callback/route.ts`, `__tests__/navigation/safe-redirect.test.ts`, `ROADMAP.md`, `CHANGELOG-DEV.md`.
+* **Regression Analysis & Cross-System Impact**:
+  - Existing links that use `?redirect=` keep working for one release through the fallback in `readReturnUrl()`.
+  - Behavior change: auth pages are no longer valid post-login destinations (e.g. opening Login from the login page's own header now returns to `/home` instead of `/login`).
+  - Fixed a lost-destination bug: a `returnUrl` set by middleware (e.g. after visiting `/account`) is now carried across the login ↔ signup links.
+  - `auth/callback` behavior unchanged for valid paths; it was not exploitable before (origin-prefixed destination).
+* **Verification**:
+  - `npm test`: 86 / 86 pass. `npx tsc --noEmit`: 0 errors. `next lint`: clean. `npm run build`: success.
+  - Real browser — headless Edge driven over the Chrome DevTools Protocol against `next start -p 3100`, throwaway user and admin deleted afterwards: 11 / 11 PASS. `?redirect=https://example.com/phish` → landed on `/home`; `?returnUrl=//example.com` → `/home`; `?returnUrl=/account/history` → honored; login → signup link `?returnUrl=%2Fdrama%2Fceo-secret-wife` kept and an unsafe `redirect` dropped; admin login `returnUrl=//example.com` → `/admin/dashboard`; `returnUrl=/admin/dramas` → honored.
+  - Not exercised: Google OAuth round trip; verify-email redirect (stub page); a negative control against the pre-fix build.

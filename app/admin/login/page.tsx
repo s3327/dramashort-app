@@ -6,11 +6,12 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { AlertCircle, Loader2 } from "lucide-react";
 import icon from "@/public/brand/dramashort-icon-circle.png";
 import { useAdminAuth } from "@/contexts/AdminAuthContext";
+import { getSafeAdminRedirect } from "@/lib/navigation/safe-redirect";
 
 function AdminLoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const returnUrl = searchParams.get("returnUrl") || "/admin/dashboard";
+  const returnUrl = getSafeAdminRedirect(searchParams.get("returnUrl"));
   const urlError = searchParams.get("error");
 
   const { login, isLoggedIn, isLoading } = useAdminAuth();

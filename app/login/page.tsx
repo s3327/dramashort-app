@@ -8,6 +8,7 @@ import { Eye, EyeOff, Mail, Loader2 } from "lucide-react";
 import icon from "@/public/brand/dramashort-icon-circle.png";
 import GoogleIcon from "@/components/GoogleIcon";
 import { useAuth } from "@/contexts/AuthContext";
+import { readReturnUrl, returnUrlQuery } from "@/lib/navigation/safe-redirect";
 
 function LoginForm() {
   const router = useRouter();
@@ -38,16 +39,13 @@ function LoginForm() {
       return;
     }
 
-    const destination =
-      searchParams.get("returnUrl") || searchParams.get("redirect") || "/home";
-    router.push(destination);
+    router.push(readReturnUrl(searchParams));
   };
 
   const handleGoogleSignIn = async () => {
     setErrorMessage("");
     setIsGoogleSubmitting(true);
-    const returnPath =
-      searchParams.get("returnUrl") || searchParams.get("redirect") || "/home";
+    const returnPath = readReturnUrl(searchParams);
     const redirectUrl = `${window.location.origin}/auth/callback?next=${encodeURIComponent(returnPath)}`;
 
     const res = await signInWithGoogle(redirectUrl);
@@ -188,7 +186,7 @@ function LoginForm() {
             </button>
 
             <Link
-              href={`/signup${searchParams.get("redirect") ? `?redirect=${encodeURIComponent(searchParams.get("redirect")!)}` : ""}`}
+              href={`/signup${returnUrlQuery(readReturnUrl(searchParams))}`}
               className="mt-2.5 w-full flex items-center justify-center gap-2.5 rounded-full border border-border bg-bg hover:bg-surface text-text font-semibold text-sm py-3 transition-colors"
             >
               <Mail size={17} strokeWidth={2} />

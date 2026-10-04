@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { User } from "lucide-react";
+import { returnUrlQuery } from "@/lib/navigation/safe-redirect";
 import NotificationBell from "@/components/NotificationBell";
 import SearchDropdown from "@/components/SearchDropdown";
 
@@ -18,7 +19,7 @@ export default function HeaderActions({
         {/* Routes straight to /account when logged in, otherwise to
             /login with a redirect back to wherever the user was. */}
         <Link
-          href={isLoggedIn ? "/account" : `/login?redirect=${encodeURIComponent(pathname)}`}
+          href={isLoggedIn ? "/account" : `/login${returnUrlQuery(pathname)}`}
           aria-label={isLoggedIn ? "Account" : "Login"}
           className="p-2 rounded-full text-text/80 hover:text-primary hover:bg-surface transition-colors block"
         >

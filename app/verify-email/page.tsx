@@ -7,6 +7,7 @@ import Link from "next/link";
 import icon from "@/public/brand/dramashort-icon-circle.png";
 import OtpInput from "@/components/OtpInput";
 import { useAuth } from "@/contexts/AuthContext";
+import { readReturnUrl } from "@/lib/navigation/safe-redirect";
 
 function VerifyEmailForm() {
   const router = useRouter();
@@ -22,7 +23,7 @@ function VerifyEmailForm() {
     // TODO: verify the code against the real auth API once it exists.
     // Verifying completes account creation, so it logs the user in too.
     login();
-    router.push(searchParams.get("redirect") || "/home");
+    router.push(readReturnUrl(searchParams));
   };
 
   const handleResend = () => {

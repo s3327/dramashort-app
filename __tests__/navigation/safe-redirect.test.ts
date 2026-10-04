@@ -1,6 +1,46 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { getSafeAdminRedirect, getSafeRedirect } from "@/lib/navigation/safe-redirect";
+import {
+  getSafeAdminRedirect,
+  getSafeRedirect,
+  readReturnUrl,
+  returnUrlQuery,
+} from "@/lib/navigation/safe-redirect";
+
+const params = (query: string) => new URLSearchParams(query);
+
+describe("readReturnUrl (Task 10.5)", () => {
+  it("prefers returnUrl and falls back to the legacy redirect parameter", () => {
+    assert.equal(readReturnUrl(params("returnUrl=%2Faccount&redirect=%2Fsearch")), "/account");
+    assert.equal(readReturnUrl(params("redirect=%2Fdrama%2Fceo-secret-wife")), "/drama/ceo-secret-wife");
+    assert.equal(readReturnUrl(params("")), "/home");
+  });
+
+  it("blocks the original open redirect through either parameter", () => {
+    assert.equal(readReturnUrl(params("redirect=https%3A%2F%2Fevil.example")), "/home");
+    assert.equal(readReturnUrl(params("returnUrl=%2F%2Fevil.example")), "/home");
+    assert.equal(readReturnUrl(params("returnUrl=javascript%3Aalert(1)")), "/home");
+  });
+
+  it("never returns an auth page", () => {
+    for (const page of ["/login", "/signup", "/verify-email", "/forgot-password", "/login?x=1"]) {
+      assert.equal(readReturnUrl(params(`returnUrl=${encodeURIComponent(page)}`)), "/home", page);
+    }
+  });
+});
+
+describe("returnUrlQuery (Task 10.5)", () => {
+  it("builds a returnUrl query for safe, non-default destinations", () => {
+    assert.equal(returnUrlQuery("/drama/ceo-secret-wife"), "?returnUrl=%2Fdrama%2Fceo-secret-wife");
+    assert.equal(returnUrlQuery("/search?q=ceo"), "?returnUrl=%2Fsearch%3Fq%3Dceo");
+  });
+
+  it("returns an empty string for missing, default, unsafe, or auth-page destinations", () => {
+    for (const value of [null, undefined, "", "/home", "//evil.example", "/login"]) {
+      assert.equal(returnUrlQuery(value), "", JSON.stringify(value));
+    }
+  });
+});
 
 describe("getSafeRedirect (open-redirect protection)", () => {
   it("keeps same-origin relative paths with query and hash", () => {

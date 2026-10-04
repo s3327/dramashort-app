@@ -4,6 +4,7 @@ import { usePathname } from "next/navigation";
 import Link from "next/link";
 import { LogIn } from "lucide-react";
 import Modal from "@/components/Modal";
+import { returnUrlQuery } from "@/lib/navigation/safe-redirect";
 
 export default function LoginRequiredModal({
   open,
@@ -33,7 +34,7 @@ export default function LoginRequiredModal({
             Cancel
           </button>
           <Link
-            href={`/login?redirect=${encodeURIComponent(pathname)}`}
+            href={`/login${returnUrlQuery(pathname)}`}
             className="rounded-full bg-btn-primary hover:bg-btn-primary-hover text-btn-primary-text font-semibold text-sm px-4 py-2 shadow-sm transition-colors"
           >
             Log In
