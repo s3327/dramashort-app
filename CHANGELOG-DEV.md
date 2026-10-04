@@ -428,3 +428,26 @@
   - `scripts/sql/verify-user-db-rls.sql`: 18 / 18 PASS, final line `ALL TASK 10.2 CHECKS PASSED`.
   - Negative control: escalation reproduced with old policy (1 row), new policies restored after rollback.
   - Not yet done: `npm run db:user:push` to the User DB, in-app smoke test against it, and Security Advisor review.
+
+---
+
+## [2026-10-04] Task 10.2: Production Deployment & Smoke Test (User DB)
+* **Milestone**: Phase 10 (Security Hardening) — Task 10.2 Deployment
+* **Goal**: Apply the verified RLS and privilege hardening to the production User DB (`bpidsbcrvpkavvdvtpgh`) and confirm app flows and attack paths behave as tested locally.
+* **Implementation Steps Taken**:
+  1. Committed and pushed the migration, verification script, and docs (`c4e18f5`).
+  2. `supabase migration list --workdir supabase/user`: remote had `20260930150000` and `20260930163000`; `20261004120000` pending.
+  3. `supabase db push --dry-run`: would push only `20261004120000_harden_rls_and_grants.sql`.
+  4. `supabase db push --workdir supabase/user --yes`: applied the migration (exit 0).
+  5. Production smoke test (throwaway Node script, not committed): created two confirmed throwaway accounts with the service role, signed in as one through the public anon key exactly as the browser app does, ran app operations and attack attempts, then deleted both accounts.
+  6. Updated `ROADMAP.md` Task 10.2 status to ✅ Completed and the Phase 10 matrix row.
+* **Key File Diffs**:
+  - Production User DB: migration `20261004120000_harden_rls_and_grants.sql` applied.
+  - `ROADMAP.md`: Task 10.2 status, deployment and smoke-test results; Phase 10 matrix status.
+* **Regression Analysis & Cross-System Impact**:
+  - App flows verified against production: signup profile creation, own profile display edit, favorite upsert/delete, watch-progress upsert, list creation and item add.
+  - Service-role paths (admin scripts, admin API routes) unaffected; the smoke test's service-role setup and cleanup worked.
+  - Rollback, if ever needed: a new migration restoring the earlier policies and grants (definitions in `20260930150000_user_schema.sql` and `20260930163000_grant_permissions.sql`). Not expected.
+* **Verification**:
+  - Production smoke test: 24 / 24 PASS — `anon` denied (42501) on all five user tables; trigger-created profiles have `role = 'user'`; `update profiles set role = 'admin'` denied (42501) and role unchanged; own profile delete denied; cross-user favorite and list-item inserts denied (42501); reads return only own rows; both throwaway users deleted with no leftover profile rows.
+  - Remaining: Supabase Security Advisor review in the dashboard (item 7).

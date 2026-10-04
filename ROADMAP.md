@@ -43,7 +43,7 @@
 | **Phase 7** | 🟢 Low | L6: Implement automated test suite (Auth, services, critical journeys) | ✅ Done | Regression prevention and verified end-to-end reliability |
 | **Phase 8** | 🔴 Critical | Monetization Engine: Freemium Paywall & Coin Economy | ⏳ Planned · 🔒 Blocked by 10, 13.1, 15, 16 | Direct monetization, unlocks Ep 6+, daily streak rewards |
 | **Phase 9** | 🟠 High | Mobile PWA & Advanced Video Player UX | ⏳ Planned · 🔒 Blocked by 14 | Native app-like PWA, subtitles/VTT, keyboard hotkeys, PiP |
-| **Phase 10** | 🔴 Critical | Security Hardening & Access Control (admin role escalation, RLS & grants, admin API auth, subdomain guard, open redirect, episode media lockdown) | 🚧 In progress (10.1 ✅, 10.2 🟢 verified locally) | Closes privilege escalation and data exposure; gate for all further work |
+| **Phase 10** | 🔴 Critical | Security Hardening & Access Control (admin role escalation, RLS & grants, admin API auth, subdomain guard, open redirect, episode media lockdown) | 🚧 In progress (10.1 ✅, 10.2 ✅) | Closes privilege escalation and data exposure; gate for all further work |
 | **Phase 11** | 🔴 Critical | Complete Stubbed User Flows (email verification, password recovery, account deletion, support pipeline, real 404s) | ⏳ Planned | Every visible action performs a real operation |
 | **Phase 12** | 🟠 High | Functional Bug Fixes & Data Integrity (12-item cap, admin drafts, progress semantics, no production mocks) | ⏳ Planned | Full catalog visible; admins see all content; trustworthy data |
 | **Phase 13** | 🟠 High | Backend Architecture Consolidation (database topology ADR, server-rendered catalog, service split, observability) | ⏳ Planned | Decision gate for Phase 8; faster pages; operability |
@@ -985,7 +985,7 @@ These items stay ✅ for history; the gaps are tracked as new tasks.
 ---
 
 ### Task 10.2: User Database RLS & Column-Level Privilege Hardening
-* **Status**: 🟢 Verified locally (18/18 checks) — pending deployment to the User DB and Security Advisor review
+* **Status**: ✅ Completed — deployed to the User DB on 2026-10-04 and verified in production (24/24 smoke checks); Security Advisor review pending (dashboard)
 * **Problem**: The `profiles` policy is `FOR ALL USING (auth.uid() = id)` (`supabase/user/supabase/migrations/20260930150000_user_schema.sql` L87), and `GRANT ALL ON ALL TABLES IN SCHEMA public TO authenticated` (`20260930163000_grant_permissions.sql` L13). A user can run `update({ role: "admin" })` on their own row, and would be able to edit any future column added to `profiles` (such as Phase 8's `coin_balance`).
 * **Target Files**: `supabase/user/supabase/migrations/<timestamp>_harden_rls_and_grants.sql` (new), `types/supabase-user.ts` (regenerate)
 * **Planned Specifications**:
@@ -1018,7 +1018,9 @@ These items stay ✅ for history; the gaps are tracked as new tasks.
   - `types/supabase-user.ts`: no regeneration needed (no table or column shape changed).
   - App compatibility: the only client write to `profiles` (`updateUserProfile()` in `lib/services/user.service.ts`) touches `display_name`, `avatar_url`, `updated_at`, all still granted.
   - Local verification: `scripts/sql/verify-user-db-rls.sql` passes 18/18 checks on a local Supabase Postgres 17 with all three user migrations applied (role escalation blocked; own display fields editable; no insert/delete on `profiles`; cross-user reads, writes, reassignment, and list-item planting blocked; own upserts work; `anon` has no access; signup trigger works with the empty `search_path`; future tables get no default grants). A negative control with the old `FOR ALL` policy and `GRANT ALL` reproduced the escalation (1 row updated).
-  - **Remaining**: push to the User DB (`npm run db:user:push`); smoke-test signup, profile edit, favorites, history, and lists in the app; run item 7 (Security Advisor) after deployment.
+  - Deployment: `supabase db push --workdir supabase/user` applied only `20261004120000_harden_rls_and_grants.sql` (dry run confirmed beforehand; remote already had the two earlier migrations).
+  - Production smoke test: 24/24 PASS through the public anon key with two throwaway confirmed accounts (deleted afterwards, no leftover rows) — `anon` denied on all five tables; signup trigger creates `role = 'user'` profiles; own display-name update works; `role = 'admin'` update denied and role unchanged; profile delete denied; own favorite upsert/delete, watch-progress upsert, list create and item add work; cross-user favorite insert and list-item insert denied; reads return only own rows.
+  - **Remaining**: item 7 — review Supabase Security Advisor in the dashboard (not available through the CLI).
 
 ---
 
