@@ -1,32 +1,17 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import { requireAdmin } from "@/lib/auth/require-admin";
 import { getContentAdminClient } from "@/lib/supabase/content";
 import { mapTitleRowToTitle } from "@/lib/services/content.service";
-import { titles as mockTitles } from "@/data/titles.mock";
+import { apiError, apiSuccess } from "@/lib/api/responses";
+import { isUuid, validateDramaPayload } from "@/lib/validation/drama";
+import { resolveChannelByName } from "@/lib/admin/resolve-channel";
 import type { Database } from "@/types/supabase-content";
 
 type TitleUpdate = Database["public"]["Tables"]["titles"]["Update"];
 
-export interface DramaUpdateBody {
-  title?: string;
-  synopsis?: string;
-  genre?: string;
-  tags?: string[] | string;
-  channel?: string;
-  channel_name?: string;
-  channel_code?: string;
-  channel_id?: string | null;
-  status?: string;
-  totalEpisodes?: number;
-  total_episodes?: number;
-  poster?: string;
-  poster_url?: string;
-}
-
 /**
  * GET /api/admin/dramas/[id]
- * Fetch a single drama by ID (Supabase DB first, mock fallback).
- * Protected by requireAdmin.
+ * Fetches one drama (any status) by UUID from the Content DB. Admin only.
  */
 export async function GET(
   _request: NextRequest,
@@ -38,6 +23,9 @@ export async function GET(
   }
 
   const { id } = await params;
+  if (!isUuid(id)) {
+    return apiError("INVALID_ID", "Drama id must be a UUID.", 400);
+  }
 
   try {
     const adminClient = getContentAdminClient();
@@ -47,34 +35,24 @@ export async function GET(
       .eq("id", id)
       .maybeSingle();
 
-    if (!error && row) {
-      return NextResponse.json({
-        success: true,
-        data: mapTitleRowToTitle(row),
-      });
+    if (error) {
+      console.error("[GET /api/admin/dramas/:id] Supabase error:", error);
+      return apiError("DATABASE_ERROR", "Failed to load drama.", 500);
     }
+    if (!row) {
+      return apiError("NOT_FOUND", "Drama not found.", 404);
+    }
+
+    return apiSuccess(mapTitleRowToTitle(row));
   } catch (err) {
-    console.warn("Failed to fetch drama via adminClient:", err);
+    console.error("[GET /api/admin/dramas/:id] Unexpected error:", err);
+    return apiError("DATABASE_ERROR", "Failed to load drama.", 500);
   }
-
-  // Fallback to mock titles if not in database
-  const mock = mockTitles.find((t) => t.id === id || t.slug === id);
-  if (mock) {
-    return NextResponse.json({
-      success: true,
-      data: mock,
-    });
-  }
-
-  return NextResponse.json(
-    { success: false, error: "Drama not found" },
-    { status: 404 }
-  );
 }
 
 /**
  * PATCH /api/admin/dramas/[id]
- * Persists updates to a Drama row in Supabase Content Database.
+ * Applies a partial update to one drama in the Content DB. Admin only.
  */
 export async function PATCH(
   request: NextRequest,
@@ -86,93 +64,49 @@ export async function PATCH(
   }
 
   const { id } = await params;
+  if (!isUuid(id)) {
+    return apiError("INVALID_ID", "Drama id must be a UUID.", 400);
+  }
 
-  // 2. Parse payload
-  let body: DramaUpdateBody;
+  let body: unknown;
   try {
     body = await request.json();
   } catch {
-    return NextResponse.json(
-      { success: false, error: "Invalid JSON request body" },
-      { status: 400 }
-    );
+    return apiError("INVALID_JSON", "Request body must be valid JSON.", 400);
   }
 
-  // 3. Build update fields
-  const updateData: TitleUpdate = {
-    updated_at: new Date().toISOString(),
-  };
-
-  if (body.title !== undefined) {
-    const trimmedTitle = body.title.trim();
-    if (!trimmedTitle) {
-      return NextResponse.json(
-        { success: false, error: "Drama title cannot be empty" },
-        { status: 400 }
-      );
-    }
-    updateData.title = trimmedTitle;
+  const validation = validateDramaPayload(body, "update");
+  if (!validation.ok) {
+    return apiError("VALIDATION_ERROR", "Invalid drama payload.", 400, validation.errors);
   }
+  const input = validation.value;
 
-  if (body.synopsis !== undefined) {
-    updateData.synopsis = body.synopsis.trim();
-  }
+  const updateData: TitleUpdate = {};
+  if (input.title !== undefined) updateData.title = input.title;
+  if (input.synopsis !== undefined) updateData.synopsis = input.synopsis;
+  if (input.genre !== undefined) updateData.genre = input.genre;
+  if (input.status !== undefined) updateData.status = input.status;
+  if (input.totalEpisodes !== undefined) updateData.total_episodes = input.totalEpisodes;
+  if (input.tags !== undefined) updateData.tags = input.tags;
+  if (input.posterUrl !== undefined) updateData.poster_url = input.posterUrl;
 
-  if (body.genre !== undefined) {
-    updateData.genre = body.genre.trim();
-  }
-
-  if (body.status !== undefined) {
-    updateData.status = body.status;
-  }
-
-  const totalEpisodes = body.totalEpisodes ?? body.total_episodes;
-  if (totalEpisodes !== undefined) {
-    updateData.total_episodes = Math.max(1, Number(totalEpisodes) || 1);
-  }
-
-  if (body.tags !== undefined) {
-    if (Array.isArray(body.tags)) {
-      updateData.tags = body.tags.map((t) => String(t).trim()).filter(Boolean);
-    } else if (typeof body.tags === "string") {
-      updateData.tags = body.tags
-        .split(",")
-        .map((t) => t.trim())
-        .filter(Boolean);
-    }
-  }
-
-  const poster = body.poster_url || body.poster;
-  if (poster !== undefined) {
-    updateData.poster_url = poster;
-  }
-
-  // 4. Resolve Channel affiliation if channel is provided
-  const channelName = body.channel_name || body.channel;
-  if (channelName) {
-    updateData.channel_name = channelName;
-
-    try {
-      const adminClient = getContentAdminClient();
-      const { data: chan } = await adminClient
-        .from("channels")
-        .select("id, name, code")
-        .ilike("name", channelName)
-        .maybeSingle();
-
-      if (chan) {
-        updateData.channel_name = chan.name;
-        updateData.channel_code = chan.code;
-        updateData.channel_id = chan.id;
-      }
-    } catch (err) {
-      console.warn("Channel lookup in PATCH drama:", err);
-    }
-  }
-
-  // 5. Execute Supabase update
   try {
     const adminClient = getContentAdminClient();
+
+    if (input.channelName !== undefined) {
+      const channel = await resolveChannelByName(adminClient, input.channelName);
+      updateData.channel_name = channel?.name ?? input.channelName;
+      if (channel) {
+        updateData.channel_code = channel.code;
+        updateData.channel_id = channel.id;
+      }
+    }
+
+    if (Object.keys(updateData).length === 0) {
+      return apiError("VALIDATION_ERROR", "No updatable fields provided.", 400);
+    }
+    updateData.updated_at = new Date().toISOString();
+
     const { data: updatedRow, error: updateError } = await adminClient
       .from("titles")
       .update(updateData)
@@ -181,47 +115,16 @@ export async function PATCH(
       .maybeSingle();
 
     if (updateError) {
-      console.error("Supabase drama update error:", updateError);
-      return NextResponse.json(
-        { success: false, error: updateError.message },
-        { status: 500 }
-      );
+      console.error("[PATCH /api/admin/dramas/:id] Supabase update error:", updateError);
+      return apiError("DATABASE_ERROR", "Failed to save drama changes.", 500);
+    }
+    if (!updatedRow) {
+      return apiError("NOT_FOUND", "Drama not found.", 404);
     }
 
-    if (updatedRow) {
-      return NextResponse.json({
-        success: true,
-        data: mapTitleRowToTitle(updatedRow),
-      });
-    }
-
-    // If row wasn't found in DB, check if it's a mock ID
-    const mock = mockTitles.find((t) => t.id === id || t.slug === id);
-    if (mock) {
-      const updatedMock = {
-        ...mock,
-        title: (updateData.title as string) || mock.title,
-        synopsis: (updateData.synopsis as string) || mock.synopsis,
-        genre: (updateData.genre as string) || mock.genre,
-        tags: (updateData.tags as string[]) || mock.tags,
-        channel: (updateData.channel_name as string) || mock.channel,
-        status: (updateData.status as any) || mock.status,
-        totalEpisodes:
-          (updateData.total_episodes as number) || mock.totalEpisodes,
-      };
-      return NextResponse.json({
-        success: true,
-        data: updatedMock,
-      });
-    }
-
-    return NextResponse.json(
-      { success: false, error: "Drama not found in database or mocks" },
-      { status: 404 }
-    );
-  } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : "Failed to persist drama update";
-    console.error("Fatal error during drama update:", err);
-    return NextResponse.json({ success: false, error: msg }, { status: 500 });
+    return apiSuccess(mapTitleRowToTitle(updatedRow));
+  } catch (err) {
+    console.error("[PATCH /api/admin/dramas/:id] Unexpected error:", err);
+    return apiError("DATABASE_ERROR", "Failed to save drama changes.", 500);
   }
 }

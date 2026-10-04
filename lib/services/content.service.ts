@@ -3,6 +3,7 @@ import type { Database } from "@/types/supabase-content";
 import { titles as mockTitles, type Title, type TitleStatus } from "@/data/titles.mock";
 import type { Channel } from "@/data/channels.mock";
 import type { HeroSlide } from "@/data/hero-slides.mock";
+import { getApiErrorMessage, readJsonSafely } from "@/lib/api/error-message";
 
 export type TitleRow = Database["public"]["Tables"]["titles"]["Row"];
 export type DramaRow = TitleRow;
@@ -594,11 +595,11 @@ export async function updateDrama(
       body: JSON.stringify(payload),
     });
 
-    const data = await res.json();
-    if (!res.ok || !data.success) {
+    const data = (await readJsonSafely(res)) as { success?: boolean; data?: Drama } | null;
+    if (!res.ok || !data?.success) {
       return {
         success: false,
-        error: data.error || `Update failed with HTTP ${res.status}`,
+        error: getApiErrorMessage(data, `Update failed with HTTP ${res.status}`),
       };
     }
 
@@ -648,11 +649,11 @@ export async function createDrama(
       body: JSON.stringify(payload),
     });
 
-    const data = await res.json();
-    if (!res.ok || !data.success) {
+    const data = (await readJsonSafely(res)) as { success?: boolean; data?: Drama } | null;
+    if (!res.ok || !data?.success) {
       return {
         success: false,
-        error: data.error || `Creation failed with HTTP ${res.status}`,
+        error: getApiErrorMessage(data, `Creation failed with HTTP ${res.status}`),
       };
     }
 

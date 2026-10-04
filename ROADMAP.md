@@ -43,7 +43,7 @@
 | **Phase 7** | 🟢 Low | L6: Implement automated test suite (Auth, services, critical journeys) | ✅ Done | Regression prevention and verified end-to-end reliability |
 | **Phase 8** | 🔴 Critical | Monetization Engine: Freemium Paywall & Coin Economy | ⏳ Planned · 🔒 Blocked by 10, 13.1, 15, 16 | Direct monetization, unlocks Ep 6+, daily streak rewards |
 | **Phase 9** | 🟠 High | Mobile PWA & Advanced Video Player UX | ⏳ Planned · 🔒 Blocked by 14 | Native app-like PWA, subtitles/VTT, keyboard hotkeys, PiP |
-| **Phase 10** | 🔴 Critical | Security Hardening & Access Control (admin role escalation, RLS & grants, admin API auth, subdomain guard, open redirect, episode media lockdown) | 🚧 In progress (10.1 ✅, 10.2 ✅) | Closes privilege escalation and data exposure; gate for all further work |
+| **Phase 10** | 🔴 Critical | Security Hardening & Access Control (admin role escalation, RLS & grants, admin API auth, subdomain guard, open redirect, episode media lockdown) | 🚧 In progress (10.1 ✅, 10.2 ✅, 10.3 ✅) | Closes privilege escalation and data exposure; gate for all further work |
 | **Phase 11** | 🔴 Critical | Complete Stubbed User Flows (email verification, password recovery, account deletion, support pipeline, real 404s) | ⏳ Planned | Every visible action performs a real operation |
 | **Phase 12** | 🟠 High | Functional Bug Fixes & Data Integrity (12-item cap, admin drafts, progress semantics, no production mocks) | ⏳ Planned | Full catalog visible; admins see all content; trustworthy data |
 | **Phase 13** | 🟠 High | Backend Architecture Consolidation (database topology ADR, server-rendered catalog, service split, observability) | ⏳ Planned | Decision gate for Phase 8; faster pages; operability |
@@ -965,7 +965,7 @@ These items stay ✅ for history; the gaps are tracked as new tasks.
 > **Objective**: Close every privilege-escalation and data-exposure path found in the audit, centralize authorization in one server-side helper, and lock the fixes in with automated regression tests and a CI gate. **Phase 8 must not start before this phase is complete**, because its wallet fields are planned on `profiles`, which is currently user-writable.
 
 ### Task 10.1: Admin Role Single Source of Truth & Shared `requireAdmin()` Guard
-* **Status**: ✅ Completed (Unit verified; Integration check pending Task 10.9)
+* **Status**: ✅ Completed (Unit verified; API integration verified 2026-10-04 via Task 10.3 smoke test; automated suite pending Task 10.9)
 * **Target Files**: `lib/auth/roles.ts`, `lib/auth/require-admin.ts`, `middleware.ts`, `app/api/admin/dramas/route.ts`, `app/api/admin/dramas/[id]/route.ts`, `contexts/AdminAuthContext.tsx`, `scripts/backfill-admin-roles.ts`, `scripts/create-admin.ts`, `__tests__/auth/roles.test.ts`
 * **Delivered Capabilities**:
   1. Authoritative Role Source: Implemented `lib/auth/roles.ts` exporting `getUserRole()` which reads **strictly** from `app_metadata.role`. Explicitly ignores client-writable `user_metadata.role` and `profiles.role` for authorization decisions.
@@ -979,7 +979,7 @@ These items stay ✅ for history; the gaps are tracked as new tasks.
 * **Verification & Remaining Gaps**:
   - `npm test`: 19 / 19 tests pass (5 security unit tests in `Auth Roles & Privilege Security (Task 10.1)`).
   - `npx tsc --noEmit`: compiles cleanly with 0 type errors.
-  - Integration check (forged `user_metadata.role` returning 403 on live endpoints and redirect from `/admin`) is pending the automated security regression suite in Task 10.9.
+  - Integration check: a real signed-in user with forged `user_metadata.role = "admin"` received `403 FORBIDDEN` from `GET /api/admin/dramas` and `PATCH /api/admin/dramas/:id` on a production build (Task 10.3 smoke test). The `/admin` page redirect for such a user was not exercised; automated coverage remains in Task 10.9.
   - Column-level write lockdown on `profiles.role` will be enforced in Task 10.2 via User DB RLS migration.
 
 ---
@@ -1025,7 +1025,7 @@ These items stay ✅ for history; the gaps are tracked as new tasks.
 ---
 
 ### Task 10.3: Protect All Admin API Routes & Remove the Development Auth Bypass
-* **Status**: ⏳ Planned
+* **Status**: ✅ Completed — verified on a production build (21/21 API smoke checks)
 * **Depends on**: 10.1
 * **Problem**:
   - `GET /api/admin/dramas` (`route.ts` L80) and `GET /api/admin/dramas/[id]` (`[id]/route.ts` L83) have no auth check and use the service-role key — anyone can list Draft, Scheduled, and Archived titles.
@@ -1042,6 +1042,18 @@ These items stay ✅ for history; the gaps are tracked as new tasks.
   5. Validate requests: status enum, title 1–200 chars, synopsis ≤ 5,000 chars, ≤ 20 tags of ≤ 40 chars, `total_episodes` 1–500, and poster/banner URLs restricted to the host allow-list shared with `next.config.mjs` `remotePatterns`.
   6. Uniform error shape `{ success: false, error: { code, message } }`. Log raw database errors server-side; never return them to clients.
 * **Verification**: unauthenticated `GET`/`POST`/`PATCH` → `401`; non-admin → `403`; invalid payload → `400`.
+* **Delivered Capabilities (2026-10-04)**:
+  1. All admin handlers (`GET`/`POST` `/api/admin/dramas`, `GET`/`PATCH` `/api/admin/dramas/[id]`, and the `/api/admin/titles/[id]` alias) call `requireAdmin()` (from Task 10.1); the development bypass is gone.
+  2. `middleware.ts`: new `/api/admin/*` guard returning `401 UNAUTHORIZED` / `403 FORBIDDEN` JSON; duplicated Supabase cookie plumbing replaced by one `createMiddlewareSupabase()` helper (the full `updateSession()` refactor stays in Task 10.4).
+  3. Mock fallbacks removed from admin handlers: list returns real rows (or `500 DATABASE_ERROR`); unknown UUID → `404 NOT_FOUND`; non-UUID id → `400 INVALID_ID`; `PATCH` with no fields → `400`.
+  4. `lib/validation/drama.ts`: `validateDramaPayload()` enforces item 5 limits, collects all field errors at once, dedupes tags case-insensitively, and ignores client-supplied `channel_code` / `channel_id` (resolved server-side via `lib/admin/resolve-channel.ts`, with LIKE wildcards escaped).
+  5. Shared host allow-list `lib/config/image-hosts.mjs`, imported by both `next.config.mjs` (`images.remotePatterns`) and the validator (`isAllowedImageUrl()`, next/image wildcard semantics).
+  6. `lib/api/responses.ts` (`apiSuccess` / `apiError`) used by all admin routes, `requireAdmin()`, and middleware; raw database messages are logged server-side only. `POST` returns `201`.
+  7. Client fix: `updateDrama()` / `createDrama()` now read the structured error through `lib/api/error-message.ts` (`getApiErrorMessage`, `readJsonSafely`). Since Task 10.1 they had passed the `error` object to React state, which would crash the admin forms on any 401/403.
+* **Verification Results**:
+  - `npm test`: 40/40 (21 new in `__tests__/validation/drama.test.ts` and `__tests__/api/responses.test.ts`); `npx tsc --noEmit` 0 errors; lint clean; `npm run build` succeeds.
+  - API smoke test on `next start` (throwaway regular user and admin, deleted afterwards; no successful writes): no session → `401` JSON on all 5 routes; forged-role user → `403`; admin list → 35 real dramas across all four statuses; mock id `t-1` → `400`; unknown UUID `GET`/`PATCH` → `404`; invalid payload → `400` listing `poster, status, title, totalEpisodes`; empty `PATCH`, malformed JSON, missing title → `400`; rejected `PATCH` left the drama unchanged.
+  - Known gaps (tracked elsewhere): admin pages still read through the public client, so the UI does not yet show non-Published dramas (Task 12.2); on the `admin.*` subdomain `/api/*` is still rewritten (Task 10.4).
 
 ---
 

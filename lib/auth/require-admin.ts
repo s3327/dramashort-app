@@ -1,6 +1,7 @@
-import { NextResponse } from "next/server";
+import type { NextResponse } from "next/server";
 import type { User } from "@supabase/supabase-js";
 import { createUserServerClient } from "@/lib/supabase/user-server";
+import { apiError } from "@/lib/api/responses";
 import { getUserRole, type Role } from "./roles";
 
 export interface RequireAdminOptions {
@@ -41,16 +42,7 @@ export async function requireAdmin(
     if (error || !user) {
       return {
         authorized: false,
-        response: NextResponse.json(
-          {
-            success: false,
-            error: {
-              code: "UNAUTHORIZED",
-              message: "Authentication session required.",
-            },
-          },
-          { status: 401 }
-        ),
+        response: apiError("UNAUTHORIZED", "Authentication session required.", 401),
       };
     }
 
@@ -59,16 +51,7 @@ export async function requireAdmin(
     if (!role || !allowedRoles.includes(role)) {
       return {
         authorized: false,
-        response: NextResponse.json(
-          {
-            success: false,
-            error: {
-              code: "FORBIDDEN",
-              message: "Administrator privileges required.",
-            },
-          },
-          { status: 403 }
-        ),
+        response: apiError("FORBIDDEN", "Administrator privileges required.", 403),
       };
     }
 
@@ -77,15 +60,10 @@ export async function requireAdmin(
     console.error("[requireAdmin] Unexpected auth verification failure:", err);
     return {
       authorized: false,
-      response: NextResponse.json(
-        {
-          success: false,
-          error: {
-            code: "AUTH_VERIFICATION_ERROR",
-            message: "Internal authentication verification failure.",
-          },
-        },
-        { status: 500 }
+      response: apiError(
+        "AUTH_VERIFICATION_ERROR",
+        "Internal authentication verification failure.",
+        500
       ),
     };
   }

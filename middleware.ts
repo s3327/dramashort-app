@@ -2,11 +2,38 @@ import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 import type { Database } from "@/types/supabase-user";
 import { getUserRole } from "@/lib/auth/roles";
+import { apiError } from "@/lib/api/responses";
 
 const userUrl =
   process.env.NEXT_PUBLIC_USER_SUPABASE_URL || "https://placeholder.supabase.co";
 const userAnonKey =
   process.env.NEXT_PUBLIC_USER_SUPABASE_ANON_KEY || "placeholder-anon-key";
+
+/**
+ * Supabase client bound to the middleware request. Refreshed auth cookies are
+ * written to both the forwarded request and the response returned by
+ * getResponse(), so route handlers and the browser see the same session.
+ */
+function createMiddlewareSupabase(request: NextRequest) {
+  let response = NextResponse.next({ request: { headers: request.headers } });
+
+  const supabase = createServerClient<Database>(userUrl, userAnonKey, {
+    cookies: {
+      getAll() {
+        return request.cookies.getAll();
+      },
+      setAll(cookiesToSet) {
+        cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value));
+        response = NextResponse.next({ request });
+        cookiesToSet.forEach(({ name, value, options }) =>
+          response.cookies.set(name, value, options)
+        );
+      },
+    },
+  });
+
+  return { supabase, getResponse: () => response };
+}
 
 export async function middleware(request: NextRequest) {
   const hostname = request.headers.get("host") || "";
@@ -19,32 +46,26 @@ export async function middleware(request: NextRequest) {
     return NextResponse.rewrite(url);
   }
 
-  // 2. Admin Route Protection (/admin/*)
-  if (url.pathname.startsWith("/admin")) {
-    let response = NextResponse.next({
-      request: {
-        headers: request.headers,
-      },
-    });
+  // 2. Admin API Protection (/api/admin/*): JSON errors, never redirects.
+  // Defense in depth; every handler also calls requireAdmin().
+  if (url.pathname === "/api/admin" || url.pathname.startsWith("/api/admin/")) {
+    const { supabase, getResponse } = createMiddlewareSupabase(request);
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
 
-    const supabase = createServerClient<Database>(userUrl, userAnonKey, {
-      cookies: {
-        getAll() {
-          return request.cookies.getAll();
-        },
-        setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value }) =>
-            request.cookies.set(name, value)
-          );
-          response = NextResponse.next({
-            request,
-          });
-          cookiesToSet.forEach(({ name, value, options }) =>
-            response.cookies.set(name, value, options)
-          );
-        },
-      },
-    });
+    if (!user) {
+      return apiError("UNAUTHORIZED", "Authentication session required.", 401);
+    }
+    if (getUserRole(user) !== "admin") {
+      return apiError("FORBIDDEN", "Administrator privileges required.", 403);
+    }
+    return getResponse();
+  }
+
+  // 3. Admin Route Protection (/admin/*)
+  if (url.pathname.startsWith("/admin")) {
+    const { supabase, getResponse } = createMiddlewareSupabase(request);
 
     // Verify session user from Supabase Auth
     const {
@@ -61,7 +82,7 @@ export async function middleware(request: NextRequest) {
         loginUrl.searchParams.set("error", "session_required");
         return NextResponse.redirect(loginUrl);
       }
-      return response;
+      return getResponse();
     }
 
     // Authoritative role check: ONLY app_metadata.role is trusted (prevents client self-elevation)
@@ -75,7 +96,7 @@ export async function middleware(request: NextRequest) {
         loginUrl.searchParams.set("error", "unauthorized");
         return NextResponse.redirect(loginUrl);
       }
-      return response;
+      return getResponse();
     }
 
     // If authenticated admin visits /admin/login, redirect to /admin/dashboard
@@ -84,35 +105,12 @@ export async function middleware(request: NextRequest) {
       return NextResponse.redirect(new URL(returnUrl, request.url));
     }
 
-    return response;
+    return getResponse();
   }
 
-  // 3. User Account Route Protection (/account, /account/*)
+  // 4. User Account Route Protection (/account, /account/*)
   if (url.pathname === "/account" || url.pathname.startsWith("/account/")) {
-    let response = NextResponse.next({
-      request: {
-        headers: request.headers,
-      },
-    });
-
-    const supabase = createServerClient<Database>(userUrl, userAnonKey, {
-      cookies: {
-        getAll() {
-          return request.cookies.getAll();
-        },
-        setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value }) =>
-            request.cookies.set(name, value)
-          );
-          response = NextResponse.next({
-            request,
-          });
-          cookiesToSet.forEach(({ name, value, options }) =>
-            response.cookies.set(name, value, options)
-          );
-        },
-      },
-    });
+    const { supabase, getResponse } = createMiddlewareSupabase(request);
 
     const {
       data: { user },
@@ -125,7 +123,7 @@ export async function middleware(request: NextRequest) {
       return NextResponse.redirect(loginUrl);
     }
 
-    return response;
+    return getResponse();
   }
 
   return NextResponse.next();

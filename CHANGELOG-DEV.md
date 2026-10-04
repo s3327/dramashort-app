@@ -451,3 +451,32 @@
 * **Verification**:
   - Production smoke test: 24 / 24 PASS — `anon` denied (42501) on all five user tables; trigger-created profiles have `role = 'user'`; `update profiles set role = 'admin'` denied (42501) and role unchanged; own profile delete denied; cross-user favorite and list-item inserts denied (42501); reads return only own rows; both throwaway users deleted with no leftover profile rows.
   - Remaining: Supabase Security Advisor review in the dashboard (item 7).
+
+---
+
+## [2026-10-04] Task 10.3: Admin API Lockdown, Validation & Uniform Errors
+* **Milestone**: Phase 10 (Security Hardening) — Task 10.3
+* **Goal**: Finish locking down the admin Drama API: middleware-level JSON guard, no mock fallbacks, strict payload validation with a host allow-list shared with `next.config.mjs`, and one error envelope that never leaks database messages.
+* **Implementation Steps Taken**:
+  1. `lib/api/responses.ts`: `apiSuccess(data, status)` / `apiError(code, message, status, details?)` producing `{ success, data }` / `{ success: false, error: { code, message, details? } }`.
+  2. `lib/auth/require-admin.ts`: switched to `apiError` (response shape unchanged).
+  3. `lib/config/image-hosts.mjs`: single remote image host list; `next.config.mjs` now imports it for `images.remotePatterns`.
+  4. `lib/validation/drama.ts`: `validateDramaPayload(body, "create" | "update")` (title 1–200, synopsis ≤ 5,000, genre ≤ 50, channel ≤ 100, status enum, `totalEpisodes` integer 1–500, ≤ 20 tags of ≤ 40 chars with case-insensitive dedupe, poster https URL on an allowed host ≤ 2,048 chars), plus `isAllowedImageUrl()`, `isUuid()`, `escapeLikePattern()`.
+  5. `lib/admin/resolve-channel.ts`: shared channel lookup by name with escaped LIKE wildcards; `channel_code` / `channel_id` are no longer accepted from the client.
+  6. `app/api/admin/dramas/route.ts` and `app/api/admin/dramas/[id]/route.ts` rewritten: validation, UUID check, `404` for unknown ids, `400` for empty `PATCH`, no mock data, generic `DATABASE_ERROR` messages with server-side logging, `POST` → `201`. Removed the exported `CreateDramaBody` / `DramaUpdateBody` interfaces (unused elsewhere).
+  7. `middleware.ts`: added the `/api/admin/*` guard (401/403 JSON, never a redirect) and replaced two duplicated Supabase cookie blocks with `createMiddlewareSupabase()`.
+  8. `lib/api/error-message.ts` + `lib/services/content.service.ts`: `updateDrama()` / `createDrama()` read errors via `getApiErrorMessage()` and parse bodies with `readJsonSafely()`.
+  9. Tests: `__tests__/validation/drama.test.ts` (15) and `__tests__/api/responses.test.ts` (6).
+* **Key File Diffs**:
+  - Created: `lib/api/responses.ts`, `lib/api/error-message.ts`, `lib/config/image-hosts.mjs`, `lib/validation/drama.ts`, `lib/admin/resolve-channel.ts`, `__tests__/validation/drama.test.ts`, `__tests__/api/responses.test.ts`.
+  - Modified: `app/api/admin/dramas/route.ts`, `app/api/admin/dramas/[id]/route.ts`, `middleware.ts`, `lib/auth/require-admin.ts`, `lib/services/content.service.ts`, `next.config.mjs`.
+  - Docs: `ROADMAP.md` Task 10.3 (✅ with delivered capabilities and results), Task 10.1 integration note, Phase 10 matrix row.
+* **Regression Analysis & Cross-System Impact**:
+  - Bug fixed: since Task 10.1, a 401/403 from the admin API put an error object into React state in the admin create/edit forms (render crash). Messages are now plain strings and include field-level validation details.
+  - Behavior changes for admin clients: invalid payloads that were previously coerced (e.g. `totalEpisodes: "abc"` → 1, any poster URL) now return `400`; posters must be on an allowed host; `POST` returns `201`; non-UUID ids return `400` instead of mock data.
+  - Each `/api/admin/*` request now performs two `auth.getUser()` calls (middleware + handler), by design (defense in depth).
+  - Unchanged: admin pages still list dramas through the public client (Task 12.2); `admin.*` subdomain rewriting of `/api/*` (Task 10.4).
+* **Verification**:
+  - `npm test`: 40 / 40 pass. `npx tsc --noEmit`: 0 errors. `next lint`: clean. `npm run build`: success.
+  - End-to-end on `next start -p 3100` against the production databases (throwaway regular user with forged `user_metadata.role` and throwaway admin, both deleted afterwards; only reads and rejected writes): 21 / 21 PASS — 401 JSON without a session on all 5 routes; 403 for the regular user; admin list returned 35 real dramas across Published, Archived, Draft, Scheduled; `t-1` → 400; unknown UUID GET/PATCH → 404; invalid PATCH → 400 with `poster, status, title, totalEpisodes`; empty PATCH, malformed JSON, missing title → 400; the drama targeted by the rejected PATCH was unchanged.
+  - Not exercised: a successful `POST` / `PATCH` write (avoided touching catalog data); the admin create/edit forms in a browser.
