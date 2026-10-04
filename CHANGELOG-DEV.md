@@ -376,3 +376,55 @@
   - `npx tsc --noEmit`: 0 errors.
   - `npm test`: 19 / 19 tests pass (the script itself has no automated tests).
   - Not yet executed against a database (dry run or apply) after this change; run a dry run before the next apply.
+
+---
+
+## [2026-10-04] Task 10.2: User Database RLS & Column-Level Privilege Hardening (Migration Written)
+* **Milestone**: Phase 10 (Security Hardening) — Task 10.2
+* **Goal**: Stop signed-in users from writing privileged columns (`profiles.role`, and any future wallet columns) and replace blanket grants and `FOR ALL` policies with least-privilege access.
+* **Implementation Steps Taken**:
+  1. Audited every client write to User DB tables. The only write to `profiles` is `updateUserProfile()` (`display_name`, `avatar_url`, `updated_at`); engagement tables use select/insert/upsert/delete on the user's own rows.
+  2. Created migration `20261004120000_harden_rls_and_grants.sql`:
+     - Default privileges: `ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public REVOKE ALL ON TABLES / SEQUENCES FROM anon, authenticated`.
+     - Grants: revoked all access on the five user tables and all sequences from `anon` and `authenticated`; re-granted `SELECT` + column-level `UPDATE (display_name, avatar_url, updated_at)` on `profiles`, and `SELECT, INSERT, UPDATE, DELETE` on `favorites`, `watch_history`, `custom_lists`, `custom_list_items`.
+     - Policies: replaced the five `FOR ALL` policies with per-command policies (`TO authenticated`, explicit `WITH CHECK`); `profiles` has `SELECT` and `UPDATE` only; `custom_list_items` checks parent-list ownership on read, insert, update, and delete.
+     - `(select auth.uid())` used in every policy (evaluated once per statement).
+     - `handle_new_user()` recreated with `SET search_path = ''`; body unchanged and fully schema-qualified.
+     - All `DROP POLICY IF EXISTS` statements make the migration re-runnable.
+  3. Updated `ROADMAP.md` Task 10.2 status to 🟡 Implemented and the Phase 10 matrix row to 🚧 In progress.
+* **Key File Diffs**:
+  - `supabase/user/supabase/migrations/20261004120000_harden_rls_and_grants.sql`: Created.
+  - `ROADMAP.md`: Task 10.2 status and implementation progress; Phase 10 matrix status.
+* **Regression Analysis & Cross-System Impact**:
+  - App code unchanged. `getUserProfile()` (`select("*")`) keeps `SELECT` on all `profiles` columns; `updateUserProfile()` writes only granted columns.
+  - Upserts on `favorites`, `watch_history`, `custom_list_items` need `INSERT` + `UPDATE` and matching policies; both are granted.
+  - `service_role` grants are untouched, so `scripts/create-admin.ts`, `scripts/backfill-admin-roles.ts`, and admin API routes keep working.
+  - Any future migration that adds a table to `public` (Phase 8 wallet, Phase 15 events, `FUTURE_PLAN.md` Telegram tables) must now grant access explicitly.
+  - No `types/supabase-user.ts` regeneration needed (no shape change).
+* **Verification**:
+  - Not yet applied to any database. Docker is installed but Docker Desktop was not running, so the local `supabase db start` test could not run.
+  - Pending checks after applying: a user cannot `update profiles set role = 'admin'` (expect permission denied); a user cannot read or modify another user's favorites, history, lists, or list items; `anon` cannot select from user tables; signup still creates a profile row; favorite, history, and list flows still work in the app.
+  - No application code changed, so `tsc`, lint, and unit tests are unaffected and were not re-run.
+
+---
+
+## [2026-10-04] Task 10.2: Local Verification of User DB RLS Hardening
+* **Milestone**: Phase 10 (Security Hardening) — Task 10.2 Verification
+* **Goal**: Prove on a real Postgres instance that migration `20261004120000_harden_rls_and_grants.sql` closes the `profiles.role` escalation without breaking app flows, before deploying to the User DB.
+* **Implementation Steps Taken**:
+  1. Started a local Supabase Postgres (`supabase_db_user`, image `supabase/postgres:17.6.1.171`) with `npx supabase db start --workdir supabase/user`.
+  2. The CLI hung after starting Postgres (connection retries logged "invalid length of startup packet"; no migrations applied after ~18 minutes). Stopped the CLI and applied the three user migrations manually with `psql` as the `postgres` role, in order: `20260930150000_user_schema.sql`, `20260930163000_grant_permissions.sql`, `20261004120000_harden_rls_and_grants.sql` — all exited 0.
+  3. Wrote `scripts/sql/verify-user-db-rls.sql` (18 checks; creates and deletes two throwaway auth users, impersonates user A as `authenticated` and also tests `anon`).
+  4. First run surfaced a harness issue, not a migration bug: the un-migrated local image ships the legacy `auth.uid()` that reads only `request.jwt.claim.sub`. The script now sets both `request.jwt.claim.sub` and `request.jwt.claims` and asserts `auth.uid()` before testing.
+  5. Ran a negative control in a rolled-back transaction: with the old `FOR ALL` policy and `GRANT ALL` restored, `update profiles set role = 'admin'` updated 1 row (vulnerable), confirming the checks detect the original hole.
+  6. Updated `ROADMAP.md` Task 10.2 status to 🟢 Verified locally and the Phase 10 matrix row.
+* **Key File Diffs**:
+  - `scripts/sql/verify-user-db-rls.sql`: Created (local-only RLS and privilege verification; basis for Task 10.9).
+  - `ROADMAP.md`: Task 10.2 status, verification results, remaining steps; Phase 10 matrix status.
+* **Regression Analysis & Cross-System Impact**:
+  - Confirmed app-facing operations still work under the new grants: own profile display-field update (as `updateUserProfile()` does), favorite/history/list-item upserts (`INSERT ... ON CONFLICT DO UPDATE`), list creation, and the signup trigger.
+  - Local-only environment; no change was made to the remote User DB.
+* **Verification**:
+  - `scripts/sql/verify-user-db-rls.sql`: 18 / 18 PASS, final line `ALL TASK 10.2 CHECKS PASSED`.
+  - Negative control: escalation reproduced with old policy (1 row), new policies restored after rollback.
+  - Not yet done: `npm run db:user:push` to the User DB, in-app smoke test against it, and Security Advisor review.

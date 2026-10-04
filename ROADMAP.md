@@ -43,7 +43,7 @@
 | **Phase 7** | 🟢 Low | L6: Implement automated test suite (Auth, services, critical journeys) | ✅ Done | Regression prevention and verified end-to-end reliability |
 | **Phase 8** | 🔴 Critical | Monetization Engine: Freemium Paywall & Coin Economy | ⏳ Planned · 🔒 Blocked by 10, 13.1, 15, 16 | Direct monetization, unlocks Ep 6+, daily streak rewards |
 | **Phase 9** | 🟠 High | Mobile PWA & Advanced Video Player UX | ⏳ Planned · 🔒 Blocked by 14 | Native app-like PWA, subtitles/VTT, keyboard hotkeys, PiP |
-| **Phase 10** | 🔴 Critical | Security Hardening & Access Control (admin role escalation, RLS & grants, admin API auth, subdomain guard, open redirect, episode media lockdown) | ⏳ Planned | Closes privilege escalation and data exposure; gate for all further work |
+| **Phase 10** | 🔴 Critical | Security Hardening & Access Control (admin role escalation, RLS & grants, admin API auth, subdomain guard, open redirect, episode media lockdown) | 🚧 In progress (10.1 ✅, 10.2 🟢 verified locally) | Closes privilege escalation and data exposure; gate for all further work |
 | **Phase 11** | 🔴 Critical | Complete Stubbed User Flows (email verification, password recovery, account deletion, support pipeline, real 404s) | ⏳ Planned | Every visible action performs a real operation |
 | **Phase 12** | 🟠 High | Functional Bug Fixes & Data Integrity (12-item cap, admin drafts, progress semantics, no production mocks) | ⏳ Planned | Full catalog visible; admins see all content; trustworthy data |
 | **Phase 13** | 🟠 High | Backend Architecture Consolidation (database topology ADR, server-rendered catalog, service split, observability) | ⏳ Planned | Decision gate for Phase 8; faster pages; operability |
@@ -985,7 +985,7 @@ These items stay ✅ for history; the gaps are tracked as new tasks.
 ---
 
 ### Task 10.2: User Database RLS & Column-Level Privilege Hardening
-* **Status**: ⏳ Planned
+* **Status**: 🟢 Verified locally (18/18 checks) — pending deployment to the User DB and Security Advisor review
 * **Problem**: The `profiles` policy is `FOR ALL USING (auth.uid() = id)` (`supabase/user/supabase/migrations/20260930150000_user_schema.sql` L87), and `GRANT ALL ON ALL TABLES IN SCHEMA public TO authenticated` (`20260930163000_grant_permissions.sql` L13). A user can run `update({ role: "admin" })` on their own row, and would be able to edit any future column added to `profiles` (such as Phase 8's `coin_balance`).
 * **Target Files**: `supabase/user/supabase/migrations/<timestamp>_harden_rls_and_grants.sql` (new), `types/supabase-user.ts` (regenerate)
 * **Planned Specifications**:
@@ -1008,6 +1008,17 @@ These items stay ✅ for history; the gaps are tracked as new tasks.
   6. Set `SET search_path = public` on the `SECURITY DEFINER` function `handle_new_user()`.
   7. Run the Supabase database linter (Security Advisor) and resolve all security warnings.
 * **Verification**: RLS tests from Task 10.9 — a user cannot update `role`, cannot read or modify another user's rows, and `anon` reads zero rows from user tables.
+* **Implementation Progress (2026-10-04)**:
+  - Delivered in `supabase/user/supabase/migrations/20261004120000_harden_rls_and_grants.sql`, covering items 1–6:
+    - `profiles`: `SELECT` + `UPDATE` policies only; column grant limited to `display_name`, `avatar_url`, `updated_at` (`role` not writable by users).
+    - `favorites`, `watch_history`, `custom_lists`, `custom_list_items`: per-command policies with explicit `WITH CHECK`; list items check ownership of the parent list on insert and update.
+    - All access revoked from `anon`; `authenticated` gets explicit per-table grants; default privileges for `postgres` no longer grant future tables to `anon` / `authenticated`.
+    - `handle_new_user()` recreated with `SET search_path = ''` (stricter than the planned `public`; all references are schema-qualified).
+    - Policies use `(select auth.uid())` so it is evaluated once per statement.
+  - `types/supabase-user.ts`: no regeneration needed (no table or column shape changed).
+  - App compatibility: the only client write to `profiles` (`updateUserProfile()` in `lib/services/user.service.ts`) touches `display_name`, `avatar_url`, `updated_at`, all still granted.
+  - Local verification: `scripts/sql/verify-user-db-rls.sql` passes 18/18 checks on a local Supabase Postgres 17 with all three user migrations applied (role escalation blocked; own display fields editable; no insert/delete on `profiles`; cross-user reads, writes, reassignment, and list-item planting blocked; own upserts work; `anon` has no access; signup trigger works with the empty `search_path`; future tables get no default grants). A negative control with the old `FOR ALL` policy and `GRANT ALL` reproduced the escalation (1 row updated).
+  - **Remaining**: push to the User DB (`npm run db:user:push`); smoke-test signup, profile edit, favorites, history, and lists in the app; run item 7 (Security Advisor) after deployment.
 
 ---
 
