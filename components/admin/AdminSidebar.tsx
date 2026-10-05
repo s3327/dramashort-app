@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   LayoutDashboard,
@@ -10,6 +11,7 @@ import {
   Users,
   Settings,
   LogOut,
+  Loader2,
 } from "lucide-react";
 import SidebarNavList from "@/components/SidebarNavList";
 import { useAdminAuth } from "@/contexts/AdminAuthContext";
@@ -30,10 +32,17 @@ const adminNavItems = [
 export default function AdminSidebar() {
   const router = useRouter();
   const { logout } = useAdminAuth();
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
 
-  const handleLogout = () => {
-    logout();
-    router.push("/admin/login");
+  const handleLogout = async () => {
+    if (isLoggingOut) return;
+    setIsLoggingOut(true);
+    try {
+      await logout();
+    } finally {
+      router.replace("/admin/login");
+      router.refresh();
+    }
   };
 
   return (
@@ -51,10 +60,15 @@ export default function AdminSidebar() {
         <button
           type="button"
           onClick={handleLogout}
-          className="flex w-full items-center gap-3 rounded-md px-3.5 py-2.5 text-sm font-semibold text-text-muted hover:text-danger hover:bg-danger-soft transition-colors"
+          disabled={isLoggingOut}
+          className="flex w-full items-center gap-3 rounded-md px-3.5 py-2.5 text-sm font-semibold text-text-muted hover:text-danger hover:bg-danger-soft transition-colors disabled:opacity-50"
         >
-          <LogOut size={17} strokeWidth={2} />
-          Logout
+          {isLoggingOut ? (
+            <Loader2 size={17} className="animate-spin" />
+          ) : (
+            <LogOut size={17} strokeWidth={2} />
+          )}
+          {isLoggingOut ? "Logging out..." : "Logout"}
         </button>
       </div>
     </aside>

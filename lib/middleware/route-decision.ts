@@ -107,7 +107,7 @@ export function decideRoute(
       if (isLogin) {
         return { type: "redirect", location: getSafeAdminRedirect(returnUrlParam) };
       }
-      if (path === "/admin") {
+      if (path === "/admin" || path === "/admin/") {
         return { type: "redirect", location: "/admin/dashboard" };
       }
       return serve(route, search);

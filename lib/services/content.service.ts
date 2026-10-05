@@ -12,6 +12,7 @@ import type {
 import { ENABLE_MOCK_FALLBACK } from "@/lib/config";
 import { type Result, ok, err } from "@/types/result";
 import { getApiErrorMessage, readJsonSafely } from "@/lib/api/error-message";
+import { adminFetch } from "@/lib/api/admin-fetch";
 
 export type { Title, TitleStatus, Drama, Channel, Episode, HeroSlide, PlaybackSource };
 export type { Result };
@@ -646,7 +647,7 @@ export async function getDramaById(id: string): Promise<Drama | null> {
   // 1. Browser context: call the authenticated admin API endpoint
   if (typeof window !== "undefined") {
     try {
-      const res = await fetch(`/api/admin/dramas/${encodeURIComponent(id)}`);
+      const res = await adminFetch(`/api/admin/dramas/${encodeURIComponent(id)}`);
       if (res.ok) {
         const body = (await readJsonSafely(res)) as { success?: boolean; data?: Drama } | null;
         if (body?.success && body.data) {
@@ -741,7 +742,7 @@ export async function getAdminDramas(
   // 1. Browser context: call the authenticated admin API endpoint
   if (typeof window !== "undefined") {
     try {
-      const res = await fetch(`/api/admin/dramas${queryString}`);
+      const res = await adminFetch(`/api/admin/dramas${queryString}`);
       if (res.ok) {
         const json = (await readJsonSafely(res)) as {
           success?: boolean;
@@ -889,7 +890,7 @@ export async function updateDrama(
   payload: UpdateDramaPayload
 ): Promise<{ success: boolean; data?: Drama; error?: string }> {
   try {
-    const res = await fetch(`/api/admin/dramas/${encodeURIComponent(id)}`, {
+    const res = await adminFetch(`/api/admin/dramas/${encodeURIComponent(id)}`, {
       method: "PATCH",
       headers: {
         "Content-Type": "application/json",
@@ -943,7 +944,7 @@ export async function createDrama(
   payload: CreateDramaPayload
 ): Promise<{ success: boolean; data?: Drama; error?: string }> {
   try {
-    const res = await fetch("/api/admin/dramas", {
+    const res = await adminFetch("/api/admin/dramas", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",

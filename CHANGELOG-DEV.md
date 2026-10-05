@@ -1309,3 +1309,46 @@
   - `npm run build`: cleanly compiles 42 routes with 0 errors.
 
 
+---
+
+## [2026-10-06] Task 12.5: Admin Session Lifecycle Fixes
+* **Milestone**: Phase 12 (Functional Bug Fixes & Data Integrity) — Task 12.5
+* **Goal**: Resolve admin logout cookie races, eliminate client-side redirect layout flashes on the `/admin` root route, and implement automatic session expiry (`HTTP 401`) handling that preserves destination paths upon re-authentication.
+* **Implementation Steps Taken**:
+  1. Awaited Admin Logout & State Invalidation (`components/admin/AdminSidebar.tsx`):
+     - Updated `handleLogout` to explicitly `await logout()`, ensuring Supabase auth session termination and `@supabase/ssr` cookie clearance complete before triggering route navigation.
+     - Replaced `router.push("/admin/login")` with `router.replace("/admin/login")` followed by `router.refresh()` to purge client-cached server component state and prevent back-button loops into admin areas.
+     - Added busy/loading indicator state (`isLoggingOut`) with `Loader2` spinner, disabling the button during logout to prevent double-clicks.
+  2. Server-Side `/admin` Root Route Redirection (`lib/middleware/route-decision.ts`, `app/admin/page.tsx`):
+     - Hardened middleware `route-decision.ts` to handle both `/admin` and `/admin/` (with trailing slash), redirecting authenticated staff directly to `/admin/dashboard` server-side and unauthenticated visitors to `/admin/login?returnUrl=/admin&error=session_required`.
+     - Refactored `app/admin/page.tsx` from a client-side component relying on `useEffect` into a pure Server Component issuing an immediate `redirect("/admin/dashboard")`, completely eliminating client flash.
+  3. Automatic 401 Session Expiry Interception (`lib/api/admin-fetch.ts`, `lib/services/content.service.ts`):
+     - Created `adminFetch` wrapper intercepting `HTTP 401 Unauthorized` responses in browser environments.
+     - Added `buildAdminLoginRedirectUrl()` and `redirectToAdminLogin()` to automatically redirect expired sessions to `/admin/login?returnUrl=<current path>`, preserving deep destination URLs (e.g. `/admin/titles/:id/edit?tab=media`).
+     - Added protection preventing infinite loops if a 401 is received on `/admin/login`.
+     - Replaced raw browser `fetch` calls with `adminFetch` across all admin service operations: `getDramaById()`, `getAdminDramas()`, `updateDrama()`, and `createDrama()`.
+  4. Automated Verification Test Suite (`__tests__/admin/admin-session-lifecycle.test.ts`):
+     - Authored 15 automated unit, integration, and invariant tests covering:
+       - `buildAdminLoginRedirectUrl` query parameter preservation and self-redirect prevention.
+       - Browser `redirectToAdminLogin` execution and `adminFetch` 401 interception.
+       - Middleware server-side redirection for `/admin` and `/admin/` across session states (`admin`, `user`, `none`).
+       - Static code invariants confirming awaited logout in `AdminSidebar`, server redirect in `app/admin/page.tsx`, and `adminFetch` usage in `content.service.ts`.
+* **Key File Diffs**:
+  - Created:
+    - `lib/api/admin-fetch.ts`
+    - `__tests__/admin/admin-session-lifecycle.test.ts`
+  - Modified:
+    - `components/admin/AdminSidebar.tsx`
+    - `app/admin/page.tsx`
+    - `lib/middleware/route-decision.ts`
+    - `lib/services/content.service.ts`
+    - `ROADMAP.md`
+    - `CHANGELOG-DEV.md`
+* **Regression Analysis & Cross-System Impact**:
+  - Test runner expanded from 341 tests (99 suites) to 356 tests (104 suites) with 100% pass rate.
+  - Zero type errors across all files (`npx tsc --noEmit`).
+  - Next.js production build cleanly compiled all 42 routes in 32.0s with `/admin` root JS reduced to 170 B.
+* **Verification**:
+  - `npm test`: 356 / 356 tests pass across 104 suites (0 failures).
+  - `npx tsc --noEmit`: 0 type errors.
+  - `npm run build`: cleanly compiles 42 routes with 0 errors.

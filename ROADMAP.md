@@ -1577,13 +1577,27 @@ These items stay ✅ for history; the gaps are tracked as new tasks.
 ---
 
 ### Task 12.5: Admin Session Lifecycle Fixes
-* **Status**: ⏳ Planned (item 2 delivered by Task 10.4)
-* **Problem**: `components/admin/AdminSidebar.tsx` L34–37 calls `logout()` without awaiting it before `router.push("/admin/login")`. Cookies are still present when middleware evaluates the navigation, so it likely redirects the still-authenticated admin back to the dashboard. `app/admin/page.tsx` redirects client-side, which causes a visible flash.
-* **Planned Specifications**:
-  1. `await logout()`, then `router.replace("/admin/login")` and `router.refresh()`.
-  2. Perform the `/admin` root redirect in middleware (server-side).
-  3. When an admin API call returns `401` (expired session), redirect to `/admin/login?returnUrl=<current path>`.
-* **Verification**: after logout, `/admin/dashboard` redirects to login; repeated logout/login cycles behave consistently.
+* **Status**: ✅ Completed (2026-10-06)
+* **Problem**: `components/admin/AdminSidebar.tsx` called `logout()` synchronously without awaiting session termination before navigating with `router.push("/admin/login")`. Auth cookies were still present in the browser when middleware evaluated the navigation, redirecting the admin back to `/admin/dashboard`. In addition, `app/admin/page.tsx` relied on a client-side `useEffect` redirect that caused layout flash, and admin API calls did not automatically handle expired sessions (`HTTP 401`).
+* **Target Files**: `lib/api/admin-fetch.ts` (new), `components/admin/AdminSidebar.tsx`, `app/admin/page.tsx`, `lib/middleware/route-decision.ts`, `lib/services/content.service.ts`, `__tests__/admin/admin-session-lifecycle.test.ts` (new)
+* **Delivered Capabilities**:
+  1. Awaited Logout & Clean Cache Invalidation (`components/admin/AdminSidebar.tsx`):
+     - `handleLogout` now explicitly awaits `logout()`, clearing Supabase auth session tokens and `@supabase/ssr` cookies before routing.
+     - Performs `router.replace("/admin/login")` followed by `router.refresh()` to purge client-cached server component state and prevent back-button loops.
+     - Added busy/loading indicator state (`isLoggingOut`) with `Loader2` spinner, disabling button during logout.
+  2. Server-Side `/admin` Root Redirect:
+     - Middleware (`lib/middleware/route-decision.ts`) intercepts `/admin` and `/admin/`, redirecting authenticated staff directly to `/admin/dashboard` server-side and unauthenticated visitors to `/admin/login?returnUrl=/admin&error=session_required`.
+     - Refactored `app/admin/page.tsx` from client-side component into a pure Server Component issuing an immediate `redirect("/admin/dashboard")`, completely eliminating client flash.
+  3. Automatic 401 Session Expiry Interception (`lib/api/admin-fetch.ts` & `lib/services/content.service.ts`):
+     - Created `adminFetch` wrapper intercepting `HTTP 401 Unauthorized` responses in browser environments.
+     - Automatically calls `redirectToAdminLogin()` to redirect to `/admin/login?returnUrl=<current path>`, preserving deep paths (e.g. `/admin/titles/:id/edit`) across re-authentication.
+     - Built-in prevention against self-redirect loops when already on `/admin/login`.
+     - Wired `adminFetch` into all admin service operations: `getDramaById()`, `getAdminDramas()`, `updateDrama()`, and `createDrama()`.
+* **Verification Results**:
+  - `__tests__/admin/admin-session-lifecycle.test.ts` (15 tests passing across URL generation, 401 redirection, middleware route decisions, and static invariants).
+  - `npx tsc --noEmit`: 0 type errors.
+  - Full test runner `npm test`: 356 / 356 tests passing across 104 suites (0 failures).
+  - `npm run build`: cleanly compiles all 42 routes with zero errors.
 
 ---
 
