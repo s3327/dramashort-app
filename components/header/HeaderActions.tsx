@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { User } from "lucide-react";
 import { returnUrlQuery } from "@/lib/navigation/safe-redirect";
-import NotificationBell from "@/components/NotificationBell";
+import NotificationBell, { isNotificationsFeatureEnabled } from "@/components/NotificationBell";
 import SearchDropdown from "@/components/SearchDropdown";
 
 export default function HeaderActions({
@@ -11,10 +11,12 @@ export default function HeaderActions({
   isLoggedIn: boolean;
   pathname: string;
 }) {
+  const isNotificationsEnabled = isNotificationsFeatureEnabled();
+
   return (
     <div className="flex items-center gap-4 shrink-0">
       <SearchDropdown />
-      {isLoggedIn && <NotificationBell />}
+      {isNotificationsEnabled && isLoggedIn && <NotificationBell />}
       <div className="relative group">
         {/* Routes straight to /account when logged in, otherwise to
             /login with a redirect back to wherever the user was. */}

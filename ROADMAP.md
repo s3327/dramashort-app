@@ -1429,12 +1429,19 @@ These items stay ✅ for history; the gaps are tracked as new tasks.
 ---
 
 ### Task 11.7: Notifications — Hide Until Real
-* **Status**: ⏳ Planned
-* **Problem**: `components/NotificationBell.tsx` (L6) shows `data/notifications.mock.ts` to every real signed-in user, and read state resets on each navigation.
-* **Planned Specifications**:
-  1. Feature flag `NEXT_PUBLIC_FEATURE_NOTIFICATIONS` (default off) hides the bell.
-  2. Real implementation (spec only; coordinated with the `FUTURE_PLAN.md` Telegram notifications): a `notifications` table (`user_id`, `type` = `new_episode | system | reward`, `payload`, `read_at`), generated when an episode of a favorited drama is released (Task 16.3 hook).
-* **Verification**: with the flag off, no bell renders and no mock notifications ship in the bundle.
+* **Status**: ✅ Completed (2026-10-05)
+* **Problem**: `components/NotificationBell.tsx` showed `data/notifications.mock.ts` to every real signed-in user, and read state reset on each navigation.
+* **Target Files**: `components/NotificationBell.tsx`, `components/header/HeaderActions.tsx`, `docs/adr/0002-notifications-system-architecture.md`
+* **Delivered Capabilities**:
+  1. Feature flag `NEXT_PUBLIC_FEATURE_NOTIFICATIONS` (default `false`) gates the notification bell UI.
+  2. With the flag disabled, `HeaderActions` omits the bell and `NotificationBell` returns `null`.
+  3. Replaced static top-level import of mock notifications with dynamic `import("@/data/notifications.mock")` so mock notifications do not ship in client-side bundles when disabled.
+  4. Preserved React Rules of Hooks with unconditional hook execution before early returns.
+  5. Published ADR-0002 detailing the target `public.notifications` database schema in User DB, RLS policies, `new_episode` subscriber trigger hooks (Task 16.3), and Telegram delivery bridge (`FUTURE_PLAN.md` §5.4).
+* **Verification**:
+  - `__tests__/components/notification-bell.test.ts` (7 tests passing).
+  - Full test runner `npm test`: 292 / 292 tests passing across 79 suites.
+  - `npm run build`: cleanly compiles 40/40 routes with 0 errors.
 
 ---
 

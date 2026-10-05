@@ -3,15 +3,52 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Bell } from "lucide-react";
-import { notificationItems as initialNotifications } from "@/data/notifications.mock";
+import type { NotificationItem } from "@/data/notifications.mock";
 import { formatRelativeTime } from "@/lib/format";
 
-export default function NotificationBell() {
-  const [notifications, setNotifications] = useState(initialNotifications);
+/**
+ * Checks whether the notifications feature flag is enabled.
+ * Default: false (hidden until real persistent notifications backend is active).
+ */
+export function isNotificationsFeatureEnabled(): boolean {
+  return process.env.NEXT_PUBLIC_FEATURE_NOTIFICATIONS === "true";
+}
+
+export interface NotificationBellProps {
+  forceEnabled?: boolean;
+  initialItems?: NotificationItem[];
+}
+
+export default function NotificationBell({
+  forceEnabled = false,
+  initialItems,
+}: NotificationBellProps = {}) {
+  const isEnabled = forceEnabled || isNotificationsFeatureEnabled();
+  const [notifications, setNotifications] = useState<NotificationItem[]>(
+    initialItems || []
+  );
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  const unreadCount = notifications.filter((n) => !n.read).length;
+  // Lazy-load mock items only when the feature flag is actively enabled
+  useEffect(() => {
+    if (!isEnabled) return;
+    if (initialItems) {
+      setNotifications(initialItems);
+      return;
+    }
+
+    let isMounted = true;
+    import("@/data/notifications.mock").then((mod) => {
+      if (isMounted) {
+        setNotifications(mod.notificationItems);
+      }
+    });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [isEnabled, initialItems]);
 
   // Close on outside click.
   useEffect(() => {
@@ -24,6 +61,12 @@ export default function NotificationBell() {
     window.addEventListener("mousedown", handleClick);
     return () => window.removeEventListener("mousedown", handleClick);
   }, [isOpen]);
+
+  if (!isEnabled) {
+    return null;
+  }
+
+  const unreadCount = notifications.filter((n) => !n.read).length;
 
   const markAllRead = () => {
     // TODO: persist read state to the real notifications API once it exists.

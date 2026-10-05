@@ -998,3 +998,48 @@
   - `npx tsc --noEmit`: 0 type errors.
   - `npm run lint`: clean (0 errors, 0 warnings).
   - `npm run build`: successfully generated all 40 pages with 0 warnings.
+
+---
+
+## [2026-10-05] Task 11.7: Notifications — Hide Until Real
+* **Milestone**: Phase 11 (Authentication & User Management Completeness) — Task 11.7
+* **Goal**: Hide the mock notification bell behind the `NEXT_PUBLIC_FEATURE_NOTIFICATIONS` feature flag (default: off) to avoid displaying ephemeral, hardcoded mock notifications to signed-in users, prevent shipping mock data in the main client bundle, and specify the future notifications database schema and Telegram delivery bridge in ADR-0002.
+* **Implementation Steps Taken**:
+  1. Architecture & Schema Specification (`docs/adr/0002-notifications-system-architecture.md`):
+     - Published ADR-0002 specifying the target `public.notifications` table in User DB (`bpidsbcrvpkavvdvtpgh`):
+       - Columns: `id UUID`, `user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE`, `type TEXT CHECK (type IN ('new_episode', 'system', 'reward', 'security'))`, `title TEXT`, `message TEXT`, `payload JSONB`, `read_at TIMESTAMPTZ`, `created_at TIMESTAMPTZ`.
+       - RLS policies: authenticated users can SELECT and UPDATE (`read_at`) their own rows; INSERT and DELETE restricted exclusively to `service_role`.
+       - Trigger hooks: episode release hook (Task 16.3) querying favorited subscribers, and Telegram Bot bridge (`FUTURE_PLAN.md` §5.4).
+  2. Component Gating & Bundle Isolation (`components/NotificationBell.tsx`):
+     - Created `isNotificationsFeatureEnabled()` reading `process.env.NEXT_PUBLIC_FEATURE_NOTIFICATIONS === "true"` (default `false`).
+     - Replaced static top-level import of `notificationItems` from `@/data/notifications.mock` with dynamic `import("@/data/notifications.mock")` triggered strictly when the flag is enabled.
+     - Component renders `null` when the feature flag is disabled.
+     - Preserves React Rules of Hooks with unconditional hook execution before early returns.
+  3. Header Navigation Gating (`components/header/HeaderActions.tsx`):
+     - Gated `NotificationBell` rendering behind `isNotificationsEnabled && isLoggedIn && <NotificationBell />`.
+     - When the flag is disabled, no bell icon renders in the header navigation bar.
+  4. Automated Verification Test Suite (`__tests__/components/notification-bell.test.ts`):
+     - Authored 7 tests verifying:
+       - Default disabled state when `NEXT_PUBLIC_FEATURE_NOTIFICATIONS` is unset, `"false"`, `"0"`, or `"off"`.
+       - Activation only when strictly `"true"`.
+       - HeaderActions conditional rendering contract.
+       - NotificationBell export and early return contracts.
+       - Zero top-level static value imports of mock notifications data in NotificationBell.
+       - ADR-0002 schema, notification types, and Telegram bridge documentation contracts.
+* **Key File Diffs**:
+  - Created:
+    - `docs/adr/0002-notifications-system-architecture.md`
+    - `__tests__/components/notification-bell.test.ts`
+  - Modified:
+    - `components/NotificationBell.tsx`
+    - `components/header/HeaderActions.tsx`
+    - `ROADMAP.md`
+    - `CHANGELOG-DEV.md`
+* **Regression Analysis & Cross-System Impact**:
+  - Test runner expanded to 292 tests across 79 test suites with 100% pass rate.
+  - Production build cleanly compiled all 40 routes.
+* **Verification**:
+  - `npm test`: 292 / 292 tests pass across 79 suites (0 failures).
+  - `npx tsc --noEmit`: 0 type errors.
+  - `npm run lint`: clean (0 errors, 0 warnings).
+  - `npm run build`: successfully generated all 40 pages with 0 errors.
