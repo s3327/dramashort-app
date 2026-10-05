@@ -9,7 +9,7 @@ import AccountSidebar from "@/components/account/AccountSidebar";
 import AddToListModal from "@/components/AddToListModal";
 import CreateListModal from "@/components/CreateListModal";
 import { accountUser as fallbackAccountUser } from "@/data/account-user.mock";
-import { getTitleBySlugOrFallback, type Title } from "@/data/titles.mock";
+import type { Title } from "@/data/titles.mock";
 import { getTitlesBySlugs } from "@/lib/services/content.service";
 import { useTheme } from "@/contexts/ThemeContext";
 import { useFavorites } from "@/contexts/FavoritesContext";
@@ -34,10 +34,8 @@ export default function FavoritePage() {
     .slice(0, 2)
     .toUpperCase() || "U";
 
-  // Hydrate favorite titles from Content DB or fallback
-  const [favoriteEntries, setFavoriteEntries] = useState<Title[]>(() => {
-    return Array.from(favoritedSlugs).map(getTitleBySlugOrFallback);
-  });
+  // Hydrate favorite titles from Content DB
+  const [favoriteEntries, setFavoriteEntries] = useState<Title[]>([]);
 
   useEffect(() => {
     let isMounted = true;
@@ -47,17 +45,10 @@ export default function FavoritePage() {
       return;
     }
 
-    // Immediate fallback display
-    setFavoriteEntries(slugs.map(getTitleBySlugOrFallback));
-
     // Async DB lookup
     getTitlesBySlugs(slugs).then((dbTitles) => {
       if (!isMounted) return;
-      if (dbTitles.length > 0) {
-        const dbMap = new Map(dbTitles.map((t) => [t.slug, t]));
-        const merged = slugs.map((s) => dbMap.get(s) || getTitleBySlugOrFallback(s));
-        setFavoriteEntries(merged);
-      }
+      setFavoriteEntries(dbTitles);
     });
 
     return () => {

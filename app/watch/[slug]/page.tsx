@@ -3,12 +3,12 @@
 import { use, useEffect, useMemo, useState, useRef, useCallback, Suspense } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
-import { Flag, ArrowLeft, Tv, Star, Eye } from "lucide-react";
+import { notFound, permanentRedirect, useSearchParams } from "next/navigation";
+import { Flag, ArrowLeft, Tv, Star, Eye, Film } from "lucide-react";
 import Header from "@/components/Header";
 import Breadcrumbs from "@/components/Breadcrumbs";
 import VideoPlayer from "@/components/VideoPlayer";
-import { getTitleBySlugOrFallback, type Title } from "@/data/titles.mock";
+import type { Title } from "@/data/titles.mock";
 import { useTheme } from "@/contexts/ThemeContext";
 import {
   getTitleBySlug,
@@ -34,7 +34,7 @@ function WatchContent({ slug }: { slug: string }) {
   const searchParams = useSearchParams();
   const initialEpParam = searchParams.get("ep");
 
-  const [drama, setDrama] = useState<Title>(() => getTitleBySlugOrFallback(slug));
+  const [drama, setDrama] = useState<Title | null>(null);
   const [dbEpisodes, setDbEpisodes] = useState<Episode[]>([]);
   const [currentEpisode, setCurrentEpisode] = useState<number>(() => {
     if (initialEpParam) {
@@ -67,16 +67,30 @@ function WatchContent({ slug }: { slug: string }) {
 
   // Fetch drama and real episode data from database
   useEffect(() => {
-    getTitleBySlug(slug).then((dbDrama) => {
-      if (dbDrama) {
+    getTitleBySlug(slug)
+      .then((dbDrama) => {
+        if (!dbDrama) {
+          notFound();
+          return;
+        }
+
+        // Canonical redirect if accessed via legacy prefix slug (Task 11.6)
+        if (dbDrama.slug !== slug) {
+          permanentRedirect(`/watch/${dbDrama.slug}`);
+          return;
+        }
+
         setDrama(dbDrama);
         getEpisodesByTitleId(dbDrama.id).then((eps) => {
           if (eps && eps.length > 0) {
             setDbEpisodes(eps);
           }
         });
-      }
-    });
+      })
+      .catch((err) => {
+        console.error("Failed to load drama for watch:", err);
+        notFound();
+      });
   }, [slug]);
 
   // Load saved watch position and resume point for this drama
@@ -94,7 +108,7 @@ function WatchContent({ slug }: { slug: string }) {
       if (!isMounted) return;
 
       const match = historyRows.find(
-        (r) => r.title_slug === slug || r.title_slug === drama.slug
+        (r) => r.title_slug === slug || (drama && r.title_slug === drama.slug)
       );
 
       if (match) {
@@ -123,17 +137,18 @@ function WatchContent({ slug }: { slug: string }) {
     return () => {
       isMounted = false;
     };
-  }, [user, slug, drama.slug, initialEpParam]);
+  }, [user, slug, drama, initialEpParam]);
 
   const recordProgress = useCallback(
     (epNum: number, progressRatio: number) => {
+      const targetSlug = drama?.slug || slug;
       if (user) {
-        upsertWatchProgress(user.id, drama.slug, epNum, progressRatio);
+        upsertWatchProgress(user.id, targetSlug, epNum, progressRatio);
       } else {
-        saveGuestWatchProgress(drama.slug, epNum, progressRatio);
+        saveGuestWatchProgress(targetSlug, epNum, progressRatio);
       }
     },
-    [user, drama.slug]
+    [user, drama?.slug, slug]
   );
 
   const handleSelectEpisode = useCallback(
@@ -149,11 +164,12 @@ function WatchContent({ slug }: { slug: string }) {
         window.history.replaceState(null, "", url.toString());
       }
 
-      const progress = Math.min(1.0, ep / (drama.totalEpisodes || 1));
+      const total = drama?.totalEpisodes || 1;
+      const progress = Math.min(1.0, ep / total);
       currentProgressRef.current = { episode: ep, progressRatio: progress };
       recordProgress(ep, progress);
     },
-    [drama.totalEpisodes, recordProgress]
+    [drama?.totalEpisodes, recordProgress]
   );
 
   // Throttled timeupdate progress recording (every 10 seconds)
@@ -255,9 +271,13 @@ function WatchContent({ slug }: { slug: string }) {
       ? playbackSource.url
       : currentEpData?.videoUrl && currentEpData.videoUrl.trim() !== ""
       ? currentEpData.videoUrl
-      : "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4";
+      : "";
 
-  const totalEps = drama.totalEpisodes || 1;
+  const totalEps = drama?.totalEpisodes || 1;
+  const availableEpisodesCount = dbEpisodes.filter(
+    (e) => Boolean(e.videoUrl && e.videoUrl.trim() !== "")
+  ).length;
+
   const episodes = useMemo(
     () => Array.from({ length: totalEps }, (_, i) => i + 1),
     [totalEps]
@@ -277,6 +297,10 @@ function WatchContent({ slug }: { slug: string }) {
     activeTab * EPISODES_PER_TAB,
     activeTab * EPISODES_PER_TAB + EPISODES_PER_TAB
   );
+
+  if (!drama) {
+    return <WatchSkeleton />;
+  }
 
   return (
     <div data-theme={theme} className="min-h-screen bg-bg text-text transition-colors">
@@ -314,30 +338,44 @@ function WatchContent({ slug }: { slug: string }) {
                 <span>{playbackError}</span>
               </div>
             )}
-            <VideoPlayer
-              key={`${drama.slug}-${currentEpisode}`}
-              src={videoSrc}
-              poster={drama.poster}
-              title={currentEpData?.title || `Episode ${currentEpisode}`}
-              dramaTitle={drama.title}
-              currentEpisode={currentEpisode}
-              totalEpisodes={totalEps}
-              initialProgressRatio={savedProgressRatio}
-              autoPlay={autoPlayNext}
-              onTimeUpdate={handleTimeUpdate}
-              onPause={handlePause}
-              onEnded={handleVideoEnded}
-              onNextEpisode={() => {
-                if (currentEpisode < totalEps) {
-                  handleSelectEpisode(currentEpisode + 1);
-                }
-              }}
-              onPrevEpisode={() => {
-                if (currentEpisode > 1) {
-                  handleSelectEpisode(currentEpisode - 1);
-                }
-              }}
-            />
+            {videoSrc ? (
+              <VideoPlayer
+                key={`${drama.slug}-${currentEpisode}`}
+                src={videoSrc}
+                poster={drama.poster}
+                title={currentEpData?.title || `Episode ${currentEpisode}`}
+                dramaTitle={drama.title}
+                currentEpisode={currentEpisode}
+                totalEpisodes={totalEps}
+                initialProgressRatio={savedProgressRatio}
+                autoPlay={autoPlayNext}
+                onTimeUpdate={handleTimeUpdate}
+                onPause={handlePause}
+                onEnded={handleVideoEnded}
+                onNextEpisode={() => {
+                  if (currentEpisode < totalEps) {
+                    handleSelectEpisode(currentEpisode + 1);
+                  }
+                }}
+                onPrevEpisode={() => {
+                  if (currentEpisode > 1) {
+                    handleSelectEpisode(currentEpisode - 1);
+                  }
+                }}
+              />
+            ) : (
+              <div className="w-full aspect-video rounded-xl bg-surface border border-border flex flex-col items-center justify-center text-center p-6 text-text">
+                <div className="h-12 w-12 rounded-full bg-primary/10 text-primary flex items-center justify-center mb-3">
+                  <Film size={24} />
+                </div>
+                <h3 className="font-semibold text-base mb-1">
+                  This episode isn&apos;t available yet
+                </h3>
+                <p className="text-xs text-text-muted max-w-sm">
+                  We&apos;re preparing the media for Episode {currentEpisode}. Please check back soon or select another episode.
+                </p>
+              </div>
+            )}
 
             {/* Video Meta Info */}
             <div className="mt-4 p-4 rounded-xl bg-surface border border-border shadow-sm">
@@ -410,7 +448,7 @@ function WatchContent({ slug }: { slug: string }) {
               <div className="flex items-center justify-between gap-3 mb-3">
                 <h2 className="font-display font-bold text-base text-text">Episodes</h2>
                 <span className="text-xs font-medium text-text-muted">
-                  Total: {totalEps}
+                  {totalEps} episodes &middot; {availableEpisodesCount} available
                 </span>
               </div>
 
@@ -442,6 +480,23 @@ function WatchContent({ slug }: { slug: string }) {
               <div className="grid grid-cols-5 sm:grid-cols-8 lg:grid-cols-5 gap-2 max-h-[500px] overflow-y-auto pr-1">
                 {visibleEpisodes.map((ep) => {
                   const active = ep === currentEpisode;
+                  const epData = dbEpisodes.find((e) => e.episodeNumber === ep);
+                  const isAvailable = Boolean(epData?.videoUrl && epData.videoUrl.trim() !== "");
+
+                  if (!isAvailable) {
+                    return (
+                      <div
+                        key={ep}
+                        title="Coming soon"
+                        aria-disabled="true"
+                        className="aspect-square rounded-lg text-xs font-bold flex flex-col items-center justify-center bg-bg/50 border border-border/40 text-text-muted/40 cursor-not-allowed select-none"
+                      >
+                        <span>{ep}</span>
+                        <span className="text-[9px] uppercase tracking-wider font-medium text-text-muted/50 mt-0.5">Soon</span>
+                      </div>
+                    );
+                  }
+
                   return (
                     <button
                       key={ep}

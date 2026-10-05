@@ -1,6 +1,7 @@
 "use client";
 
 import { use, useEffect, useMemo, useState } from "react";
+import { notFound } from "next/navigation";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import Breadcrumbs from "@/components/Breadcrumbs";
@@ -24,6 +25,10 @@ export default function ChannelPage({
   const [channelTitles, setChannelTitles] = useState<Title[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [page, setPage] = useState(1);
+
+  if (!isLoading && !channel) {
+    notFound();
+  }
 
   useEffect(() => {
     let isMounted = true;

@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import { getTitleBySlug } from "@/lib/services/content.service";
-import { getTitleBySlugOrFallback } from "@/data/titles.mock";
 
 export async function generateMetadata({
   params,
@@ -8,7 +7,18 @@ export async function generateMetadata({
   params: Promise<{ slug: string }>;
 }): Promise<Metadata> {
   const { slug } = await params;
-  const drama = (await getTitleBySlug(slug)) || getTitleBySlugOrFallback(slug);
+  const drama = await getTitleBySlug(slug);
+
+  if (!drama) {
+    return {
+      title: "Drama Not Found — DramaShort",
+      description: "The requested drama could not be found.",
+      robots: {
+        index: false,
+        follow: false,
+      },
+    };
+  }
 
   const title = `${drama.title} — Watch on DramaShort`;
   const description =

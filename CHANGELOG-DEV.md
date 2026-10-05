@@ -938,3 +938,63 @@
   - `npx tsc --noEmit`: 0 type errors.
   - `npm run lint`: clean (0 errors, 0 warnings).
   - `npm run build`: successfully generated all 40 pages.
+
+---
+
+## [2026-10-05] Task 11.6: Real 404s & Unavailable-Content States
+* **Milestone**: Phase 11 (Authentication & User Management Completeness) — Task 11.6
+* **Goal**: Eliminate fabricated mock fallbacks from runtime routes and components, enforce real 404s and search-engine de-indexing (`robots: { index: false, follow: false }`) for non-existent dramas and channels, establish canonical permanent redirects (`308`) for legacy slug formats, eradicate external sample video fallbacks (Big Buck Bunny), and present clear "Coming Soon" states for episodes awaiting media ingestion.
+* **Implementation Steps Taken**:
+  1. SEO & Crawl Protection (`app/drama/[slug]/layout.tsx`, `app/watch/[slug]/layout.tsx`):
+     - Removed `getTitleBySlugOrFallback` imports in metadata generation.
+     - When `getTitleBySlug(slug)` returns `null`, metadata emits `robots: { index: false, follow: false }` and `Drama Not Found — DramaShort` to prevent soft 404s and de-index invalid slugs.
+  2. Drama Detail Page (`app/drama/[slug]/page.tsx`):
+     - Replaced fallback title generation with `notFound()` when the drama does not exist in the database.
+     - Implemented canonical redirect: if accessed via a legacy prefix slug, automatically invokes `permanentRedirect('/drama/${dbDrama.slug}')`.
+  3. Video Watch Experience (`app/watch/[slug]/page.tsx`):
+     - Removed all references to Google sample video storage bucket and Big Buck Bunny fallback URL.
+     - Invokes `notFound()` if the title does not exist.
+     - Implemented canonical redirect: if accessed via a legacy prefix slug, automatically invokes `permanentRedirect('/watch/${dbDrama.slug}')`.
+     - When an episode lacks media URL, renders a clear unavailable video overlay with "Episode Unavailable — This episode does not have a video stream available yet" and a link back to drama details.
+     - Episode sidebar header displays exact inventory counts: `{totalEps} episodes · {availableEpisodesCount} available`.
+     - Episode grid renders non-clickable, styled "Coming soon" tiles for episodes without video media, preventing broken playback attempts.
+     - Preserves React hook ordering rules (`useMemo` called unconditionally before loading skeleton return).
+  4. Channel Directory (`app/channel/[slug]/page.tsx`):
+     - Invokes `notFound()` when an invalid channel slug cannot be resolved.
+  5. Personal Media Curation Cleanup (`components/ContinueWatching.tsx`, `app/account/favorite/page.tsx`, `app/account/history/page.tsx`):
+     - Removed runtime imports and calls to `getTitleBySlugOrFallback`.
+     - Continue watching gracefully filters out deleted or unknown dramas from the carousel.
+     - Watch history gracefully skips titles that no longer exist in the catalog.
+     - Favorites page hydrates exclusively from resolved database records.
+  6. Content DB Test Client Mock (`lib/supabase/content.ts`):
+     - Added `setTestContentClient()` and Proxy hook on `contentClient` to allow fast, deterministic in-memory queries in unit tests without network timeouts.
+  7. Automated Verification Test Suite (`__tests__/routing/real-404-and-unavailable-states.test.ts`):
+     - Created 8 comprehensive tests asserting:
+       - `robots: { index: false, follow: false }` for non-existent titles on `/drama/[slug]` and `/watch/[slug]`.
+       - Standard indexable metadata for existing dramas.
+       - Zero runtime imports of `getTitleBySlugOrFallback` across `app/` and `components/`.
+       - Zero references to Big Buck Bunny in watch player.
+       - Defensive filtering in continue watching and history collections.
+* **Key File Diffs**:
+  - Created:
+    - `__tests__/routing/real-404-and-unavailable-states.test.ts`
+  - Modified:
+    - `lib/supabase/content.ts`
+    - `app/drama/[slug]/layout.tsx`
+    - `app/drama/[slug]/page.tsx`
+    - `app/watch/[slug]/layout.tsx`
+    - `app/watch/[slug]/page.tsx`
+    - `app/channel/[slug]/page.tsx`
+    - `components/ContinueWatching.tsx`
+    - `app/account/favorite/page.tsx`
+    - `app/account/history/page.tsx`
+    - `ROADMAP.md`
+    - `CHANGELOG-DEV.md`
+* **Regression Analysis & Cross-System Impact**:
+  - Test runner expanded to 285 tests across 75 test suites with 100% pass rate.
+  - Production build cleanly compiled all 40 static and dynamic routes.
+* **Verification**:
+  - `npm test`: 285 / 285 tests pass across 75 suites (0 failures).
+  - `npx tsc --noEmit`: 0 type errors.
+  - `npm run lint`: clean (0 errors, 0 warnings).
+  - `npm run build`: successfully generated all 40 pages with 0 warnings.

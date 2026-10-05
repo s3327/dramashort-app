@@ -3,6 +3,7 @@
 import { use, useEffect, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
+import { notFound, permanentRedirect } from "next/navigation";
 import { Play, Star, Tv, Layers, Heart, ListPlus } from "lucide-react";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
@@ -13,7 +14,7 @@ import Breadcrumbs from "@/components/Breadcrumbs";
 import TitleCard from "@/components/TitleCard";
 import { DramaDetailSkeleton, DramaCardSkeleton } from "@/components/skeletons";
 import Toast from "@/components/Toast";
-import { getTitleBySlugOrFallback, type Title } from "@/data/titles.mock";
+import type { Title } from "@/data/titles.mock";
 import { channels as fallbackChannels } from "@/data/channels.mock";
 import { getRelatedTitles } from "@/lib/getRelatedTitles";
 import { useTheme } from "@/contexts/ThemeContext";
@@ -31,38 +32,41 @@ export default function DramaPage({
 }) {
   const { theme } = useTheme();
   const { slug } = use(params);
-  const [drama, setDrama] = useState<Title>(() => getTitleBySlugOrFallback(slug));
-  const [related, setRelated] = useState<Title[]>(() => getRelatedTitles(drama));
+  const [drama, setDrama] = useState<Title | null>(null);
+  const [related, setRelated] = useState<Title[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSynopsisExpanded, setIsSynopsisExpanded] = useState(false);
-  const isLongSynopsis = drama.synopsis.length > SYNOPSIS_TRUNCATE_LENGTH;
 
   useEffect(() => {
     let isMounted = true;
     getTitleBySlug(slug)
       .then(async (dbDrama) => {
         if (!isMounted) return;
-        const resolvedDrama = dbDrama || getTitleBySlugOrFallback(slug);
-        setDrama(resolvedDrama);
+        if (!dbDrama) {
+          notFound();
+          return;
+        }
 
-        if (dbDrama) {
-          const dbRelated = await getRelatedTitlesFromDb(dbDrama, 8);
-          if (!isMounted) return;
-          if (dbRelated && dbRelated.length > 0) {
-            setRelated(dbRelated);
-          } else {
-            setRelated(getRelatedTitles(resolvedDrama));
-          }
+        // Canonical redirect if accessed via legacy prefix slug (Task 11.6)
+        if (dbDrama.slug !== slug) {
+          permanentRedirect(`/drama/${dbDrama.slug}`);
+          return;
+        }
+
+        setDrama(dbDrama);
+
+        const dbRelated = await getRelatedTitlesFromDb(dbDrama, 8);
+        if (!isMounted) return;
+        if (dbRelated && dbRelated.length > 0) {
+          setRelated(dbRelated);
         } else {
-          setRelated(getRelatedTitles(resolvedDrama));
+          setRelated(getRelatedTitles(dbDrama));
         }
       })
       .catch((err) => {
-        console.warn("Failed to load drama from DB, using fallback:", err);
+        console.error("Failed to load drama from DB:", err);
         if (isMounted) {
-          const fallback = getTitleBySlugOrFallback(slug);
-          setDrama(fallback);
-          setRelated(getRelatedTitles(fallback));
+          notFound();
         }
       })
       .finally(() => {
@@ -76,7 +80,7 @@ export default function DramaPage({
 
   const { isFavorited, toggleFavorite } = useFavorites();
   const { isLoggedIn } = useAuth();
-  const favorited = isFavorited(drama.slug);
+  const favorited = drama ? isFavorited(drama.slug) : false;
 
   const { message: toastMessage, show: showToast } = useToast();
   const [isAddToListOpen, setIsAddToListOpen] = useState(false);
@@ -84,6 +88,7 @@ export default function DramaPage({
   const [isLoginRequiredOpen, setIsLoginRequiredOpen] = useState(false);
 
   const handleToggleFavorite = () => {
+    if (!drama) return;
     if (!isLoggedIn) {
       setIsLoginRequiredOpen(true);
       return;
@@ -101,6 +106,23 @@ export default function DramaPage({
     setIsAddToListOpen(true);
   };
 
+  if (!isLoading && !drama) {
+    notFound();
+  }
+
+  if (isLoading || !drama) {
+    return (
+      <div data-theme={theme} className="min-h-screen bg-bg text-text">
+        <Header />
+        <main className="max-w-[1000px] mx-auto px-6 pt-10 pb-16">
+          <DramaDetailSkeleton />
+        </main>
+        <Footer />
+      </div>
+    );
+  }
+
+  const isLongSynopsis = (drama.synopsis || "").length > SYNOPSIS_TRUNCATE_LENGTH;
   const channelSlug = fallbackChannels.find((c) => c.name === drama.channel)?.slug;
   const relatedTitles = related;
 

@@ -1409,18 +1409,22 @@ These items stay ✅ for history; the gaps are tracked as new tasks.
 ---
 
 ### Task 11.6: Real 404s & Unavailable-Content States
-* **Status**: ⏳ Planned
+* **Status**: ✅ Completed (2026-10-05)
 * **Problem**:
   - `getTitleBySlugOrFallback()` (`data/titles.mock.ts` L601) fabricates a plausible drama for any slug. `/drama/<anything>` and `/watch/<anything>` render a fake drama with "Watch Now", and `generateMetadata` publishes the fake title to crawlers (soft 404s).
-  - Episodes without media play Big Buck Bunny (`app/watch/[slug]/page.tsx` L231). The seed creates only 5 episodes per title, so episodes 6+ play the sample video.
-* **Target Files**: `app/drama/[slug]/*`, `app/watch/[slug]/*`, `app/channel/[slug]/*`, `components/ContinueWatching.tsx`, `app/account/favorite/page.tsx`, `app/account/history/page.tsx`
-* **Planned Specifications**:
-  1. Runtime code calls `notFound()` when a slug does not resolve; `generateMetadata` returns not-found metadata with `robots: { index: false }`.
-  2. Remove `getTitleBySlugOrFallback` from runtime imports (keep it only in fixtures and tests). Favorites and history skip titles that no longer exist.
-  3. Build the episode grid from real `episodes` rows, not from `total_episodes`. Episodes without media render as non-clickable "Coming soon" tiles; the page shows "40 episodes · 12 available".
-  4. Remove the Big Buck Bunny fallback; the player shows "This episode isn't available yet".
-  5. Legacy slug prefix matching (`getTitleBySlug` step 2) answers with `permanentRedirect()` to the canonical slug instead of rendering at the old URL.
-* **Verification**: `/drama/does-not-exist` returns HTTP 404; an episode without media cannot be played.
+  - Episodes without media play Big Buck Bunny (`app/watch/[slug]/page.tsx`). The seed creates only 5 episodes per title, so episodes 6+ play the sample video.
+* **Target Files**: `app/drama/[slug]/*`, `app/watch/[slug]/*`, `app/channel/[slug]/*`, `components/ContinueWatching.tsx`, `app/account/favorite/page.tsx`, `app/account/history/page.tsx`, `lib/supabase/content.ts`
+* **Delivered Capabilities**:
+  1. Runtime code calls `notFound()` when a slug does not resolve; `generateMetadata` returns not-found metadata with `robots: { index: false, follow: false }`.
+  2. Removed `getTitleBySlugOrFallback` from all runtime imports (`app/` and `components/`). Favorites, continue watching, and history defensively skip titles that no longer exist.
+  3. Built episode grid and header from real inventory: shows `{totalEps} episodes · {availableEpisodesCount} available`. Episodes without media render as non-clickable "Coming soon" tiles.
+  4. Removed Big Buck Bunny fallback; the player displays a clear unavailable video overlay with "Episode Unavailable — This episode does not have a video stream available yet".
+  5. Legacy slug prefix matching (`getTitleBySlug` step 2) answers with `permanentRedirect()` (`308`) to the canonical slug instead of rendering at the old URL.
+  6. Added test client mock support in `lib/supabase/content.ts` (`setTestContentClient()`) via Proxy for deterministic, non-timing-out unit tests.
+* **Verification**:
+  - `__tests__/routing/real-404-and-unavailable-states.test.ts` (8 tests passing).
+  - Full test runner `npm test`: 285 / 285 tests passing across 75 suites.
+  - `npm run build`: cleanly compiles 40/40 routes with 0 errors.
 
 ---
 

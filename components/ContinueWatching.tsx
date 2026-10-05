@@ -11,7 +11,6 @@ import {
   type WatchHistoryRow,
 } from "@/lib/services/user.service";
 import { getTitlesBySlugs } from "@/lib/services/content.service";
-import { getTitleBySlugOrFallback } from "@/data/titles.mock";
 
 // The /home page surfaces up to the 8 most recent in-progress watches
 const MAX_VISIBLE = 8;
@@ -64,8 +63,11 @@ export default function ContinueWatching() {
       const mappedItems: ContinueWatchingDramaItem[] = [];
 
       for (const row of historyRows) {
-        const drama =
-          titleMap.get(row.title_slug) || getTitleBySlugOrFallback(row.title_slug);
+        const drama = titleMap.get(row.title_slug);
+        if (!drama) {
+          // Drama was deleted or no longer exists in database
+          continue;
+        }
         const total = drama.totalEpisodes || 1;
         const rawProgress = row.progress || 0;
         const isCompletedSeries =

@@ -27,7 +27,6 @@ import {
   type WatchHistoryRow,
 } from "@/lib/services/user.service";
 import { getTitlesBySlugs } from "@/lib/services/content.service";
-import { getTitleBySlugOrFallback } from "@/data/titles.mock";
 import { useToast } from "@/hooks/useToast";
 
 const HISTORY_WINDOW_DAYS = 60;
@@ -110,10 +109,16 @@ export default function HistoryPage() {
       if (!isMounted) return;
 
       const titleMap = new Map(dbTitles.map((t) => [t.slug, t]));
-      const mapped: DisplayHistoryItem[] = withinWindow.map((r) => {
-        const drama =
-          titleMap.get(r.title_slug) || getTitleBySlugOrFallback(r.title_slug);
-        return {
+      const mapped: DisplayHistoryItem[] = [];
+
+      for (const r of withinWindow) {
+        const drama = titleMap.get(r.title_slug);
+        if (!drama) {
+          // Drama was deleted or no longer exists in database
+          continue;
+        }
+
+        mapped.push({
           id: r.id || `history-${r.title_slug}`,
           slug: r.title_slug,
           title: drama.title,
@@ -123,8 +128,8 @@ export default function HistoryPage() {
           episodeLabel: `EP ${r.episode_number} of ${drama.totalEpisodes}`,
           progress: r.progress || 0,
           watchedAt: r.updated_at || new Date().toISOString(),
-        };
-      });
+        });
+      }
 
       setItems(mapped);
       setHasLoaded(true);
