@@ -581,3 +581,34 @@
   - `npx tsc --noEmit`: 0 errors.
   - `npm run lint`: clean (0 errors, 0 warnings).
   - `npm run build`: production build passed with all 36 static pages and dynamic `ƒ /api/playback/[episodeId]`.
+---
+
+## [2026-10-05] Task 10.7: Admin Provisioning Script Hardening
+* **Milestone**: Phase 10 (Security Hardening) — Task 10.7
+* **Goal**: Harden `scripts/create-admin.ts` against dangerous default credentials (`admin@dramashort.com` / `Admin123456!`), unrequested credential resets on existing accounts, missing production safety gates, incomplete pagination in user discovery, and client-metadata contamination.
+* **Implementation Steps Taken**:
+  1. `scripts/create-admin.ts`:
+     - Mandatory `--email` argument parsing with regex email validation and formatted CLI `--help` display.
+     - Role support for `--role admin` and `--role editor` (default `"admin"`), plus `--revoke` flag to strip privileges and reset `profiles.role = 'user'`.
+     - `generateSecurePassword(length = 20)` generating cryptographically high-entropy passwords with uppercase, lowercase, numbers, and symbols.
+     - Credential safety: generated passwords for new accounts printed once with security instructions; user-supplied passwords via `--password` masked and never echoed to stdout.
+     - Existing user credential preservation: existing account passwords untouched unless `--reset-password` is explicitly passed.
+     - Privilege single source of truth: writes `app_metadata.role`, drops client-forged `user_metadata.role`, and synchronizes `profiles.role` via the service role client with typed `Database` schema bindings.
+     - Paginated user discovery: `findUserByEmail()` loops through all pages of `listUsers({ page, perPage: 1000 })` guaranteeing accounts beyond page 1 are discovered.
+     - Production refusal gate: `isProductionProject(url)` checks project ref `bpidsbcrvpkavvdvtpgh` and halts with exit code 1 unless `--confirm-production` is supplied.
+  2. `__tests__/scripts/create-admin.test.ts`:
+     - Created automated unit test suite with 16 tests covering email syntax validation, production project ref detection, password entropy, CLI argument parsing, enum validation, flags, and custom parameters.
+  3. Documentation: Updated `ROADMAP.md` matrix and Task 10.7 section.
+* **Key File Diffs**:
+  - Created: `__tests__/scripts/create-admin.test.ts`.
+  - Modified: `scripts/create-admin.ts`, `ROADMAP.md`, `CHANGELOG-DEV.md`.
+* **Regression Analysis & Cross-System Impact**:
+  - Production safety: accidental execution of `npm run admin:create` against production `.env.local` immediately halts with a clean safety message instead of overwriting production admin accounts.
+  - Existing admin protection: running provisioning on an existing email to change roles or confirm status does not reset their password or lock them out.
+  - Backward compatibility: positional email syntax remains supported for backward compatibility while honoring all safety gates.
+* **Verification**:
+  - `npm test`: 116 / 116 tests pass across 24 suites.
+  - `npx tsx scripts/create-admin.ts --help`: verified structured CLI help guide.
+  - `npx tsx scripts/create-admin.ts --email test@example.com`: verified production safety gate refusal against `.env.local` without `--confirm-production`.
+  - `npx tsc --noEmit`: 0 errors.
+  - `npm run lint`: clean (0 errors, 0 warnings).

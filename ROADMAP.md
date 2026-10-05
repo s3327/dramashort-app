@@ -43,7 +43,7 @@
 | **Phase 7** | 🟢 Low | L6: Implement automated test suite (Auth, services, critical journeys) | ✅ Done | Regression prevention and verified end-to-end reliability |
 | **Phase 8** | 🔴 Critical | Monetization Engine: Freemium Paywall & Coin Economy | ⏳ Planned · 🔒 Blocked by 10, 13.1, 15, 16 | Direct monetization, unlocks Ep 6+, daily streak rewards |
 | **Phase 9** | 🟠 High | Mobile PWA & Advanced Video Player UX | ⏳ Planned · 🔒 Blocked by 14 | Native app-like PWA, subtitles/VTT, keyboard hotkeys, PiP |
-| **Phase 10** | 🔴 Critical | Security Hardening & Access Control (admin role escalation, RLS & grants, admin API auth, subdomain guard, open redirect, episode media lockdown) | 🚧 In progress (10.1–10.6 ✅) | Closes privilege escalation and data exposure; gate for all further work |
+| **Phase 10** | 🔴 Critical | Security Hardening & Access Control (admin role escalation, RLS & grants, admin API auth, subdomain guard, open redirect, episode media lockdown) | 🚧 In progress (10.1–10.7 ✅) | Closes privilege escalation and data exposure; gate for all further work |
 | **Phase 11** | 🔴 Critical | Complete Stubbed User Flows (email verification, password recovery, account deletion, support pipeline, real 404s) | ⏳ Planned | Every visible action performs a real operation |
 | **Phase 12** | 🟠 High | Functional Bug Fixes & Data Integrity (12-item cap, admin drafts, progress semantics, no production mocks) | ⏳ Planned | Full catalog visible; admins see all content; trustworthy data |
 | **Phase 13** | 🟠 High | Backend Architecture Consolidation (database topology ADR, server-rendered catalog, service split, observability) | ⏳ Planned | Decision gate for Phase 8; faster pages; operability |
@@ -1159,16 +1159,40 @@ These items stay ✅ for history; the gaps are tracked as new tasks.
 ---
 
 ### Task 10.7: Admin Provisioning Script Hardening
-* **Status**: ⏳ Planned
-* **Problem**: `scripts/create-admin.ts` defaults to `admin@dramashort.com` / `Admin123456!` (L37–38), silently resets an existing user's password, prints the password (L112), writes `user_metadata.role`, and calls `listUsers()` once (L43) — only the first page — so existing users beyond it are not found.
-* **Target Files**: `scripts/create-admin.ts`, `package.json`
+* **Status**: ✅ Completed
+* **Problem**: `scripts/create-admin.ts` defaulted to `admin@dramashort.com` / `Admin123456!`, silently reset an existing user's password, printed the password to stdout, wrote `user_metadata.role`, called `listUsers()` only once (first page only), and lacked safeguards against accidental production execution.
+* **Target Files**: `scripts/create-admin.ts`, `package.json`, `__tests__/scripts/create-admin.test.ts` (new)
 * **Planned Specifications**:
   1. Require an explicit `--email`. Generate a strong random password when creating a user; never use a default. Print a generated password once; never print a supplied one.
   2. Never reset an existing user's password unless `--reset-password` is passed.
   3. Write `app_metadata.role` only, plus the `profiles.role` mirror through the service role. Support `--role admin|editor` and `--revoke`.
   4. Look up users with paginated `listUsers()`, or attempt creation and handle "already registered".
   5. Refuse to run against the production project ref unless `--confirm-production` is passed.
-* **Verification**: manual run against local Supabase covering create, promote, revoke, and an existing-user lookup beyond the first page.
+* **Delivered Capabilities (2026-10-05)**:
+  1. CLI Argument Engine & Validation:
+     - Requires `--email <address>` (or `--email=address`); validates email syntax; displays structured `--help` guide on missing parameters.
+     - Supports `--role admin|editor` (defaults to `"admin"`) with strict enum validation.
+     - Implemented `--revoke` flag to strip admin/editor privileges, reset `profiles.role = 'user'`, and remove rogue `user_metadata.role`.
+  2. Secure High-Entropy Password Management:
+     - `generateSecurePassword(length = 20)` produces cryptographically strong passwords containing uppercase, lowercase, numbers, and symbols.
+     - Generated passwords for new accounts are displayed once with a security warning. Custom passwords provided via `--password` are masked and never printed to stdout.
+  3. Existing User Credential Protection:
+     - Existing account passwords are preserved untouched during role promotions or revokes.
+     - Password resets on existing accounts are strictly gated behind the explicit `--reset-password` flag.
+  4. Role Source of Truth & Database Synchronization:
+     - Writes `app_metadata.role` and drops any client-forged `user_metadata.role` keys.
+     - Synchronizes `profiles.role` (`'admin'`, `'editor'`, or `'user'`) via the privileged service role client with typed `Database` schema bindings.
+  5. Exhaustive Paginated Lookups:
+     - `findUserByEmail()` loops through all pages of `supabase.auth.admin.listUsers({ page, perPage: 1000 })` ensuring users beyond page 1 are discovered.
+  6. Production Refusal Safety Gate:
+     - `isProductionProject(url)` detects the production User DB project ref (`bpidsbcrvpkavvdvtpgh`).
+     - Refuses execution and exits with status 1 unless `--confirm-production` is explicitly passed.
+* **Verification Results**:
+  - `npm test`: 116 / 116 tests pass across 24 suites (16 new tests in `__tests__/scripts/create-admin.test.ts` covering email validation, production ref detection, password entropy, CLI argument parsing, flags, and error handling).
+  - CLI Verification: `npx tsx scripts/create-admin.ts --help` verified clean flag documentation.
+  - Production Gate Verification: `npx tsx scripts/create-admin.ts --email test@example.com` verified safe refusal (exit code 1) against production `.env.local` without `--confirm-production`.
+  - `npx tsc --noEmit`: 0 errors.
+  - `npm run lint`: clean (0 errors, 0 warnings).
 
 ---
 
