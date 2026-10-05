@@ -1295,15 +1295,32 @@ These items stay ✅ for history; the gaps are tracked as new tasks.
 ---
 
 ### Task 11.2: Real Password Recovery
-* **Status**: ⏳ Planned
-* **Problem**: In `app/forgot-password/page.tsx` (L17–63), sending the code, verifying it, and resending it are all no-ops, and there is no "set a new password" step. Users who forget their password cannot get back in.
-* **Target Files**: `app/forgot-password/page.tsx`, `app/reset-password/page.tsx` (new), `contexts/AuthContext.tsx`
-* **Planned Specifications**:
-  1. Step 1: `resetPasswordForEmail(email)` (template with `{{ .Token }}`, or a link to `/auth/confirm?type=recovery&next=/reset-password`). Always show the same "If an account exists, we sent a code" message to prevent account enumeration.
-  2. Step 2: `verifyOtp({ email, token, type: "recovery" })` establishes a recovery session.
-  3. Step 3: `app/reset-password/page.tsx` — new password plus confirmation, `updateUser({ password })`, then `signOut({ scope: "others" })`, redirect to `/home` with a toast.
-  4. Resend cooldown and CAPTCHA (Task 10.8).
-* **Verification**: end-to-end recovery test (Task 17.2).
+* **Status**: ✅ Completed
+* **Target Files**: `app/forgot-password/page.tsx`, `app/reset-password/page.tsx` (new), `contexts/AuthContext.tsx`, `supabase/user/supabase/templates/recovery.html` (new), `supabase/user/supabase/config.toml`, `lib/navigation/safe-redirect.ts`, `__tests__/auth/password-recovery.test.ts` (new)
+* **Delivered Capabilities**:
+  1. Branded Recovery Email Template & GoTrue Config:
+     - Authored responsive HTML template `supabase/user/supabase/templates/recovery.html` with OTP placeholder `{{ .Token }}` and one-click direct recovery button `{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type=recovery&next=/reset-password`.
+     - Bound `[auth.email.template.recovery]` in `supabase/user/supabase/config.toml`.
+  2. AuthContext Password Recovery Services (`contexts/AuthContext.tsx`):
+     - `resetPasswordForEmail(email)`: triggers GoTrue recovery flow with link redirecting to `/auth/confirm?type=recovery&next=/reset-password`. Suppresses user-enumeration signals while relaying rate limits.
+     - `verifyPasswordRecoveryOtp(email, token)`: verifies 6-digit OTP code (`type: "recovery"`) and hydrates active user recovery session.
+     - `updatePassword(newPassword)`: invokes `supabase.auth.updateUser({ password })` and terminates all other sessions via `signOut({ scope: "others" })`.
+  3. Interactive Recovery & Verification UI (`app/forgot-password/page.tsx`):
+     - Integrated email submission, 6-digit OTP code entry, and 60-second cooldown timer for code resend.
+     - Implemented enumeration-safe UI messaging, accessible input navigation, and automatic forwarding to `/reset-password`.
+  4. Reset Password Page (`app/reset-password/page.tsx`):
+     - Validates active recovery session on mount (shows expired session alert with request link if invalid).
+     - Provides secure password change form (>= 8 characters, confirmation matching, visibility toggles).
+     - Signs out other sessions upon update (`scope: "others"`) and displays confirmation toast before redirecting to `/home`.
+  5. Security & Redirect Protection:
+     - Added `/reset-password` to `AUTH_PAGES` array in `lib/navigation/safe-redirect.ts` preventing login loop and return-url vulnerabilities.
+  6. Automated Verification Tests (`__tests__/auth/password-recovery.test.ts`):
+     - Validates recovery template placeholders, config bindings, `/reset-password` returnUrl loop protection, enumeration defense simulation, and password validation contracts.
+* **Verification Results**:
+  - `npm test`: all test suites pass (including 6 new tests in `__tests__/auth/password-recovery.test.ts`).
+  - `npx tsc --noEmit`: 0 type errors.
+  - `npm run lint`: clean (0 errors, 0 warnings).
+  - `npm run build`: successfully generated all 38 pages including new dynamic route `/reset-password`.
 
 ---
 

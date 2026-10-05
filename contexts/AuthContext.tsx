@@ -39,6 +39,14 @@ type AuthContextValue = {
   resendSignupOtp: (
     email: string
   ) => Promise<{ error: string | null }>;
+  resetPasswordForEmail: (email: string) => Promise<{ error: string | null }>;
+  verifyPasswordRecoveryOtp: (
+    email: string,
+    token: string
+  ) => Promise<{ error: string | null }>;
+  updatePassword: (
+    newPassword: string
+  ) => Promise<{ error: string | null }>;
   logout: () => Promise<void>;
   updateDisplayName: (displayName: string) => Promise<boolean>;
   changePassword: (
@@ -264,6 +272,108 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  const resetPasswordForEmail = async (
+    email: string
+  ): Promise<{ error: string | null }> => {
+    try {
+      const trimmedEmail = email.trim();
+      if (!trimmedEmail) {
+        return { error: "Please enter your email address." };
+      }
+
+      const emailRedirectTo =
+        typeof window !== "undefined"
+          ? `${window.location.origin}/auth/confirm?type=recovery&next=/reset-password`
+          : undefined;
+
+      const { error } = await supabase.auth.resetPasswordForEmail(trimmedEmail, {
+        redirectTo: emailRedirectTo,
+      });
+
+      if (error) {
+        const lower = error.message.toLowerCase();
+        if (
+          lower.includes("rate") ||
+          lower.includes("frequency") ||
+          error.status === 429
+        ) {
+          return { error: error.message };
+        }
+        // To prevent account enumeration per Task 11.2 specs, don't leak user absence
+      }
+
+      return { error: null };
+    } catch (err: unknown) {
+      const message =
+        err instanceof Error ? err.message : "Failed to send reset code.";
+      return { error: message };
+    }
+  };
+
+  const verifyPasswordRecoveryOtp = async (
+    email: string,
+    token: string
+  ): Promise<{ error: string | null }> => {
+    try {
+      const trimmedEmail = email.trim();
+      const trimmedToken = token.trim();
+
+      const { data, error } = await supabase.auth.verifyOtp({
+        email: trimmedEmail,
+        token: trimmedToken,
+        type: "recovery",
+      });
+
+      if (error) {
+        return { error: error.message };
+      }
+
+      if (data.session) {
+        setSession(data.session);
+        setUser(data.session.user);
+        if (data.session.user) {
+          await fetchProfile(data.session.user.id);
+        }
+      } else if (data.user) {
+        setUser(data.user);
+        await fetchProfile(data.user.id);
+      }
+
+      return { error: null };
+    } catch (err: unknown) {
+      const message =
+        err instanceof Error ? err.message : "Failed to verify reset code.";
+      return { error: message };
+    }
+  };
+
+  const updatePassword = async (
+    newPassword: string
+  ): Promise<{ error: string | null }> => {
+    try {
+      const { error } = await supabase.auth.updateUser({
+        password: newPassword,
+      });
+
+      if (error) {
+        return { error: error.message };
+      }
+
+      // Invalidate all other sessions for security (Task 11.2)
+      try {
+        await supabase.auth.signOut({ scope: "others" });
+      } catch (signOutErr) {
+        console.warn("Failed to sign out other sessions:", signOutErr);
+      }
+
+      return { error: null };
+    } catch (err: unknown) {
+      const message =
+        err instanceof Error ? err.message : "Failed to update password.";
+      return { error: message };
+    }
+  };
+
   const logout = async () => {
     try {
       await supabase.auth.signOut();
@@ -417,6 +527,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         signUp,
         verifySignupOtp,
         resendSignupOtp,
+        resetPasswordForEmail,
+        verifyPasswordRecoveryOtp,
+        updatePassword,
         logout,
         updateDisplayName,
         changePassword,

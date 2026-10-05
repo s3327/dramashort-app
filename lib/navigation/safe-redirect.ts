@@ -35,7 +35,13 @@ export function getSafeRedirect(value: unknown, fallback = "/home"): string {
 }
 
 /** Auth pages are never useful post-login destinations (they would show the form again). */
-const AUTH_PAGES = ["/login", "/signup", "/verify-email", "/forgot-password"];
+const AUTH_PAGES = [
+  "/login",
+  "/signup",
+  "/verify-email",
+  "/forgot-password",
+  "/reset-password",
+];
 
 interface SearchParamsLike {
   get(name: string): string | null;

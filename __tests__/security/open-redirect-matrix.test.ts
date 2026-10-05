@@ -119,7 +119,13 @@ describe("Open Redirect Security Matrix (Task 10.9)", () => {
     });
 
     it("falls back to /home if returnUrl targets an auth page (login loop)", () => {
-      for (const authPage of ["/login", "/signup", "/verify-email", "/forgot-password"]) {
+      for (const authPage of [
+        "/login",
+        "/signup",
+        "/verify-email",
+        "/forgot-password",
+        "/reset-password",
+      ]) {
         const q = new URLSearchParams(`returnUrl=${encodeURIComponent(authPage)}`);
         assert.equal(readReturnUrl(q), "/home", `Target ${authPage} must not loop`);
       }

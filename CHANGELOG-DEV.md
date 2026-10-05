@@ -750,3 +750,50 @@
   - `npx tsc --noEmit`: 0 errors.
   - `npm run lint`: clean (0 errors, 0 warnings).
   - `npm run build`: successfully generated all 37 pages including dynamic route `ƒ /auth/confirm`.
+---
+
+## [2026-10-05] Task 11.2: Real Password Recovery & Reset Password Flow
+* **Milestone**: Phase 11 (Authentication & User Management Completeness) — Task 11.2
+* **Goal**: Replace non-functional mock password reset stubs with genuine end-to-end Supabase GoTrue password recovery, branded responsive HTML email templates, enumeration-safe request handling, 6-digit OTP verification, session establishment, and a dedicated reset password page (`/reset-password`) that invalidates all other active sessions via `signOut({ scope: "others" })`.
+* **Implementation Steps Taken**:
+  1. Branded Recovery Email Template & Supabase Configuration:
+     - Authored responsive HTML template `supabase/user/supabase/templates/recovery.html` adhering to dark branding aesthetic (`#0f172a`, `#e11d48`), displaying 6-digit OTP code (`{{ .Token }}`) and direct one-click action button (`{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type=recovery&next=/reset-password`).
+     - Bound `[auth.email.template.recovery]` in `supabase/user/supabase/config.toml` to `./templates/recovery.html` with subject `"Reset your DramaShort password"`.
+  2. AuthContext Recovery Services (`contexts/AuthContext.tsx`):
+     - `resetPasswordForEmail(email)`: triggers GoTrue recovery email with `redirectTo` pointing to `/auth/confirm?type=recovery&next=/reset-password`. Suppresses account absence errors to prevent user enumeration attacks while relaying rate limits.
+     - `verifyPasswordRecoveryOtp(email, token)`: verifies 6-digit OTP against Supabase GoTrue with `type: "recovery"`, hydrating active user and session state upon verification.
+     - `updatePassword(newPassword)`: calls `supabase.auth.updateUser({ password: newPassword })` and terminates all other existing sessions via `supabase.auth.signOut({ scope: "others" })`.
+  3. Interactive Recovery Interface (`app/forgot-password/page.tsx`):
+     - Integrated real recovery request and OTP verification.
+     - Implemented 60-second countdown cooldown preventing resend abuse, with inline status and error banners.
+     - Automatically routes verified users to `/reset-password`.
+  4. Reset Password Page (`app/reset-password/page.tsx`):
+     - Created dedicated page validating active recovery session on mount (displaying friendly expiration alert if accessed without a valid session).
+     - Form enforces minimum 8 characters and confirmation match with toggleable password visibility.
+     - Calls `updatePassword()`, displays toast confirmation, and seamlessly routes user to `/home`.
+  5. Security & Redirect Protection (`lib/navigation/safe-redirect.ts`):
+     - Added `/reset-password` to `AUTH_PAGES` array in `lib/navigation/safe-redirect.ts` ensuring post-login returnUrls cannot produce redirect loops or open-redirect vulnerabilities.
+  6. Automated Verification Test Suite (`__tests__/auth/password-recovery.test.ts`):
+     - Authored 6 unit and regression tests covering recovery template placeholders, config bindings, open-redirect loop protection, account enumeration defense simulation, and password validation contracts.
+     - Updated `__tests__/security/open-redirect-matrix.test.ts` to assert `/reset-password` loop defense.
+* **Key File Diffs**:
+  - Created:
+    - `app/reset-password/page.tsx`
+    - `supabase/user/supabase/templates/recovery.html`
+    - `__tests__/auth/password-recovery.test.ts`
+  - Modified:
+    - `app/forgot-password/page.tsx`
+    - `contexts/AuthContext.tsx`
+    - `lib/navigation/safe-redirect.ts`
+    - `supabase/user/supabase/config.toml`
+    - `__tests__/security/open-redirect-matrix.test.ts`
+    - `ROADMAP.md`
+    - `CHANGELOG-DEV.md`
+* **Regression Analysis & Cross-System Impact**:
+  - All 242 tests pass across 57 suites (+7 tests), including open-redirect and authentication matrices.
+  - Zero disruption to existing login, signup, or guest user flows.
+* **Verification**:
+  - `npm test`: 242 / 242 tests pass across 57 suites (0 failures).
+  - `npx tsc --noEmit`: 0 type errors.
+  - `npm run lint`: clean (0 errors, 0 warnings).
+  - `npm run build`: successfully generated all 38 pages including dynamic route `ƒ /reset-password`.
