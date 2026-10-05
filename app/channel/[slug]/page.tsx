@@ -1,70 +1,84 @@
 "use client";
 
-import { use, useEffect, useMemo, useState } from "react";
-import { notFound } from "next/navigation";
+import { use, useEffect, useState, Suspense } from "react";
+import { notFound, useSearchParams } from "next/navigation";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import Breadcrumbs from "@/components/Breadcrumbs";
 import TitleCard, { TitleCardSkeleton } from "@/components/TitleCard";
 import Pagination from "@/components/Pagination";
 import { channels as fallbackChannels, type Channel } from "@/data/channels.mock";
-import { titles as fallbackTitles, type Title } from "@/data/titles.mock";
 import { useTheme } from "@/contexts/ThemeContext";
-import { getChannelBySlug, getPublishedTitles } from "@/lib/services/content.service";
+import {
+  getChannelBySlug,
+  searchPublishedTitles,
+  type PaginatedTitlesResult,
+} from "@/lib/services/content.service";
 
 const PAGE_SIZE = 24;
 
-export default function ChannelPage({
-  params,
-}: {
-  params: Promise<{ slug: string }>;
-}) {
+function ChannelContent({ slug }: { slug: string }) {
   const { theme } = useTheme();
-  const { slug } = use(params);
+  const searchParams = useSearchParams();
+
+  const initialPage = Math.max(1, parseInt(searchParams.get("page") || "1", 10) || 1);
+  const [page, setPage] = useState(initialPage);
   const [channel, setChannel] = useState<Channel | null>(null);
-  const [channelTitles, setChannelTitles] = useState<Title[]>([]);
+  const [results, setResults] = useState<PaginatedTitlesResult>({
+    items: [],
+    total: 0,
+    page: initialPage,
+    pageSize: PAGE_SIZE,
+    totalPages: 1,
+  });
   const [isLoading, setIsLoading] = useState(true);
-  const [page, setPage] = useState(1);
 
   if (!isLoading && !channel) {
     notFound();
   }
 
+  // 1. Resolve channel by slug
   useEffect(() => {
     let isMounted = true;
     getChannelBySlug(slug)
-      .then(async (ch) => {
+      .then((ch) => {
         if (!isMounted) return;
         const resolvedChannel = ch || fallbackChannels.find((c) => c.slug === slug) || null;
         setChannel(resolvedChannel);
-
-        if (resolvedChannel) {
-          const dbTitles = await getPublishedTitles({ channelName: resolvedChannel.name, sort: "newest" });
-          if (!isMounted) return;
-          if (dbTitles && dbTitles.length > 0) {
-            setChannelTitles(dbTitles);
-          } else {
-            setChannelTitles(
-              fallbackTitles
-                .filter((item) => item.status === "Published" && item.channel === resolvedChannel.name)
-                .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-            );
-          }
-        }
       })
       .catch((err) => {
         console.warn("Failed to load channel from DB, using fallback:", err);
         if (isMounted) {
           const ch = fallbackChannels.find((c) => c.slug === slug) || null;
           setChannel(ch);
-          if (ch) {
-            setChannelTitles(
-              fallbackTitles
-                .filter((item) => item.status === "Published" && item.channel === ch.name)
-                .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-            );
-          }
         }
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [slug]);
+
+  // 2. Fetch server-side paginated titles by channel_id
+  useEffect(() => {
+    if (!channel) return;
+    let isMounted = true;
+    setIsLoading(true);
+
+    searchPublishedTitles({
+      channelId: channel.id,
+      channelSlug: channel.slug,
+      channelName: channel.name,
+      sort: "newest",
+      page,
+      pageSize: PAGE_SIZE,
+    })
+      .then((res) => {
+        if (!isMounted) return;
+        setResults(res);
+      })
+      .catch((err) => {
+        console.warn("Failed to load channel titles from DB:", err);
       })
       .finally(() => {
         if (isMounted) setIsLoading(false);
@@ -73,10 +87,24 @@ export default function ChannelPage({
     return () => {
       isMounted = false;
     };
-  }, [slug]);
+  }, [channel, page]);
 
-  const totalPages = Math.max(1, Math.ceil(channelTitles.length / PAGE_SIZE));
-  const pageItems = channelTitles.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+  // 3. Keep URL ?page= parameter in sync
+  useEffect(() => {
+    const params = new URLSearchParams();
+    if (page > 1) params.set("page", String(page));
+
+    const queryString = params.toString();
+    const newUrl = queryString ? `/channel/${slug}?${queryString}` : `/channel/${slug}`;
+    window.history.replaceState(null, "", newUrl);
+  }, [slug, page]);
+
+  const handlePageChange = (newPage: number) => {
+    setPage(newPage);
+    if (typeof window !== "undefined") {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+  };
 
   return (
     <div data-theme={theme} className="min-h-screen bg-bg text-text">
@@ -103,14 +131,14 @@ export default function ChannelPage({
               <TitleCardSkeleton key={i} />
             ))}
           </div>
-        ) : channelTitles.length === 0 ? (
+        ) : results.items.length === 0 ? (
           <p className="text-sm text-text-muted py-12 text-center">
             No titles from this channel yet.
           </p>
         ) : (
           <>
             <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-6 gap-x-4 gap-y-6">
-              {pageItems.map((item) => (
+              {results.items.map((item) => (
                 <TitleCard
                   key={item.id}
                   href={`/drama/${item.slug}`}
@@ -120,12 +148,30 @@ export default function ChannelPage({
               ))}
             </div>
 
-            <Pagination page={page} totalPages={totalPages} onPageChange={setPage} />
+            <Pagination
+              page={results.page}
+              totalPages={results.totalPages}
+              onPageChange={handlePageChange}
+            />
           </>
         )}
       </main>
 
       <Footer />
     </div>
+  );
+}
+
+export default function ChannelPage({
+  params,
+}: {
+  params: Promise<{ slug: string }>;
+}) {
+  const { slug } = use(params);
+
+  return (
+    <Suspense fallback={null}>
+      <ChannelContent slug={slug} />
+    </Suspense>
   );
 }

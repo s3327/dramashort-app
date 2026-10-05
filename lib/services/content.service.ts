@@ -49,6 +49,7 @@ export function mapTitleRowToTitle(row: TitleRow): Title {
 
 export function mapChannelRowToChannel(row: ChannelRow): Channel {
   return {
+    id: row.id,
     slug: row.slug,
     name: row.name,
   };
@@ -73,6 +74,7 @@ export interface TitleQueryOptions {
   query?: string;
   search?: string;
   genre?: string;
+  channelId?: string;
   channelName?: string;
   channelSlug?: string;
   tags?: string[];
@@ -102,7 +104,13 @@ export async function searchPublishedTitles(
   options?: TitleQueryOptions
 ): Promise<PaginatedTitlesResult> {
   const page = Math.max(1, options?.page || 1);
-  const pageSize = Math.max(1, options?.pageSize || options?.limit || 12);
+  const requestedSize =
+    options?.pageSize !== undefined
+      ? options.pageSize
+      : options?.limit !== undefined
+      ? options.limit
+      : 24;
+  const pageSize = Math.min(60, Math.max(1, requestedSize));
   const from =
     options?.offset !== undefined ? options.offset : (page - 1) * pageSize;
   const to = from + pageSize - 1;
@@ -124,7 +132,19 @@ export async function searchPublishedTitles(
       }
     }
 
-    if (
+    // Channel filtering: prioritize channelId, then channelSlug, then channelName
+    if (options?.channelId) {
+      query = query.eq("channel_id", options.channelId);
+    } else if (options?.channelSlug) {
+      const { data: ch } = await contentClient
+        .from("channels")
+        .select("id")
+        .eq("slug", options.channelSlug)
+        .maybeSingle();
+      if (ch?.id) {
+        query = query.eq("channel_id", ch.id);
+      }
+    } else if (
       options?.channelName &&
       options.channelName !== "All" &&
       options.channelName !== "All Channels"
@@ -144,15 +164,19 @@ export async function searchPublishedTitles(
       query = query.contains("tags", options.tags);
     }
 
+    // Deterministic sort order with ID as stable tie-breaker
     if (options?.sort === "newest") {
-      query = query.order("created_at", { ascending: false });
+      query = query
+        .order("created_at", { ascending: false })
+        .order("id", { ascending: true });
     } else if (options?.sort === "rating") {
-      query = query.order("rating", { ascending: false, nullsFirst: false });
+      query = query
+        .order("rating", { ascending: false, nullsFirst: false })
+        .order("id", { ascending: true });
     } else {
-      query = query.order("views_count", {
-        ascending: false,
-        nullsFirst: false,
-      });
+      query = query
+        .order("views_count", { ascending: false, nullsFirst: false })
+        .order("id", { ascending: true });
     }
 
     query = query.range(from, to);
@@ -189,10 +213,12 @@ export const searchDramas = searchPublishedTitles;
 function filterMockTitles(
   options?: TitleQueryOptions,
   page = 1,
-  pageSize = 12
+  pageSize = 24
 ): PaginatedTitlesResult {
   const q = (options?.query || options?.search || "").trim().toLowerCase();
   const channelName = options?.channelName;
+  const channelId = options?.channelId;
+  const channelSlug = options?.channelSlug;
   const genre = options?.genre;
   const tags = options?.tags;
 
@@ -203,10 +229,16 @@ function filterMockTitles(
       item.title.toLowerCase().includes(q) ||
       item.synopsis.toLowerCase().includes(q);
     const matchesChannel =
-      !channelName ||
-      channelName === "All Channels" ||
-      channelName === "All" ||
-      item.channel === channelName;
+      (!channelId &&
+        !channelSlug &&
+        (!channelName ||
+          channelName === "All Channels" ||
+          channelName === "All" ||
+          item.channel === channelName)) ||
+      (channelName &&
+        (channelName === "All Channels" ||
+          channelName === "All" ||
+          item.channel === channelName));
     const matchesGenre =
       !genre ||
       genre === "All Genres" ||
@@ -221,14 +253,21 @@ function filterMockTitles(
   });
 
   if (options?.sort === "newest") {
-    filtered.sort(
-      (a, b) =>
-        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-    );
+    filtered.sort((a, b) => {
+      const diff =
+        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+      return diff !== 0 ? diff : a.id.localeCompare(b.id);
+    });
   } else if (options?.sort === "rating") {
-    filtered.sort((a, b) => (b.rating || 0) - (a.rating || 0));
+    filtered.sort((a, b) => {
+      const diff = (b.rating || 0) - (a.rating || 0);
+      return diff !== 0 ? diff : a.id.localeCompare(b.id);
+    });
   } else {
-    filtered.sort((a, b) => b.views - a.views);
+    filtered.sort((a, b) => {
+      const diff = b.views - a.views;
+      return diff !== 0 ? diff : a.id.localeCompare(b.id);
+    });
   }
 
   const total = filtered.length;

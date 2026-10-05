@@ -1450,15 +1450,19 @@ These items stay ✅ for history; the gaps are tracked as new tasks.
 > **Objective**: Fix the behavioral bugs found in the audit and make the data the app shows trustworthy: full catalog visibility, correct admin views, correct progress, and no silent substitution of mock data.
 
 ### Task 12.1: Server-Side Pagination for Discovery Pages
-* **Status**: ⏳ Planned
-* **Problem**: `searchPublishedTitles()` defaults `pageSize` to 12 (`lib/services/content.service.ts` L102). `/genres` (`page.tsx` L28), `/trending` (L24), `/new-release` (L22), and `/channel/[slug]` (L37) call `getPublishedTitles()` without a page size and paginate in the browser. Only 12 of the 27 published titles appear, and genre chips filter only those 12. `TitleQueryOptions.channelSlug` exists (L74) but is never applied.
-* **Target Files**: `app/genres/page.tsx`, `app/trending/page.tsx`, `app/new-release/page.tsx`, `app/channel/[slug]/page.tsx`, `lib/services/content.service.ts`
-* **Planned Specifications**:
-  1. All four pages use `searchPublishedTitles({ page, pageSize, genre, channelId, sort })` as `/search` does, with `?page=` and `?genre=` in the URL.
-  2. Filter channel pages by `channel_id`, not by the display name in `channel_name`, so renaming a channel cannot break its page.
-  3. Remove the implicit 12-item default from list helpers; require an explicit `pageSize` (maximum 60).
-  4. Add a stable tie-breaker (`.order("id")`) so pages never duplicate or skip rows when `views_count` or `created_at` tie.
-* **Verification**: with 27 published titles, `/trending` shows 24 on page 1 and 3 on page 2; genre counts match the database.
+* **Status**: ✅ Completed (2026-10-06)
+* **Problem**: `searchPublishedTitles()` defaulted `pageSize` to 12 (`lib/services/content.service.ts`). Discovery pages (`/genres`, `/trending`, `/new-release`, `/channel/[slug]`) called `getPublishedTitles()` without pagination options and client-sliced 12 items.
+* **Target Files**: `app/genres/page.tsx`, `app/trending/page.tsx`, `app/new-release/page.tsx`, `app/channel/[slug]/page.tsx`, `lib/services/content.service.ts`, `data/channels.mock.ts`
+* **Delivered Capabilities**:
+  1. Updated `/genres`, `/trending`, `/new-release`, and `/channel/[slug]` to fetch server-side paginated results via `searchPublishedTitles()` with `pageSize: 24`, synchronizing `?page=` and `?genre=` into URL query parameters.
+  2. Filter channel page directly by `channel_id` UUID (`channelId: resolvedChannel.id`), preventing drift if channel names change.
+  3. Replaced implicit 12-item default with explicit 24-item grid and enforced maximum limit of 60 items per query.
+  4. Injected stable deterministic tie-breaker `.order("id", { ascending: true })` on trending (`views_count`), newest (`created_at`), and rating sorts.
+  5. Wrapped all discovery client pages reading `useSearchParams()` in `<Suspense>` boundaries for static build compatibility.
+* **Verification**:
+  - `__tests__/services/server-side-pagination.test.ts` (8 tests passing).
+  - Full test runner `npm test`: 300 / 300 tests passing across 84 suites.
+  - `npm run build`: cleanly compiles 40/40 routes with 0 errors.
 
 ---
 

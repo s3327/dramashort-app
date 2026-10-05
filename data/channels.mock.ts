@@ -1,4 +1,5 @@
 export type Channel = {
+  id?: string;
   slug: string;
   name: string;
 };

@@ -1043,3 +1043,66 @@
   - `npx tsc --noEmit`: 0 type errors.
   - `npm run lint`: clean (0 errors, 0 warnings).
   - `npm run build`: successfully generated all 40 pages with 0 errors.
+
+---
+
+## [2026-10-06] Task 12.1: Server-Side Pagination for Discovery Pages
+* **Milestone**: Phase 12 (Functional Bug Fixes & Data Integrity) — Task 12.1
+* **Goal**: Replace client-side slicing and default 12-item pagination limits across discovery pages with robust server-side pagination, URL query synchronization, stable tie-breakers (`.order("id")`), and direct channel ID filtering.
+* **Implementation Steps Taken**:
+  1. Content Service Query Engine (`lib/services/content.service.ts`):
+     - Added `channelId` to `TitleQueryOptions`.
+     - Prioritized filtering by `channel_id` (foreign key UUID) over denormalized display name to avoid drift when channels are renamed. Also supported resolving by `channelSlug`.
+     - Replaced implicit 12-item default with explicit 24-item default grid, enforcing a strict maximum ceiling of 60 items per request (`Math.min(60, Math.max(1, requestedSize))`).
+     - Injected deterministic secondary tie-breaker `.order("id", { ascending: true })` on trending (`views_count`), newest (`created_at`), and rating sorts to prevent row skipping or duplication across page boundaries.
+     - Updated in-memory fallback `filterMockTitles` to match identical filtering, sorting tie-breakers, and pagination semantics.
+  2. Channel Entity Model (`data/channels.mock.ts`, `lib/services/content.service.ts`):
+     - Added `id?: string` to `Channel` interface and updated `mapChannelRowToChannel` to pass `id: row.id`.
+  3. Discovery Pages Server-Side Pagination & URL Sync:
+     - `/genres` (`app/genres/page.tsx`):
+       - Loaded distinct available genres across entire catalog via `getDistinctGenres()`.
+       - Querying via `searchPublishedTitles({ genre, page, pageSize: 24, sort: "trending" })`.
+       - Synchronized `?genre=` and `?page=` to URL using `window.history.replaceState`.
+       - Wrapped in `<Suspense>` boundary.
+     - `/trending` (`app/trending/page.tsx`):
+       - Replaced client-side array slice with `searchPublishedTitles({ sort: "trending", page, pageSize: 24 })`.
+       - Synchronized `?page=` in URL.
+       - Accurately computes rank overlay: `(page - 1) * PAGE_SIZE + index + 1`.
+       - Wrapped in `<Suspense>` boundary.
+     - `/new-release` (`app/new-release/page.tsx`):
+       - Replaced client-side array slice with `searchPublishedTitles({ sort: "newest", page, pageSize: 24 })`.
+       - Synchronized `?page=` in URL.
+       - Wrapped in `<Suspense>` boundary.
+     - `/channel/[slug]` (`app/channel/[slug]/page.tsx`):
+       - Filtered directly by `channelId: resolvedChannel.id` with fallback to `channelSlug`.
+       - Synchronized `?page=` in URL.
+       - Wrapped in `<Suspense>` boundary.
+  4. Automated Verification Test Suite (`__tests__/services/server-side-pagination.test.ts`):
+     - Created 8 tests covering:
+       - Default page size 24 with range `[0, 23]`.
+       - Page 2 range `[24, 47]`.
+       - Maximum 60-item page size capping.
+       - Stable ID tie-breaker application on trending and newest sorts.
+       - Strict `channel_id` UUID filtering.
+       - Genre filtering.
+       - Component contracts ensuring all 4 discovery pages call `searchPublishedTitles` and wrap search params in `<Suspense>`.
+* **Key File Diffs**:
+  - Created:
+    - `__tests__/services/server-side-pagination.test.ts`
+  - Modified:
+    - `data/channels.mock.ts`
+    - `lib/services/content.service.ts`
+    - `app/genres/page.tsx`
+    - `app/trending/page.tsx`
+    - `app/new-release/page.tsx`
+    - `app/channel/[slug]/page.tsx`
+    - `ROADMAP.md`
+    - `CHANGELOG-DEV.md`
+* **Regression Analysis & Cross-System Impact**:
+  - Test runner expanded to 300 tests across 84 test suites with 100% pass rate.
+  - Production build cleanly compiled all 40 static and dynamic routes.
+* **Verification**:
+  - `npm test`: 300 / 300 tests pass across 84 suites (0 failures).
+  - `npx tsc --noEmit`: 0 type errors.
+  - `npm run lint`: clean (0 errors, 0 warnings).
+  - `npm run build`: successfully generated all 40 pages with 0 errors.

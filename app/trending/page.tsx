@@ -1,48 +1,53 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState, Suspense } from "react";
+import { useSearchParams } from "next/navigation";
 import { Flame } from "lucide-react";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import TitleCard, { TitleCardSkeleton } from "@/components/TitleCard";
 import Pagination from "@/components/Pagination";
-import { titles as fallbackTitles, type Title } from "@/data/titles.mock";
 import { useTheme } from "@/contexts/ThemeContext";
 import { formatCompactNumber } from "@/lib/format";
-import { getPublishedTitles } from "@/lib/services/content.service";
+import {
+  searchPublishedTitles,
+  type PaginatedTitlesResult,
+} from "@/lib/services/content.service";
 
 const PAGE_SIZE = 24;
 
-export default function TrendingPage() {
+function TrendingContent() {
   const { theme } = useTheme();
-  const [page, setPage] = useState(1);
-  const [allRanked, setAllRanked] = useState<Title[]>([]);
+  const searchParams = useSearchParams();
+
+  const initialPage = Math.max(1, parseInt(searchParams.get("page") || "1", 10) || 1);
+  const [page, setPage] = useState(initialPage);
+
+  const [results, setResults] = useState<PaginatedTitlesResult>({
+    items: [],
+    total: 0,
+    page: initialPage,
+    pageSize: PAGE_SIZE,
+    totalPages: 1,
+  });
   const [isLoading, setIsLoading] = useState(true);
 
+  // Fetch server-side ranked trending titles
   useEffect(() => {
     let isMounted = true;
-    getPublishedTitles({ sort: "trending" })
-      .then((dbTitles) => {
+    setIsLoading(true);
+
+    searchPublishedTitles({
+      sort: "trending",
+      page,
+      pageSize: PAGE_SIZE,
+    })
+      .then((res) => {
         if (!isMounted) return;
-        if (dbTitles && dbTitles.length > 0) {
-          setAllRanked(dbTitles);
-        } else {
-          setAllRanked(
-            fallbackTitles
-              .filter((t) => t.status === "Published")
-              .sort((a, b) => b.views - a.views)
-          );
-        }
+        setResults(res);
       })
       .catch((err) => {
-        console.warn("Failed to load trending titles from DB, using fallback:", err);
-        if (isMounted) {
-          setAllRanked(
-            fallbackTitles
-              .filter((t) => t.status === "Published")
-              .sort((a, b) => b.views - a.views)
-          );
-        }
+        console.warn("Failed to load trending titles from DB:", err);
       })
       .finally(() => {
         if (isMounted) setIsLoading(false);
@@ -51,10 +56,24 @@ export default function TrendingPage() {
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [page]);
 
-  const totalPages = Math.max(1, Math.ceil(allRanked.length / PAGE_SIZE));
-  const pageItems = allRanked.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+  // Keep URL ?page= parameter in sync
+  useEffect(() => {
+    const params = new URLSearchParams();
+    if (page > 1) params.set("page", String(page));
+
+    const queryString = params.toString();
+    const newUrl = queryString ? `/trending?${queryString}` : "/trending";
+    window.history.replaceState(null, "", newUrl);
+  }, [page]);
+
+  const handlePageChange = (newPage: number) => {
+    setPage(newPage);
+    if (typeof window !== "undefined") {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+  };
 
   return (
     <div data-theme={theme} className="min-h-screen bg-bg text-text">
@@ -81,7 +100,7 @@ export default function TrendingPage() {
               <TitleCardSkeleton key={i} hasSubtitle />
             ))}
           </div>
-        ) : allRanked.length === 0 ? (
+        ) : results.items.length === 0 ? (
           <div className="bg-surface border border-border rounded-xl p-12 text-center my-6 max-w-lg mx-auto shadow-sm">
             <h2 className="font-display font-bold text-lg mb-2">No trending dramas yet</h2>
             <p className="text-sm text-text-muted">
@@ -91,8 +110,8 @@ export default function TrendingPage() {
         ) : (
           <>
             <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-6 gap-x-4 gap-y-6">
-              {pageItems.map((item, index) => {
-                const rank = (page - 1) * PAGE_SIZE + index + 1;
+              {results.items.map((item, index) => {
+                const rank = (results.page - 1) * PAGE_SIZE + index + 1;
                 return (
                   <TitleCard
                     key={item.id}
@@ -114,12 +133,24 @@ export default function TrendingPage() {
               })}
             </div>
 
-            <Pagination page={page} totalPages={totalPages} onPageChange={setPage} />
+            <Pagination
+              page={results.page}
+              totalPages={results.totalPages}
+              onPageChange={handlePageChange}
+            />
           </>
         )}
       </main>
 
       <Footer />
     </div>
+  );
+}
+
+export default function TrendingPage() {
+  return (
+    <Suspense fallback={null}>
+      <TrendingContent />
+    </Suspense>
   );
 }

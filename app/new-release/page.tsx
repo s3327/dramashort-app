@@ -1,46 +1,51 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, Suspense } from "react";
+import { useSearchParams } from "next/navigation";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import TitleCard, { TitleCardSkeleton } from "@/components/TitleCard";
 import Pagination from "@/components/Pagination";
-import { titles as fallbackTitles, type Title } from "@/data/titles.mock";
 import { useTheme } from "@/contexts/ThemeContext";
-import { getPublishedTitles } from "@/lib/services/content.service";
+import {
+  searchPublishedTitles,
+  type PaginatedTitlesResult,
+} from "@/lib/services/content.service";
 
 const PAGE_SIZE = 24;
 
-export default function NewReleasePage() {
+function NewReleaseContent() {
   const { theme } = useTheme();
-  const [page, setPage] = useState(1);
-  const [allSorted, setAllSorted] = useState<Title[]>([]);
+  const searchParams = useSearchParams();
+
+  const initialPage = Math.max(1, parseInt(searchParams.get("page") || "1", 10) || 1);
+  const [page, setPage] = useState(initialPage);
+
+  const [results, setResults] = useState<PaginatedTitlesResult>({
+    items: [],
+    total: 0,
+    page: initialPage,
+    pageSize: PAGE_SIZE,
+    totalPages: 1,
+  });
   const [isLoading, setIsLoading] = useState(true);
 
+  // Fetch server-side paginated new releases
   useEffect(() => {
     let isMounted = true;
-    getPublishedTitles({ sort: "newest" })
-      .then((dbTitles) => {
+    setIsLoading(true);
+
+    searchPublishedTitles({
+      sort: "newest",
+      page,
+      pageSize: PAGE_SIZE,
+    })
+      .then((res) => {
         if (!isMounted) return;
-        if (dbTitles && dbTitles.length > 0) {
-          setAllSorted(dbTitles);
-        } else {
-          setAllSorted(
-            fallbackTitles
-              .filter((t) => t.status === "Published")
-              .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-          );
-        }
+        setResults(res);
       })
       .catch((err) => {
-        console.warn("Failed to load new releases from DB, using fallback:", err);
-        if (isMounted) {
-          setAllSorted(
-            fallbackTitles
-              .filter((t) => t.status === "Published")
-              .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-          );
-        }
+        console.warn("Failed to load new releases from DB:", err);
       })
       .finally(() => {
         if (isMounted) setIsLoading(false);
@@ -49,10 +54,24 @@ export default function NewReleasePage() {
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [page]);
 
-  const totalPages = Math.max(1, Math.ceil(allSorted.length / PAGE_SIZE));
-  const pageItems = allSorted.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+  // Keep URL ?page= parameter in sync
+  useEffect(() => {
+    const params = new URLSearchParams();
+    if (page > 1) params.set("page", String(page));
+
+    const queryString = params.toString();
+    const newUrl = queryString ? `/new-release?${queryString}` : "/new-release";
+    window.history.replaceState(null, "", newUrl);
+  }, [page]);
+
+  const handlePageChange = (newPage: number) => {
+    setPage(newPage);
+    if (typeof window !== "undefined") {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+  };
 
   return (
     <div data-theme={theme} className="min-h-screen bg-bg text-text">
@@ -67,7 +86,7 @@ export default function NewReleasePage() {
               <TitleCardSkeleton key={i} />
             ))}
           </div>
-        ) : allSorted.length === 0 ? (
+        ) : results.items.length === 0 ? (
           <div className="bg-surface border border-border rounded-xl p-12 text-center my-6 max-w-lg mx-auto shadow-sm">
             <h2 className="font-display font-bold text-lg mb-2">No new releases yet</h2>
             <p className="text-sm text-text-muted">
@@ -77,7 +96,7 @@ export default function NewReleasePage() {
         ) : (
           <>
             <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-6 gap-x-4 gap-y-6">
-              {pageItems.map((item) => (
+              {results.items.map((item) => (
                 <TitleCard
                   key={item.id}
                   href={`/drama/${item.slug}`}
@@ -87,12 +106,24 @@ export default function NewReleasePage() {
               ))}
             </div>
 
-            <Pagination page={page} totalPages={totalPages} onPageChange={setPage} />
+            <Pagination
+              page={results.page}
+              totalPages={results.totalPages}
+              onPageChange={handlePageChange}
+            />
           </>
         )}
       </main>
 
       <Footer />
     </div>
+  );
+}
+
+export default function NewReleasePage() {
+  return (
+    <Suspense fallback={null}>
+      <NewReleaseContent />
+    </Suspense>
   );
 }

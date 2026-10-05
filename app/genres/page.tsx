@@ -7,9 +7,12 @@ import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import TitleCard, { TitleCardSkeleton } from "@/components/TitleCard";
 import Pagination from "@/components/Pagination";
-import { titles as fallbackTitles, type Title } from "@/data/titles.mock";
 import { useTheme } from "@/contexts/ThemeContext";
-import { getPublishedTitles } from "@/lib/services/content.service";
+import {
+  searchPublishedTitles,
+  getDistinctGenres,
+  type PaginatedTitlesResult,
+} from "@/lib/services/content.service";
 
 const PAGE_SIZE = 24;
 const ALL_GENRE = "All";
@@ -20,23 +23,59 @@ const CHIP_ROW_COLLAPSED_HEIGHT = 76;
 function GenresContent() {
   const { theme } = useTheme();
   const searchParams = useSearchParams();
-  const [titles, setTitles] = useState<Title[]>([]);
+
+  const initialGenre = searchParams.get("genre") || ALL_GENRE;
+  const initialPage = Math.max(1, parseInt(searchParams.get("page") || "1", 10) || 1);
+
+  const [selectedGenre, setSelectedGenre] = useState(initialGenre);
+  const [page, setPage] = useState(initialPage);
+  const [genres, setGenres] = useState<string[]>([ALL_GENRE]);
+
+  const [results, setResults] = useState<PaginatedTitlesResult>({
+    items: [],
+    total: 0,
+    page: initialPage,
+    pageSize: PAGE_SIZE,
+    totalPages: 1,
+  });
   const [isLoading, setIsLoading] = useState(true);
 
+  // 1. Load distinct genres list from Content DB
   useEffect(() => {
     let isMounted = true;
-    getPublishedTitles()
-      .then((dbTitles) => {
+    getDistinctGenres()
+      .then((dbGenres) => {
         if (!isMounted) return;
-        if (dbTitles && dbTitles.length > 0) {
-          setTitles(dbTitles);
-        } else {
-          setTitles(fallbackTitles);
+        if (dbGenres && dbGenres.length > 0) {
+          setGenres([ALL_GENRE, ...dbGenres]);
         }
       })
       .catch((err) => {
-        console.warn("Failed to load genres titles from DB, using fallback:", err);
-        if (isMounted) setTitles(fallbackTitles);
+        console.warn("Failed to load distinct genres:", err);
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  // 2. Fetch server-side paginated titles for active genre & page
+  useEffect(() => {
+    let isMounted = true;
+    setIsLoading(true);
+
+    searchPublishedTitles({
+      genre: selectedGenre !== ALL_GENRE ? selectedGenre : undefined,
+      page,
+      pageSize: PAGE_SIZE,
+      sort: "trending",
+    })
+      .then((res) => {
+        if (!isMounted) return;
+        setResults(res);
+      })
+      .catch((err) => {
+        console.warn("Failed to load genres titles from DB:", err);
       })
       .finally(() => {
         if (isMounted) setIsLoading(false);
@@ -45,18 +84,18 @@ function GenresContent() {
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [selectedGenre, page]);
 
-  const genres = useMemo(
-    () => [ALL_GENRE, ...Array.from(new Set(titles.map((i) => i.genre))).sort()],
-    [titles]
-  );
+  // 3. Keep URL query parameters in sync
+  useEffect(() => {
+    const params = new URLSearchParams();
+    if (selectedGenre !== ALL_GENRE) params.set("genre", selectedGenre);
+    if (page > 1) params.set("page", String(page));
 
-  const genreFromUrl = searchParams.get("genre");
-  const [selectedGenre, setSelectedGenre] = useState(
-    genreFromUrl && titles.some((i) => i.genre === genreFromUrl) ? genreFromUrl : ALL_GENRE
-  );
-  const [page, setPage] = useState(1);
+    const queryString = params.toString();
+    const newUrl = queryString ? `/genres?${queryString}` : "/genres";
+    window.history.replaceState(null, "", newUrl);
+  }, [selectedGenre, page]);
 
   const chipRowRef = useRef<HTMLDivElement>(null);
   const [isChipRowExpanded, setIsChipRowExpanded] = useState(false);
@@ -68,22 +107,17 @@ function GenresContent() {
     setChipRowHasOverflow(el.scrollHeight > CHIP_ROW_COLLAPSED_HEIGHT + 4);
   }, [genres]);
 
-  useEffect(() => {
+  const handleSelectGenre = (genre: string) => {
+    setSelectedGenre(genre);
     setPage(1);
-  }, [selectedGenre]);
+  };
 
-  const filtered = useMemo(
-    () =>
-      titles.filter(
-        (item) =>
-          item.status === "Published" &&
-          (selectedGenre === ALL_GENRE || item.genre === selectedGenre)
-      ),
-    [titles, selectedGenre]
-  );
-
-  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
-  const pageItems = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+  const handlePageChange = (newPage: number) => {
+    setPage(newPage);
+    if (typeof window !== "undefined") {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+  };
 
   return (
     <div data-theme={theme} className="min-h-screen bg-bg text-text">
@@ -106,7 +140,7 @@ function GenresContent() {
               <button
                 key={g}
                 type="button"
-                onClick={() => setSelectedGenre(g)}
+                onClick={() => handleSelectGenre(g)}
                 aria-pressed={active}
                 className={`rounded-pill text-sm font-semibold px-4 py-1.5 border transition-colors whitespace-nowrap ${
                   active
@@ -142,14 +176,14 @@ function GenresContent() {
               <TitleCardSkeleton key={i} />
             ))}
           </div>
-        ) : filtered.length === 0 ? (
+        ) : results.items.length === 0 ? (
           <p className="text-sm text-text-muted py-12 text-center">
             No titles found in this genre yet.
           </p>
         ) : (
           <>
             <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-6 gap-x-4 gap-y-6 mt-8">
-              {pageItems.map((item) => (
+              {results.items.map((item) => (
                 <TitleCard
                   key={item.id}
                   href={`/drama/${item.slug}`}
@@ -159,7 +193,11 @@ function GenresContent() {
               ))}
             </div>
 
-            <Pagination page={page} totalPages={totalPages} onPageChange={setPage} />
+            <Pagination
+              page={results.page}
+              totalPages={results.totalPages}
+              onPageChange={handlePageChange}
+            />
           </>
         )}
       </main>
