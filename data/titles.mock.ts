@@ -1,21 +1,6 @@
-export type TitleStatus = "Published" | "Draft" | "Scheduled" | "Archived";
+import type { Title, TitleStatus, Drama } from "@/types/content";
 
-export type Title = {
-  id: string;
-  slug: string;
-  title: string;
-  poster: string;
-  synopsis: string;
-  channel: string; // "channel" is this project's term for what's usually called "provider"
-  genre: string; // primary category — distinct from tags, which are more granular
-  tags: string[];
-  totalEpisodes: number;
-  rating?: number; // out of 5 — optional, not every title has one yet
-  views: number; // powers Trending
-  createdAt: string; // ISO date — powers New Release / Channel "newest first" sorting
-  status: TitleStatus; // admin-only concept, not shown on the public site
-  year: number; // admin display convenience, roughly derived from createdAt
-};
+export type { Title, TitleStatus, Drama };
 
 // The single source of truth for every title in the app. This used to be
 // six separate, disconnected mock files (dramas, search-catalog, trending,

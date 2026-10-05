@@ -4,7 +4,8 @@ import { useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { ChevronLeft, ChevronRight, Flame } from "lucide-react";
-import { trendingTitles as fallbackTrendingTitles, type TrendingTitle } from "@/data/top-trending.mock";
+import type { TrendingTitle } from "@/types/content";
+import { ENABLE_MOCK_FALLBACK } from "@/lib/config";
 import { getTopTrendingTitles } from "@/lib/services/content.service";
 
 const GAP_PX = 16; // matches gap-4
@@ -27,7 +28,7 @@ export default function TopTrending() {
   useEffect(() => {
     let isMounted = true;
     getTopTrendingTitles(10)
-      .then((titles) => {
+      .then(async (titles) => {
         if (!isMounted) return;
         if (titles && titles.length > 0) {
           setItems(
@@ -39,13 +40,21 @@ export default function TopTrending() {
               href: `/drama/${t.slug}`,
             }))
           );
+        } else if (ENABLE_MOCK_FALLBACK) {
+          const { trendingTitles } = await import("@/data/top-trending.mock");
+          if (isMounted) setItems(trendingTitles);
         } else {
-          setItems(fallbackTrendingTitles);
+          setItems([]);
         }
       })
-      .catch((err) => {
-        console.warn("Failed to load trending titles from DB, using fallback:", err);
-        if (isMounted) setItems(fallbackTrendingTitles);
+      .catch(async (err) => {
+        console.warn("Failed to load trending titles from DB:", err);
+        if (ENABLE_MOCK_FALLBACK) {
+          const { trendingTitles } = await import("@/data/top-trending.mock");
+          if (isMounted) setItems(trendingTitles);
+        } else if (isMounted) {
+          setItems([]);
+        }
       })
       .finally(() => {
         if (isMounted) setIsLoading(false);
@@ -55,6 +64,10 @@ export default function TopTrending() {
       isMounted = false;
     };
   }, []);
+
+  if (!isLoading && items.length === 0) {
+    return null;
+  }
 
   const scrollByCards = (direction: 1 | -1) => {
     const el = scrollerRef.current;

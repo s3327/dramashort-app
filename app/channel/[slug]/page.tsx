@@ -7,7 +7,8 @@ import Footer from "@/components/Footer";
 import Breadcrumbs from "@/components/Breadcrumbs";
 import TitleCard, { TitleCardSkeleton } from "@/components/TitleCard";
 import Pagination from "@/components/Pagination";
-import { channels as fallbackChannels, type Channel } from "@/data/channels.mock";
+import type { Channel } from "@/types/content";
+import { ENABLE_MOCK_FALLBACK } from "@/lib/config";
 import { useTheme } from "@/contexts/ThemeContext";
 import {
   getChannelBySlug,
@@ -41,16 +42,26 @@ function ChannelContent({ slug }: { slug: string }) {
   useEffect(() => {
     let isMounted = true;
     getChannelBySlug(slug)
-      .then((ch) => {
+      .then(async (ch) => {
         if (!isMounted) return;
-        const resolvedChannel = ch || fallbackChannels.find((c) => c.slug === slug) || null;
-        setChannel(resolvedChannel);
-      })
-      .catch((err) => {
-        console.warn("Failed to load channel from DB, using fallback:", err);
-        if (isMounted) {
-          const ch = fallbackChannels.find((c) => c.slug === slug) || null;
+        if (ch) {
           setChannel(ch);
+        } else if (ENABLE_MOCK_FALLBACK) {
+          const { channels } = await import("@/data/channels.mock");
+          const found = channels.find((c) => c.slug === slug) || null;
+          setChannel(found);
+        } else {
+          setChannel(null);
+        }
+      })
+      .catch(async (err) => {
+        console.warn("Failed to load channel from DB:", err);
+        if (ENABLE_MOCK_FALLBACK) {
+          const { channels } = await import("@/data/channels.mock");
+          const found = channels.find((c) => c.slug === slug) || null;
+          if (isMounted) setChannel(found);
+        } else if (isMounted) {
+          setChannel(null);
         }
       });
 

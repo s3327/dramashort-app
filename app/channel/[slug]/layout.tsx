@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { getChannelBySlug } from "@/lib/services/content.service";
-import { channels as fallbackChannels } from "@/data/channels.mock";
+import { ENABLE_MOCK_FALLBACK } from "@/lib/config";
 
 export async function generateMetadata({
   params,
@@ -8,8 +8,21 @@ export async function generateMetadata({
   params: Promise<{ slug: string }>;
 }): Promise<Metadata> {
   const { slug } = await params;
-  const channel = (await getChannelBySlug(slug)) || fallbackChannels.find((c) => c.slug === slug);
-  const name = channel ? channel.name : "Channel";
+  let channel = await getChannelBySlug(slug);
+
+  if (!channel && ENABLE_MOCK_FALLBACK) {
+    const { channels } = await import("@/data/channels.mock");
+    channel = channels.find((c) => c.slug === slug) || null;
+  }
+
+  if (!channel) {
+    return {
+      title: "Channel Not Found — DramaShort",
+      robots: { index: false, follow: false },
+    };
+  }
+
+  const name = channel.name;
   const title = `${name} — Watch Channel Dramas on DramaShort`;
   const description = `Explore all exclusive short-form drama series from ${name} on DramaShort.`;
 

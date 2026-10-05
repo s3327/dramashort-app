@@ -4,7 +4,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { Play } from "lucide-react";
-import { heroSlides as fallbackHeroSlides, type HeroSlide } from "@/data/hero-slides.mock";
+import type { HeroSlide } from "@/types/content";
+import { ENABLE_MOCK_FALLBACK } from "@/lib/config";
 import { getHeroSlides } from "@/lib/services/content.service";
 import { CarouselSkeleton } from "@/components/skeletons";
 
@@ -20,17 +21,25 @@ export default function Hero() {
   useEffect(() => {
     let isMounted = true;
     getHeroSlides()
-      .then((dbSlides) => {
+      .then(async (dbSlides) => {
         if (!isMounted) return;
         if (dbSlides && dbSlides.length > 0) {
           setSlides(dbSlides);
+        } else if (ENABLE_MOCK_FALLBACK) {
+          const { heroSlides } = await import("@/data/hero-slides.mock");
+          if (isMounted) setSlides(heroSlides);
         } else {
-          setSlides(fallbackHeroSlides);
+          setSlides([]);
         }
       })
-      .catch((err) => {
-        console.warn("Failed to load hero slides from DB, using fallback:", err);
-        if (isMounted) setSlides(fallbackHeroSlides);
+      .catch(async (err) => {
+        console.warn("Failed to load hero slides from DB:", err);
+        if (ENABLE_MOCK_FALLBACK) {
+          const { heroSlides } = await import("@/data/hero-slides.mock");
+          if (isMounted) setSlides(heroSlides);
+        } else if (isMounted) {
+          setSlides([]);
+        }
       })
       .finally(() => {
         if (isMounted) setIsLoading(false);

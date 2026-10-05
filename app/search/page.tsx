@@ -8,7 +8,8 @@ import Footer from "@/components/Footer";
 import TitleCard from "@/components/TitleCard";
 import Pagination from "@/components/Pagination";
 import { DramaGridSkeleton } from "@/components/skeletons";
-import { channels as initialChannels, type Channel } from "@/data/channels.mock";
+import type { Channel } from "@/types/content";
+import { ENABLE_MOCK_FALLBACK } from "@/lib/config";
 import { useTheme } from "@/contexts/ThemeContext";
 import { useDebounce } from "@/hooks/useDebounce";
 import {
@@ -44,7 +45,7 @@ function SearchContent() {
   const [page, setPage] = useState(1);
 
   // Available filter options loaded from DB catalog
-  const [availableChannels, setAvailableChannels] = useState<Channel[]>(initialChannels);
+  const [availableChannels, setAvailableChannels] = useState<Channel[]>([]);
   const [availableGenres, setAvailableGenres] = useState<string[]>([
     "Romance",
     "Marriage",
@@ -83,7 +84,13 @@ function SearchContent() {
   useEffect(() => {
     let mounted = true;
     Promise.all([
-      getChannels().catch(() => initialChannels),
+      getChannels().catch(async () => {
+        if (ENABLE_MOCK_FALLBACK) {
+          const { channels } = await import("@/data/channels.mock");
+          return channels;
+        }
+        return [];
+      }),
       getDistinctGenres().catch(() => []),
       getPopularTags().catch(() => []),
     ]).then(([chans, gens, tgs]) => {

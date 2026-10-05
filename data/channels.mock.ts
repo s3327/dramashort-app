@@ -1,8 +1,6 @@
-export type Channel = {
-  id?: string;
-  slug: string;
-  name: string;
-};
+import type { Channel } from "@/types/content";
+
+export type { Channel };
 
 // Mock data — stands in for a "GET /channels" response. Which titles
 // belong to each channel now lives in data/titles.mock.ts (Title.channel,

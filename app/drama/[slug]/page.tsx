@@ -14,9 +14,8 @@ import Breadcrumbs from "@/components/Breadcrumbs";
 import TitleCard from "@/components/TitleCard";
 import { DramaDetailSkeleton, DramaCardSkeleton } from "@/components/skeletons";
 import Toast from "@/components/Toast";
-import type { Title } from "@/data/titles.mock";
-import { channels as fallbackChannels } from "@/data/channels.mock";
-import { getRelatedTitles } from "@/lib/getRelatedTitles";
+import type { Title } from "@/types/content";
+import { ENABLE_MOCK_FALLBACK } from "@/lib/config";
 import { useTheme } from "@/contexts/ThemeContext";
 import { useFavorites } from "@/contexts/FavoritesContext";
 import { useAuth } from "@/contexts/AuthContext";
@@ -59,8 +58,11 @@ export default function DramaPage({
         if (!isMounted) return;
         if (dbRelated && dbRelated.length > 0) {
           setRelated(dbRelated);
+        } else if (ENABLE_MOCK_FALLBACK) {
+          const { getRelatedTitles } = await import("@/lib/getRelatedTitles");
+          if (isMounted) setRelated(getRelatedTitles(dbDrama));
         } else {
-          setRelated(getRelatedTitles(dbDrama));
+          setRelated([]);
         }
       })
       .catch((err) => {
@@ -123,7 +125,9 @@ export default function DramaPage({
   }
 
   const isLongSynopsis = (drama.synopsis || "").length > SYNOPSIS_TRUNCATE_LENGTH;
-  const channelSlug = fallbackChannels.find((c) => c.name === drama.channel)?.slug;
+  const channelSlug = drama.channel
+    ? drama.channel.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "")
+    : "";
   const relatedTitles = related;
 
   return (

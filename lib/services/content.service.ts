@@ -1,29 +1,27 @@
 import { contentClient, getContentAdminClient } from "@/lib/supabase/content";
 import type { Database } from "@/types/supabase-content";
-import { titles as mockTitles, type Title, type TitleStatus } from "@/data/titles.mock";
-export type { TitleStatus };
-import type { Channel } from "@/data/channels.mock";
-import type { HeroSlide } from "@/data/hero-slides.mock";
+import type {
+  Title,
+  TitleStatus,
+  Drama,
+  Channel,
+  Episode,
+  HeroSlide,
+  PlaybackSource,
+} from "@/types/content";
+import { ENABLE_MOCK_FALLBACK } from "@/lib/config";
+import { type Result, ok, err } from "@/types/result";
 import { getApiErrorMessage, readJsonSafely } from "@/lib/api/error-message";
+
+export type { Title, TitleStatus, Drama, Channel, Episode, HeroSlide, PlaybackSource };
+export type { Result };
 
 export type TitleRow = Database["public"]["Tables"]["titles"]["Row"];
 export type DramaRow = TitleRow;
 export type ChannelRow = Database["public"]["Tables"]["channels"]["Row"];
 export type EpisodeRow = Database["public"]["Tables"]["episodes"]["Row"];
 
-/** Canonical domain entity alias: media items stored in database are Dramas */
-export type Drama = Title;
 
-export type Episode = {
-  id: string;
-  titleId: string;
-  episodeNumber: number;
-  title: string;
-  videoUrl: string;
-  thumbnailUrl: string;
-  durationSeconds: number;
-  isFree: boolean;
-};
 
 /**
  * Adapter converting Supabase `titles` table row to frontend `Title` shape.
@@ -94,6 +92,7 @@ export interface PaginatedTitlesResult {
   page: number;
   pageSize: number;
   totalPages: number;
+  error?: string | null;
 }
 
 export type PaginatedDramasResult = PaginatedTitlesResult;
@@ -185,7 +184,17 @@ export async function searchPublishedTitles(
     const { data, count, error } = await query;
     if (error || !data) {
       console.warn("Failed to query titles from Supabase:", error?.message);
-      return filterMockTitles(options, page, pageSize);
+      if (ENABLE_MOCK_FALLBACK) {
+        return await filterMockTitles(options, page, pageSize);
+      }
+      return {
+        items: [],
+        total: 0,
+        page,
+        pageSize,
+        totalPages: 1,
+        error: error?.message || "Failed to query titles from database",
+      };
     }
 
     const items = data.map(mapTitleRowToTitle);
@@ -201,7 +210,17 @@ export async function searchPublishedTitles(
     };
   } catch (err) {
     console.error("Error in searchPublishedTitles:", err);
-    return filterMockTitles(options, page, pageSize);
+    if (ENABLE_MOCK_FALLBACK) {
+      return await filterMockTitles(options, page, pageSize);
+    }
+    return {
+      items: [],
+      total: 0,
+      page,
+      pageSize,
+      totalPages: 1,
+      error: err instanceof Error ? err.message : "Error querying titles",
+    };
   }
 }
 
@@ -209,13 +228,28 @@ export async function searchPublishedTitles(
 export const searchDramas = searchPublishedTitles;
 
 /**
- * In-memory fallback filtering for mock data during offline development.
+ * Returns search results wrapped in the shared Result<T> type.
  */
-function filterMockTitles(
+export async function searchPublishedTitlesResult(
+  options?: TitleQueryOptions
+): Promise<Result<PaginatedTitlesResult>> {
+  const res = await searchPublishedTitles(options);
+  if (res.error) {
+    return err(res.error);
+  }
+  return ok(res);
+}
+
+/**
+ * In-memory fallback filtering for mock data during offline development.
+ * Dynamically imports test data only when ENABLE_MOCK_FALLBACK is enabled.
+ */
+async function filterMockTitles(
   options?: TitleQueryOptions,
   page = 1,
   pageSize = 24
-): PaginatedTitlesResult {
+): Promise<PaginatedTitlesResult> {
+  const { titles: mockTitles } = await import("@/data/titles.mock");
   const q = (options?.query || options?.search || "").trim().toLowerCase();
   const channelName = options?.channelName;
   const channelId = options?.channelId;
@@ -314,17 +348,20 @@ export async function getDistinctGenres(): Promise<string[]> {
   } catch (err) {
     console.warn("Failed to fetch distinct genres:", err);
   }
-  return [
-    "Coming of Age",
-    "Dark Romance",
-    "Fantasy",
-    "Marriage",
-    "Military",
-    "Period",
-    "Rebirth",
-    "Rivals",
-    "Romance",
-  ];
+  if (ENABLE_MOCK_FALLBACK) {
+    return [
+      "Coming of Age",
+      "Dark Romance",
+      "Fantasy",
+      "Marriage",
+      "Military",
+      "Period",
+      "Rebirth",
+      "Rivals",
+      "Romance",
+    ];
+  }
+  return [];
 }
 
 /**
@@ -343,18 +380,21 @@ export async function getPopularTags(): Promise<string[]> {
   } catch (err) {
     console.warn("Failed to fetch popular tags:", err);
   }
-  return [
-    "CEO",
-    "Revenge",
-    "Marriage",
-    "Second Chance",
-    "Secret Identity",
-    "Fake Marriage",
-    "Romance",
-    "Billionaire",
-    "Villain",
-    "Fantasy",
-  ];
+  if (ENABLE_MOCK_FALLBACK) {
+    return [
+      "CEO",
+      "Revenge",
+      "Marriage",
+      "Second Chance",
+      "Secret Identity",
+      "Fake Marriage",
+      "Romance",
+      "Billionaire",
+      "Villain",
+      "Fantasy",
+    ];
+  }
+  return [];
 }
 
 /**
@@ -451,13 +491,7 @@ export async function getEpisodesByTitleId(titleId: string): Promise<Episode[]> 
   }
 }
 
-export interface PlaybackSource {
-  url: string;
-  expiresAt: string;
-  provider: string;
-  aspectRatio: string;
-  durationSeconds: number;
-}
+
 
 /**
  * Fetches secure server-gated playback session for an episode (Task 10.6).
@@ -550,6 +584,9 @@ export async function getChannelBySlug(slug: string): Promise<Channel | null> {
  */
 export async function getHeroSlides(): Promise<HeroSlide[]> {
   const titles = await getTopTrendingTitles(4);
+  if (!titles || titles.length === 0) {
+    return [];
+  }
   const defaultBadges = ["🔥 #1 Trending", "✨ New Episode Daily", "💎 Editor's Pick", "🎬 Fan Favorite"];
 
   return titles.map((t, idx) => ({
@@ -624,7 +661,10 @@ export async function getDramaById(id: string): Promise<Drama | null> {
 
   // 2. Server-side or Node test context
   try {
-    if (process.env.SUPABASE_CONTENT_SERVICE_ROLE_KEY) {
+    if (
+      process.env.CONTENT_SUPABASE_SERVICE_ROLE_KEY ||
+      process.env.SUPABASE_CONTENT_SERVICE_ROLE_KEY
+    ) {
       const adminClient = getContentAdminClient();
       const { data, error } = await adminClient
         .from("titles")
@@ -736,7 +776,10 @@ export async function getAdminDramas(
 
   // 2. Server-side or Node test context
   try {
-    if (process.env.SUPABASE_CONTENT_SERVICE_ROLE_KEY) {
+    if (
+      process.env.CONTENT_SUPABASE_SERVICE_ROLE_KEY ||
+      process.env.SUPABASE_CONTENT_SERVICE_ROLE_KEY
+    ) {
       const adminClient = getContentAdminClient();
       let query = adminClient
         .from("titles")

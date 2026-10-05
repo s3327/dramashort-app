@@ -1,5 +1,10 @@
 import { imageRemotePatterns } from "./lib/config/image-hosts.mjs";
 import { getSecurityHeaders } from "./lib/config/security-headers.mjs";
+import { validateEnvironment } from "./lib/config/env-validator.mjs";
+
+if (process.env.NODE_ENV === "production") {
+  validateEnvironment(process.env, { throws: true });
+}
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {

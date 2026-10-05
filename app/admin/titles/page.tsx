@@ -10,7 +10,8 @@ import Pagination from "@/components/Pagination";
 import Modal from "@/components/Modal";
 import Toast from "@/components/Toast";
 import { useToast } from "@/hooks/useToast";
-import { channels as fallbackChannels, type Channel } from "@/data/channels.mock";
+import type { Channel } from "@/types/content";
+import { ENABLE_MOCK_FALLBACK } from "@/lib/config";
 import {
   getAdminDramas,
   getChannels,
@@ -45,7 +46,7 @@ function AdminTitlesContent() {
   const [totalPages, setTotalPages] = useState(1);
   const [isLoading, setIsLoading] = useState(true);
 
-  const [channelList, setChannelList] = useState<Channel[]>(fallbackChannels);
+  const [channelList, setChannelList] = useState<Channel[]>([]);
   const [searchInput, setSearchInput] = useState(initialQ);
   const [query, setQuery] = useState(initialQ);
   const [selectedChannel, setSelectedChannel] = useState(initialChannel);
@@ -80,9 +81,15 @@ function AdminTitlesContent() {
         const dbChannels = await getChannels();
         if (mounted && dbChannels && dbChannels.length > 0) {
           setChannelList(dbChannels);
+        } else if (mounted && ENABLE_MOCK_FALLBACK) {
+          const { channels } = await import("@/data/channels.mock");
+          setChannelList(channels);
         }
       } catch {
-        // Fallback already assigned
+        if (mounted && ENABLE_MOCK_FALLBACK) {
+          const { channels } = await import("@/data/channels.mock");
+          setChannelList(channels);
+        }
       }
     }
     loadChannels();

@@ -8,7 +8,7 @@ import { Flag, ArrowLeft, Tv, Star, Eye, Film } from "lucide-react";
 import Header from "@/components/Header";
 import Breadcrumbs from "@/components/Breadcrumbs";
 import VideoPlayer from "@/components/VideoPlayer";
-import type { Title } from "@/data/titles.mock";
+import type { Title } from "@/types/content";
 import { useTheme } from "@/contexts/ThemeContext";
 import {
   getTitleBySlug,

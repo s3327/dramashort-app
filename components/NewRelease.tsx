@@ -4,7 +4,8 @@ import { useEffect, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { ChevronRight } from "lucide-react";
-import { newReleaseTitles as fallbackNewReleases, type NewReleaseTitle } from "@/data/new-release.mock";
+import type { NewReleaseTitle } from "@/types/content";
+import { ENABLE_MOCK_FALLBACK } from "@/lib/config";
 import { getNewReleaseTitles } from "@/lib/services/content.service";
 
 import { TitleCardSkeleton } from "@/components/TitleCard";
@@ -16,7 +17,7 @@ export default function NewRelease() {
   useEffect(() => {
     let isMounted = true;
     getNewReleaseTitles(12)
-      .then((titles) => {
+      .then(async (titles) => {
         if (!isMounted) return;
         if (titles && titles.length > 0) {
           setItems(
@@ -27,13 +28,21 @@ export default function NewRelease() {
               href: `/drama/${t.slug}`,
             }))
           );
+        } else if (ENABLE_MOCK_FALLBACK) {
+          const { newReleaseTitles } = await import("@/data/new-release.mock");
+          if (isMounted) setItems(newReleaseTitles.slice(0, 12));
         } else {
-          setItems(fallbackNewReleases.slice(0, 12));
+          setItems([]);
         }
       })
-      .catch((err) => {
-        console.warn("Failed to load new release titles from DB, using fallback:", err);
-        if (isMounted) setItems(fallbackNewReleases.slice(0, 12));
+      .catch(async (err) => {
+        console.warn("Failed to load new release titles from DB:", err);
+        if (ENABLE_MOCK_FALLBACK) {
+          const { newReleaseTitles } = await import("@/data/new-release.mock");
+          if (isMounted) setItems(newReleaseTitles.slice(0, 12));
+        } else if (isMounted) {
+          setItems([]);
+        }
       })
       .finally(() => {
         if (isMounted) setIsLoading(false);
@@ -43,6 +52,10 @@ export default function NewRelease() {
       isMounted = false;
     };
   }, []);
+
+  if (!isLoading && items.length === 0) {
+    return null;
+  }
 
   return (
     <section className="max-w-[1200px] mx-auto px-6 py-8 sm:py-10">

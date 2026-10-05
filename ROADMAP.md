@@ -1537,15 +1537,42 @@ These items stay ✅ for history; the gaps are tracked as new tasks.
 ---
 
 ### Task 12.4: Remove Mock Data From the Production Runtime
-* **Status**: ⏳ Planned
+* **Status**: ✅ Completed (2026-10-06)
 * **Problem**: Content services catch every error and return fixtures from `data/titles.mock.ts` (`searchPublishedTitles` L160 and L176, `getDramaById` L533, `getAdminDramas` L561), and pages add their own fallbacks (`/genres`, `/trending`, `/new-release`, `/channel`, `Hero`). A Supabase outage or wrong environment variable in production looks like a working site full of fake content, with no error anywhere. Supabase clients also fall back to `https://placeholder.supabase.co` when env vars are missing, and the fixtures ship in client bundles.
-* **Target Files**: `lib/config.ts` (new), `lib/env.ts` (new), `lib/services/*`, `lib/supabase/*`, affected pages, `data/` → `__tests__/fixtures/`
-* **Planned Specifications**:
-  1. `ENABLE_MOCK_FALLBACK = process.env.NEXT_PUBLIC_ENABLE_MOCK_FALLBACK === "true"` (default `false`; set `true` only in `.env.local` for offline development).
-  2. Services return a typed `Result<T>` (`{ data } | { error }`) instead of silently substituting fixtures. Pages render the existing error boundaries and empty states.
-  3. `lib/env.ts` validates required env vars at startup; missing or placeholder values fail the production build and start.
-  4. Move fixtures to `__tests__/fixtures/` (or `data/dev/` loaded by dynamic import behind the flag) so they never enter production bundles.
-* **Verification**: a production build with a wrong Supabase URL fails fast; the bundle analyzer shows no `titles.mock` chunk.
+* **Target Files**: `lib/config.ts` (new), `lib/env.ts` (new), `lib/config/env-validator.mjs` (new), `types/content.ts` (new), `types/result.ts` (new), `__tests__/fixtures/titles.fixture.ts` (new), `__tests__/runtime/no-mock-fallback.test.ts` (new), `lib/services/content.service.ts`, `lib/supabase/*`, `next.config.mjs`, affected client components & pages
+* **Delivered Capabilities**:
+  1. Decoupled Canonical Domain Models (`types/content.ts`):
+     - Created clean domain types (`Title`, `TitleStatus`, `Drama`, `Channel`, `Episode`, `HeroSlide`, `TrendingTitle`, `NewReleaseTitle`, `PlaybackSource`).
+     - Re-exported domain models in `data/titles.mock.ts` and `data/channels.mock.ts` ensuring 100% backward compatibility with test runners and scripts.
+  2. Shared `Result<T>` Error Handling Contract (`types/result.ts`):
+     - Created typed `Result<T, E>` (`{ success: true, data: T; error?: null } | { success: false, data: null; error: E }`) with `ok()`, `err()`, `isOk()`, and `isErr()` helpers.
+     - Added `searchPublishedTitlesResult()` to content service returning `Result<PaginatedTitlesResult>`.
+  3. Feature Flag Configuration (`lib/config.ts`):
+     - Created `ENABLE_MOCK_FALLBACK` flag (`process.env.NEXT_PUBLIC_ENABLE_MOCK_FALLBACK === "true"`, defaulting to `false`).
+     - Ensured mock data fallbacks are completely inactive in production.
+  4. Fail-Fast Environment Validation (`lib/config/env-validator.mjs`, `lib/env.ts`, `next.config.mjs`):
+     - Validates required Supabase URLs and public anon keys against missing, malformed, or placeholder values (`placeholder.supabase.co`, `your-content-project`, etc.).
+     - Integrated into `next.config.mjs` to halt production builds (`npm run build`) in <3 seconds if credentials are invalid or placeholders.
+     - Hardened Supabase clients (`lib/supabase/content.ts`, `user-client.ts`, `user-server.ts`, `middleware.ts`) to validate credentials and prevent placeholder fallback in production.
+  5. Zero-Mock Content Services (`lib/services/content.service.ts`):
+     - Removed static import of `data/titles.mock.ts`.
+     - `searchPublishedTitles`: on database error, returns empty result `{ items: [], total: 0, error: ... }` instead of substituting mock fixtures.
+     - `getDistinctGenres` & `getPopularTags`: return empty arrays on query errors without mock tropes.
+     - `getHeroSlides`: returns empty array when trending titles are empty.
+     - Dynamic `import("@/data/titles.mock")` is loaded strictly when `ENABLE_MOCK_FALLBACK` is enabled.
+  6. Eliminated Static Mock Imports Across Public Client Bundles:
+     - `components/SearchDropdown.tsx`: searches asynchronously via `searchPublishedTitles`, eliminating static `titles.mock` bundling across all pages with Header.
+     - `components/Hero.tsx`, `components/TopTrending.tsx`, `components/NewRelease.tsx`: removed static mock imports, guarding fallbacks behind `ENABLE_MOCK_FALLBACK`.
+     - `app/drama/[slug]/page.tsx`: removed static `getRelatedTitles` & `fallbackChannels`; derives channel slug dynamically and uses live related titles from DB.
+     - `app/channel/[slug]/page.tsx` & `layout.tsx`: removed static `fallbackChannels` import; renders not-found metadata for non-existent channels.
+     - `app/account/favorite/page.tsx` & `app/account/page.tsx`: removed static `fallbackAccountUser` import; binds directly to authenticated user profile.
+     - `app/search/page.tsx`, `app/admin/titles/page.tsx`, `app/admin/titles/[id]/edit/page.tsx`: removed static `channels.mock` imports.
+* **Verification Results**:
+  - `__tests__/runtime/no-mock-fallback.test.ts` (17 tests passing).
+  - Production build fail-fast verification: `NEXT_PUBLIC_CONTENT_SUPABASE_URL="https://placeholder.supabase.co" npm run build` fails fast in 3 seconds.
+  - `npx tsc --noEmit`: 0 type errors.
+  - Full test runner `npm test`: 341 / 341 tests passing across 99 suites (0 failures).
+  - `npm run build`: cleanly compiles all 42 routes with noticeable first load JS reductions across public pages.
 
 ---
 

@@ -9,8 +9,8 @@ import AdminSidebar from "@/components/admin/AdminSidebar";
 import Breadcrumbs from "@/components/Breadcrumbs";
 import Toast from "@/components/Toast";
 import { useToast } from "@/hooks/useToast";
-import { channels as initialChannels, type Channel } from "@/data/channels.mock";
-import { type TitleStatus } from "@/data/titles.mock";
+import type { Channel, TitleStatus } from "@/types/content";
+import { ENABLE_MOCK_FALLBACK } from "@/lib/config";
 import {
   getDramaById,
   updateDrama,
@@ -36,14 +36,14 @@ export default function AdminTitleEditPage({
   const { message: toastMessage, show: showToast } = useToast();
 
   const [drama, setDrama] = useState<Drama | null>(null);
-  const [channelsList, setChannelsList] = useState<Channel[]>(initialChannels);
+  const [channelsList, setChannelsList] = useState<Channel[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const [form, setForm] = useState({
     title: "",
-    channel: initialChannels[0]?.name || "DramaShort Originals",
+    channel: "DramaShort Originals",
     genre: "Romance",
     tags: "",
     status: "Draft" as TitleStatus,
@@ -63,7 +63,13 @@ export default function AdminTitleEditPage({
       try {
         const [dramaData, fetchedChannels] = await Promise.all([
           getDramaById(id),
-          getChannels().catch(() => initialChannels),
+          getChannels().catch(async () => {
+            if (ENABLE_MOCK_FALLBACK) {
+              const { channels } = await import("@/data/channels.mock");
+              return channels;
+            }
+            return [];
+          }),
         ]);
 
         if (!mounted) return;
@@ -76,7 +82,7 @@ export default function AdminTitleEditPage({
           setDrama(dramaData);
           setForm({
             title: dramaData.title || "",
-            channel: dramaData.channel || (fetchedChannels[0]?.name || initialChannels[0]?.name),
+            channel: dramaData.channel || fetchedChannels[0]?.name || "DramaShort Originals",
             genre: dramaData.genre || "Romance",
             tags: Array.isArray(dramaData.tags) ? dramaData.tags.join(", ") : "",
             status: (dramaData.status as TitleStatus) || "Draft",

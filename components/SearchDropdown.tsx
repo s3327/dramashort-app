@@ -5,7 +5,8 @@ import { useRouter } from "next/navigation";
 import Image from "next/image";
 import Link from "next/link";
 import { Search, ArrowRight } from "lucide-react";
-import { titles as allTitles } from "@/data/titles.mock";
+import type { Title } from "@/types/content";
+import { searchPublishedTitles } from "@/lib/services/content.service";
 
 const MAX_SUGGESTIONS = 6;
 
@@ -13,19 +14,38 @@ export default function SearchDropdown() {
   const router = useRouter();
   const [isOpen, setIsOpen] = useState(false);
   const [query, setQuery] = useState("");
+  const [matches, setMatches] = useState<Title[]>([]);
   const containerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const trimmedQuery = query.trim().toLowerCase();
-  const matches =
-    trimmedQuery === ""
-      ? []
-      : allTitles
-          .filter(
-            (item) =>
-              item.status === "Published" && item.title.toLowerCase().includes(trimmedQuery)
-          )
-          .slice(0, MAX_SUGGESTIONS);
+  const trimmedQuery = query.trim();
+
+  useEffect(() => {
+    if (!trimmedQuery) {
+      setMatches([]);
+      return;
+    }
+
+    let isMounted = true;
+    const timer = setTimeout(() => {
+      searchPublishedTitles({ query: trimmedQuery, pageSize: MAX_SUGGESTIONS })
+        .then((res) => {
+          if (isMounted) {
+            setMatches(res.items || []);
+          }
+        })
+        .catch(() => {
+          if (isMounted) {
+            setMatches([]);
+          }
+        });
+    }, 200);
+
+    return () => {
+      isMounted = false;
+      clearTimeout(timer);
+    };
+  }, [trimmedQuery]);
 
   const openDropdown = () => {
     setIsOpen(true);

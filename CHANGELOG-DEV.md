@@ -1228,4 +1228,84 @@
   - `npm test`: 324 / 324 tests pass across 94 suites (0 failures).
   - `npx tsc --noEmit`: 0 type errors.
   - `npm run build`: cleanly compiles 42 routes with 0 errors.
+---
+
+## [2026-10-06] Task 12.4: Remove Mock Data From the Production Runtime
+* **Milestone**: Phase 12 (Functional Bug Fixes & Data Integrity) — Task 12.4
+* **Goal**: Prevent mock fixtures from silently substituting for live database rows, validate environment variables to fail fast on invalid or placeholder Supabase credentials, decouple canonical domain models from mock data files, implement a shared `Result<T>` error handling pattern, and eliminate static mock data imports across public client-side bundles.
+* **Implementation Steps Taken**:
+  1. Decoupled Domain Types (`types/content.ts`):
+     - Authored `types/content.ts` housing core domain entities: `Title`, `TitleStatus`, `Drama`, `Channel`, `Episode`, `HeroSlide`, `TrendingTitle`, `NewReleaseTitle`, `PlaybackSource`.
+     - Re-exported domain models in `data/titles.mock.ts` and `data/channels.mock.ts` to preserve backwards compatibility for test runners and scripts.
+  2. Generic Result Error Pattern (`types/result.ts`):
+     - Created `types/result.ts` defining `Result<T, E>` (`{ success: true; data: T; error?: null } | { success: false; data: null; error: E }`) with type guards `ok()`, `err()`, `isOk()`, and `isErr()`.
+     - Added `searchPublishedTitlesResult()` to `lib/services/content.service.ts` for callers desiring typed outcome handling.
+  3. Feature Flag Configuration (`lib/config.ts`):
+     - Created `ENABLE_MOCK_FALLBACK` (`process.env.NEXT_PUBLIC_ENABLE_MOCK_FALLBACK === "true"`, default `false`).
+     - In production, mock substitutions are strictly disabled.
+  4. Fail-Fast Environment Validation (`lib/config/env-validator.mjs`, `lib/env.ts`, `next.config.mjs`):
+     - Implemented `validateEnvironment()` verifying `NEXT_PUBLIC_CONTENT_SUPABASE_URL`, `NEXT_PUBLIC_CONTENT_SUPABASE_ANON_KEY`, `NEXT_PUBLIC_USER_SUPABASE_URL`, and `NEXT_PUBLIC_USER_SUPABASE_ANON_KEY`.
+     - Enforces URL syntax and rejects placeholder domains (`placeholder.supabase.co`, `your-content-project`, etc.) and placeholder API keys.
+     - Wired into `next.config.mjs` to halt production builds (`npm run build`) in <3 seconds if credentials are placeholders or invalid.
+     - Hardened Supabase clients (`lib/supabase/content.ts`, `user-client.ts`, `user-server.ts`, `middleware.ts`) to validate credentials and prevent silent fallbacks to `placeholder.supabase.co` in production.
+  5. Hardened Content Services (`lib/services/content.service.ts`):
+     - Removed static import of `data/titles.mock.ts`.
+     - `searchPublishedTitles()`: on query error or missing data, returns `{ items: [], total: 0, page, pageSize, totalPages: 1, error }` instead of silently serving mock titles.
+     - `getDistinctGenres()` & `getPopularTags()`: return empty arrays on query errors when `ENABLE_MOCK_FALLBACK` is false.
+     - `getHeroSlides()`: returns empty array when trending titles are empty.
+     - Dynamic `await import("@/data/titles.mock")` is loaded strictly inside dev fallback branches when `ENABLE_MOCK_FALLBACK` is true.
+  6. Client Bundle Mock Elimination:
+     - `components/SearchDropdown.tsx`: replaced static import of `allTitles` with debounced asynchronous queries to `searchPublishedTitles()`.
+     - `components/Hero.tsx`: removed static import of `fallbackHeroSlides`; guarded dev fallback behind `ENABLE_MOCK_FALLBACK`.
+     - `components/TopTrending.tsx`: removed static import of `fallbackTrendingTitles`; guarded dev fallback behind `ENABLE_MOCK_FALLBACK`.
+     - `components/NewRelease.tsx`: removed static import of `fallbackNewReleases`; guarded dev fallback behind `ENABLE_MOCK_FALLBACK`.
+     - `app/drama/[slug]/page.tsx`: removed static imports of `titles.mock`, `channels.mock`, and `getRelatedTitles`; derives channel slug dynamically and uses live related titles from DB.
+     - `app/channel/[slug]/page.tsx` & `layout.tsx`: removed static `fallbackChannels` import; renders not-found metadata for non-existent channels.
+     - `app/account/favorite/page.tsx` & `app/account/page.tsx`: removed static `fallbackAccountUser` import; binds directly to authenticated user profile.
+     - `app/search/page.tsx`, `app/admin/titles/page.tsx`, `app/admin/titles/[id]/edit/page.tsx`: removed static `channels.mock` imports.
+  7. Automated Verification Test Suite (`__tests__/runtime/no-mock-fallback.test.ts`):
+     - 17 unit and integration tests verifying placeholder URL/key detection, URL syntax validation, fail-fast production error throwing, genuine credential acceptance, Result<T> contracts, zero-mock service behavior on database failure, and file invariants confirming absence of static mock imports across public client components.
+* **Key File Diffs**:
+  - Created:
+    - `types/content.ts`
+    - `types/result.ts`
+    - `lib/config.ts`
+    - `lib/config/env-validator.mjs`
+    - `lib/env.ts`
+    - `__tests__/fixtures/titles.fixture.ts`
+    - `__tests__/runtime/no-mock-fallback.test.ts`
+  - Modified:
+    - `next.config.mjs`
+    - `lib/supabase/content.ts`
+    - `lib/supabase/user-client.ts`
+    - `lib/supabase/user-server.ts`
+    - `lib/supabase/middleware.ts`
+    - `data/titles.mock.ts`
+    - `data/channels.mock.ts`
+    - `lib/getRelatedTitles.ts`
+    - `lib/services/content.service.ts`
+    - `components/SearchDropdown.tsx`
+    - `components/Hero.tsx`
+    - `components/TopTrending.tsx`
+    - `components/NewRelease.tsx`
+    - `app/drama/[slug]/page.tsx`
+    - `app/channel/[slug]/page.tsx`
+    - `app/channel/[slug]/layout.tsx`
+    - `app/account/favorite/page.tsx`
+    - `app/account/page.tsx`
+    - `app/search/page.tsx`
+    - `app/watch/[slug]/page.tsx`
+    - `app/admin/titles/page.tsx`
+    - `app/admin/titles/[id]/edit/page.tsx`
+    - `ROADMAP.md`
+    - `CHANGELOG-DEV.md`
+* **Regression Analysis & Cross-System Impact**:
+  - Test runner expanded from 324 tests (94 suites) to 341 tests (99 suites) with 100% pass rate.
+  - Production build compiled all 42 routes in ~20 seconds with First Load JS size reductions across public pages (`/drama/[slug]` -5 kB, `/home` -6 kB, `/account/favorite` -6 kB, `/search` -5 kB, `/watch/[slug]` -5 kB).
+  - Production build fail-fast verification verified: builds with placeholder Supabase URLs halt immediately in 3s with actionable diagnostic error.
+* **Verification**:
+  - `npm test`: 341 / 341 tests pass across 99 suites (0 failures).
+  - `npx tsc --noEmit`: 0 type errors.
+  - `npm run build`: cleanly compiles 42 routes with 0 errors.
+
 

@@ -1,4 +1,5 @@
-import { titles, hashSlug, type Title } from "@/data/titles.mock";
+import { titles, hashSlug } from "@/data/titles.mock";
+import type { Title } from "@/types/content";
 
 // Deterministic shuffle (seeded by the current title's slug) rather than
 // Math.random() directly — keeps server and client render in sync (no

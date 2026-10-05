@@ -3,10 +3,29 @@ import { createClient } from "@supabase/supabase-js";
 import { cookies } from "next/headers";
 import type { Database } from "@/types/supabase-user";
 
-const userUrl =
-  process.env.NEXT_PUBLIC_USER_SUPABASE_URL || "https://placeholder.supabase.co";
-const userAnonKey =
-  process.env.NEXT_PUBLIC_USER_SUPABASE_ANON_KEY || "placeholder-anon-key";
+import { isPlaceholderUrl, isPlaceholderKey } from "@/lib/config/env-validator.mjs";
+
+function getUserServerCredentials() {
+  const isProduction = process.env.NODE_ENV === "production";
+  const url = process.env.NEXT_PUBLIC_USER_SUPABASE_URL;
+  const anonKey = process.env.NEXT_PUBLIC_USER_SUPABASE_ANON_KEY;
+
+  if (isProduction) {
+    if (!url || isPlaceholderUrl(url)) {
+      throw new Error(`Invalid or missing NEXT_PUBLIC_USER_SUPABASE_URL in production: "${url}"`);
+    }
+    if (!anonKey || isPlaceholderKey(anonKey)) {
+      throw new Error("Invalid or placeholder NEXT_PUBLIC_USER_SUPABASE_ANON_KEY in production.");
+    }
+  }
+
+  return {
+    url: url || "http://127.0.0.1:54322",
+    anonKey: anonKey || "dev-anon-key",
+  };
+}
+
+const { url: userUrl, anonKey: userAnonKey } = getUserServerCredentials();
 
 type UserServerClientFactory = () => Promise<any> | any;
 let testClientFactory: UserServerClientFactory | null = null;
@@ -66,6 +85,9 @@ export function createUserServiceRoleClient() {
   const serviceRoleKey = process.env.USER_SUPABASE_SERVICE_ROLE_KEY;
   if (!serviceRoleKey) {
     throw new Error("Missing USER_SUPABASE_SERVICE_ROLE_KEY environment variable");
+  }
+  if (process.env.NODE_ENV === "production" && isPlaceholderKey(serviceRoleKey)) {
+    throw new Error("Placeholder USER_SUPABASE_SERVICE_ROLE_KEY detected in production.");
   }
   return createClient<Database>(userUrl, serviceRoleKey, {
     auth: {

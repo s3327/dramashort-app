@@ -8,8 +8,7 @@ import Header from "@/components/Header";
 import AccountSidebar from "@/components/account/AccountSidebar";
 import AddToListModal from "@/components/AddToListModal";
 import CreateListModal from "@/components/CreateListModal";
-import { accountUser as fallbackAccountUser } from "@/data/account-user.mock";
-import type { Title } from "@/data/titles.mock";
+import type { Title } from "@/types/content";
 import { getTitlesBySlugs } from "@/lib/services/content.service";
 import { useTheme } from "@/contexts/ThemeContext";
 import { useFavorites } from "@/contexts/FavoritesContext";
@@ -24,8 +23,12 @@ export default function FavoritePage() {
   const [isCreateListOpen, setIsCreateListOpen] = useState(false);
   const [addToListTargetSlug, setAddToListTargetSlug] = useState<string | null>(null);
 
-  const currentName = profile?.display_name || user?.user_metadata?.full_name || fallbackAccountUser.name;
-  const currentEmail = user?.email || fallbackAccountUser.email;
+  const currentName =
+    profile?.display_name ||
+    user?.user_metadata?.full_name ||
+    user?.email?.split("@")[0] ||
+    "User";
+  const currentEmail = user?.email || "";
   const initials = currentName
     .split(" ")
     .map((w: string) => w[0])

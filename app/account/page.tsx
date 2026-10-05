@@ -7,7 +7,6 @@ import AccountSidebar from "@/components/account/AccountSidebar";
 import Modal from "@/components/Modal";
 import Toast from "@/components/Toast";
 import OtpInput from "@/components/OtpInput";
-import { accountUser as fallbackAccountUser } from "@/data/account-user.mock";
 import { useTheme } from "@/contexts/ThemeContext";
 import { useToast } from "@/hooks/useToast";
 import { useAuth } from "@/contexts/AuthContext";
@@ -25,8 +24,12 @@ export default function AccountPage() {
     verifyEmailChange,
   } = useAuth();
 
-  const currentName = profile?.display_name || user?.user_metadata?.full_name || fallbackAccountUser.name;
-  const currentEmail = user?.email || fallbackAccountUser.email;
+  const currentName =
+    profile?.display_name ||
+    user?.user_metadata?.full_name ||
+    user?.email?.split("@")[0] ||
+    "User";
+  const currentEmail = user?.email || "";
   const initials = currentName
     .split(" ")
     .map((w: string) => w[0])

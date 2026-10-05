@@ -1,10 +1,29 @@
 import { createClient } from "@supabase/supabase-js";
 import type { Database } from "@/types/supabase-content";
 
-const contentUrl =
-  process.env.NEXT_PUBLIC_CONTENT_SUPABASE_URL || "https://placeholder.supabase.co";
-const contentAnonKey =
-  process.env.NEXT_PUBLIC_CONTENT_SUPABASE_ANON_KEY || "placeholder-anon-key";
+import { isPlaceholderUrl, isPlaceholderKey } from "@/lib/config/env-validator.mjs";
+
+function getContentCredentials() {
+  const isProduction = process.env.NODE_ENV === "production";
+  const url = process.env.NEXT_PUBLIC_CONTENT_SUPABASE_URL;
+  const anonKey = process.env.NEXT_PUBLIC_CONTENT_SUPABASE_ANON_KEY;
+
+  if (isProduction) {
+    if (!url || isPlaceholderUrl(url)) {
+      throw new Error(`Invalid or missing NEXT_PUBLIC_CONTENT_SUPABASE_URL in production: "${url}"`);
+    }
+    if (!anonKey || isPlaceholderKey(anonKey)) {
+      throw new Error("Invalid or placeholder NEXT_PUBLIC_CONTENT_SUPABASE_ANON_KEY in production.");
+    }
+  }
+
+  return {
+    url: url || "http://127.0.0.1:54321",
+    anonKey: anonKey || "dev-anon-key",
+  };
+}
+
+const { url: contentUrl, anonKey: contentAnonKey } = getContentCredentials();
 
 const realContentClient = createClient<Database>(contentUrl, contentAnonKey);
 
@@ -59,11 +78,16 @@ export function getContentAdminClient() {
   if (testAdminClientFactory) {
     return testAdminClientFactory();
   }
-  const serviceKey = process.env.CONTENT_SUPABASE_SERVICE_ROLE_KEY;
+  const serviceKey =
+    process.env.CONTENT_SUPABASE_SERVICE_ROLE_KEY ||
+    process.env.SUPABASE_CONTENT_SERVICE_ROLE_KEY;
   if (!serviceKey) {
     throw new Error(
       "CONTENT_SUPABASE_SERVICE_ROLE_KEY is required for privileged content operations."
     );
+  }
+  if (process.env.NODE_ENV === "production" && isPlaceholderKey(serviceKey)) {
+    throw new Error("Placeholder CONTENT_SUPABASE_SERVICE_ROLE_KEY detected in production.");
   }
   return createClient<Database>(contentUrl, serviceKey, {
     auth: {
