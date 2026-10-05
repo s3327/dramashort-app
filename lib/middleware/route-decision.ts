@@ -74,8 +74,8 @@ function serve(route: ResolvedRoute, search: string): RouteDecision {
 export function decideRoute(
   route: ResolvedRoute,
   session: SessionState,
-  search: string,
-  returnUrlParam: string | null
+  search: string = "",
+  returnUrlParam: string | null = null
 ): RouteDecision {
   const path = route.effectivePath;
 

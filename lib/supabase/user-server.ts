@@ -7,11 +7,24 @@ const userUrl =
 const userAnonKey =
   process.env.NEXT_PUBLIC_USER_SUPABASE_ANON_KEY || "placeholder-anon-key";
 
+type UserServerClientFactory = () => Promise<any> | any;
+let testClientFactory: UserServerClientFactory | null = null;
+
+/**
+ * Test hook allowing unit tests to inject a mock Supabase server client.
+ */
+export function setTestUserServerClientFactory(factory: UserServerClientFactory | null) {
+  testClientFactory = factory;
+}
+
 /**
  * Server-side Supabase client for the User Database (Project 2).
  * Reads and sets cookies for session management in Server Components and Route Handlers.
  */
 export async function createUserServerClient() {
+  if (testClientFactory) {
+    return testClientFactory();
+  }
   const cookieStore = await cookies();
 
   return createServerClient<Database>(userUrl, userAnonKey, {

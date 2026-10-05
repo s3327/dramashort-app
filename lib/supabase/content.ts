@@ -12,11 +12,24 @@ const contentAnonKey =
  */
 export const contentClient = createClient<Database>(contentUrl, contentAnonKey);
 
+type ContentAdminClientFactory = () => any;
+let testAdminClientFactory: ContentAdminClientFactory | null = null;
+
+/**
+ * Test hook allowing unit tests to inject a mock Content DB admin client.
+ */
+export function setTestContentAdminClientFactory(factory: ContentAdminClientFactory | null) {
+  testAdminClientFactory = factory;
+}
+
 /**
  * Privileged client for Content Database operations (e.g. Seeding, Admin CMS writes).
  * MUST only be invoked from Server Actions, Route Handlers, or backend scripts.
  */
 export function getContentAdminClient() {
+  if (testAdminClientFactory) {
+    return testAdminClientFactory();
+  }
   const serviceKey = process.env.CONTENT_SUPABASE_SERVICE_ROLE_KEY;
   if (!serviceKey) {
     throw new Error(

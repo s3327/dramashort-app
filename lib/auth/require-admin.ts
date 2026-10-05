@@ -10,6 +10,10 @@ export interface RequireAdminOptions {
    * Defaults to ["admin"].
    */
   roles?: Role[];
+  /**
+   * Optional custom Supabase client (useful for unit testing or custom session contexts)
+   */
+  client?: any;
 }
 
 export type RequireAdminResult =
@@ -31,7 +35,7 @@ export async function requireAdmin(
   const allowedRoles = options.roles || ["admin"];
 
   try {
-    const supabase = await createUserServerClient();
+    const supabase = options.client ?? (await createUserServerClient());
 
     // Critical security check: ALWAYS call auth.getUser() on the server, NEVER auth.getSession()
     const {

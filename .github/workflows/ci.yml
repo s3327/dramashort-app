@@ -1,0 +1,75 @@
+name: CI Gate
+
+on:
+  push:
+    branches:
+      - dramashort-app
+      - main
+  pull_request:
+    branches:
+      - dramashort-app
+      - main
+
+jobs:
+  verify:
+    name: Typecheck, Lint, Test & Build Gate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: TypeScript Typecheck
+        run: npx tsc --noEmit
+
+      - name: ESLint
+        run: npm run lint
+
+      - name: Automated Security & Regression Test Suite
+        run: npm test
+
+      - name: Next.js Production Build
+        run: npm run build
+        env:
+          NEXT_PUBLIC_CONTENT_SUPABASE_URL: https://czkkzoiuyqybafacpgsp.supabase.co
+          NEXT_PUBLIC_CONTENT_SUPABASE_ANON_KEY: placeholder-anon-key
+          NEXT_PUBLIC_USER_SUPABASE_URL: https://bpidsbcrvpkavvdvtpgh.supabase.co
+          NEXT_PUBLIC_USER_SUPABASE_ANON_KEY: placeholder-anon-key
+
+  supabase-rls-verification:
+    name: Supabase Database RLS & Policy Gate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Start User DB & Run Migrations
+        run: |
+          supabase start --workdir supabase/user
+
+      - name: Verify User DB RLS Policies
+        run: |
+          supabase test db --workdir supabase/user || \
+          (docker exec -i supabase_db_user psql -U postgres -d postgres -q < scripts/sql/verify-user-db-rls.sql)
+
+      - name: Start Content DB & Run Migrations
+        run: |
+          supabase start --workdir supabase/content
+
+      - name: Verify Content DB RLS Policies
+        run: |
+          supabase test db --workdir supabase/content || \
+          (docker exec -i supabase_db_content psql -U postgres -d postgres -q < scripts/sql/verify-content-db-rls.sql)

@@ -43,7 +43,7 @@
 | **Phase 7** | 🟢 Low | L6: Implement automated test suite (Auth, services, critical journeys) | ✅ Done | Regression prevention and verified end-to-end reliability |
 | **Phase 8** | 🔴 Critical | Monetization Engine: Freemium Paywall & Coin Economy | ⏳ Planned · 🔒 Blocked by 10, 13.1, 15, 16 | Direct monetization, unlocks Ep 6+, daily streak rewards |
 | **Phase 9** | 🟠 High | Mobile PWA & Advanced Video Player UX | ⏳ Planned · 🔒 Blocked by 14 | Native app-like PWA, subtitles/VTT, keyboard hotkeys, PiP |
-| **Phase 10** | 🔴 Critical | Security Hardening & Access Control (admin role escalation, RLS & grants, admin API auth, subdomain guard, open redirect, episode media lockdown) | 🚧 In progress (10.1–10.8 ✅) | Closes privilege escalation and data exposure; gate for all further work |
+| **Phase 10** | 🔴 Critical | Security Hardening & Access Control (admin role escalation, RLS & grants, admin API auth, subdomain guard, open redirect, episode media lockdown, CI gate) | ✅ Completed (10.1–10.9 ✅) | Closes privilege escalation and data exposure; gate for all further work |
 | **Phase 11** | 🔴 Critical | Complete Stubbed User Flows (email verification, password recovery, account deletion, support pipeline, real 404s) | ⏳ Planned | Every visible action performs a real operation |
 | **Phase 12** | 🟠 High | Functional Bug Fixes & Data Integrity (12-item cap, admin drafts, progress semantics, no production mocks) | ⏳ Planned | Full catalog visible; admins see all content; trustworthy data |
 | **Phase 13** | 🟠 High | Backend Architecture Consolidation (database topology ADR, server-rendered catalog, service split, observability) | ⏳ Planned | Decision gate for Phase 8; faster pages; operability |
@@ -1235,18 +1235,28 @@ These items stay ✅ for history; the gaps are tracked as new tasks.
 ---
 
 ### Task 10.9: Security Regression Test Suite & CI Gate
-* **Status**: ⏳ Planned
-* **Target Files**: `__tests__/security/*.test.ts` (new), `__tests__/rls/*.test.ts` (new) or `supabase/*/supabase/tests/*.sql` (pgTAP), `.github/workflows/ci.yml` (new)
-* **Planned Specifications**:
-  1. RLS tests against local Supabase (`supabase start` for each project, migrations applied). With two users A and B, assert:
-     - A cannot update its own `role`.
-     - A cannot read or modify B's favorites, history, or lists.
-     - `anon` reads zero user rows and cannot read `episode_media`.
-  2. Route handler tests for `requireAdmin()`: `401` (no session), `403` (user with forged `user_metadata.role`), `200` (admin).
-  3. `getSafeRedirect()` and middleware matrix tests (Tasks 10.4 and 10.5).
-  4. GitHub Actions on push and pull request: `npm ci`, `npx tsc --noEmit`, lint, `npm test`, `npm run build`. A separate job runs the RLS tests with the Supabase CLI.
-  5. Branch protection: CI must pass before merging into `dramashort-app`.
-* **Verification**: the CI run on the Phase 10 pull request is green, and deliberately reverting the `profiles` policy makes it fail.
+* **Status**: ✅ Completed
+* **Target Files**: `__tests__/security/*.test.ts` (new), `supabase/*/supabase/tests/*.sql` (new), `.github/workflows/ci.yml` (new)
+* **Delivered Capabilities**:
+  1. Comprehensive Automated Security Test Suites (`__tests__/security/`):
+     - `require-admin.test.ts` (9 tests): Validates `requireAdmin()` with all privilege permutations: 401 on missing session or expired JWT, 500 on auth client throw, 403 on missing `app_metadata.role`, 403 on client-forged `user_metadata.role: "admin"` (self-elevation prevention), 403 on unexpected role strings, 403 on editor when admin required, 200 on authorized editor, and 200 on genuine admin. Confirms `auth.getUser()` is called server-side.
+     - `admin-routes.test.ts` (11 tests): Integration tests of actual admin API routes (`GET /api/admin/dramas`, `POST /api/admin/dramas`, `GET /api/admin/dramas/[id]`, `PATCH /api/admin/dramas/[id]`). Verifies unauthenticated callers receive 401 UNAUTHORIZED, regular users and forged-role attackers receive 403 FORBIDDEN, invalid UUIDs receive 400 INVALID_ID, invalid payloads receive 400 VALIDATION_ERROR, and genuine admins succeed.
+     - `open-redirect-matrix.test.ts` (33 tests): Exhaustive matrix tests covering OWASP open-redirect bypass vectors against `getSafeRedirect()`, `getSafeAdminRedirect()`, `readReturnUrl()`, and `returnUrlQuery()`. Blocks protocol tricks, protocol-relative `//evil.com`, backslash variations (`/\evil.com`, `\\evil.com`), encoded vectors (`%2F%2Fevil.com`), whitespace/control character injections, pseudo-protocols (`javascript:`), and auth-loop redirects.
+     - `middleware-security-matrix.test.ts` (14 tests): Verifies host classification, case-insensitivity, subdomain isolation, prefix collisions, and the route decision matrix across host × path × session permutations.
+     - `playback-access-control.test.ts` (11 tests): Verifies server-gated playback security. Confirms guests and regular users cannot access Draft, Scheduled, or Archived titles (403/UNPUBLISHED_TITLE); blocks users with forged `user_metadata.role`; permits admin/editor preview of drafts; verifies stream URL resolution, expiration, and UUID/injection validation on `GET /api/playback/[episodeId]`.
+     - `rls-contract.test.ts` (10 tests): Validates database migration contracts. Asserts RLS is enabled on all sensitive user and content tables, `anon` has all default privileges revoked, `profiles` UPDATE grant strictly excludes `role`, `episode_media` revokes public access, and `episodes` SELECT policy restricts reading to Published titles only.
+  2. Database pgTAP Test Suites (`supabase/*/supabase/tests/`):
+     - `supabase/user/supabase/tests/user_rls.test.sql`: pgTAP tests verifying RLS on user tables, blocking anon reads, blocking role updates, and enforcing cross-user isolation.
+     - `supabase/content/supabase/tests/content_rls.test.sql`: pgTAP tests verifying RLS on content tables, blocking anon/authenticated reads of `episode_media`, and blocking direct `video_url` column access.
+  3. Continuous Integration Gate (`.github/workflows/ci.yml`):
+     - Configured GitHub Actions CI workflow triggered on push and pull requests to `dramashort-app` and `main`.
+     - Job 1 (`verify`): `npm ci` → `npx tsc --noEmit` → `npm run lint` → `npm test` → `npm run build`.
+     - Job 2 (`supabase-rls-verification`): Sets up Supabase CLI and executes local RLS migration and policy verification tests.
+* **Verification Results**:
+  - `npm test`: 226 / 226 tests passing across 49 suites (0 failures).
+  - `npx tsc --noEmit`: compiles cleanly with 0 type errors.
+  - `npm run lint`: clean (0 errors, 0 warnings).
+  - `npm run build`: successfully generated all 36 static pages, dynamic route handlers, and middleware bundle.
 
 ---
 

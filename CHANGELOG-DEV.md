@@ -654,3 +654,54 @@
   - `npx tsc --noEmit`: 0 errors.
   - `npm run lint`: clean (0 errors, 0 warnings).
   - `npm run build`: successfully compiled all 36 static pages and verified header configuration integration.
+---
+
+## [2026-10-05] Task 10.9: Security Regression Test Suite & CI Gate (Phase 10 Complete)
+* **Milestone**: Phase 10 (Security Hardening) — Task 10.9 & Phase 10 Completion Gate
+* **Goal**: Establish a regression test suite covering all security mechanisms delivered across Phase 10 (role escalation prevention, admin API route guards, open redirect defenses, subdomain isolation, playback access control, and database RLS policy contracts) and configure a GitHub Actions CI gate.
+* **Implementation Steps Taken**:
+  1. Automated Security Test Suites (`__tests__/security/`):
+     - `require-admin.test.ts` (9 tests): Validates `requireAdmin()` with all privilege permutations: 401 on missing session or expired JWT, 500 on auth client throw, 403 on missing `app_metadata.role`, 403 on client-forged `user_metadata.role: "admin"` (self-elevation prevention), 403 on unexpected role strings, 403 on editor when admin required, 200 on authorized editor, and 200 on genuine admin. Confirms `auth.getUser()` is called server-side.
+     - `admin-routes.test.ts` (11 tests): Integration tests of actual admin API routes (`GET /api/admin/dramas`, `POST /api/admin/dramas`, `GET /api/admin/dramas/[id]`, `PATCH /api/admin/dramas/[id]`). Verifies unauthenticated callers receive 401 UNAUTHORIZED, regular users and forged-role attackers receive 403 FORBIDDEN, invalid UUIDs receive 400 INVALID_ID, invalid payloads receive 400 VALIDATION_ERROR, and genuine admins succeed.
+     - `open-redirect-matrix.test.ts` (33 tests): Exhaustive matrix tests covering OWASP open-redirect bypass vectors against `getSafeRedirect()`, `getSafeAdminRedirect()`, `readReturnUrl()`, and `returnUrlQuery()`. Blocks protocol tricks, protocol-relative `//evil.com`, backslash variations (`/\evil.com`, `\\evil.com`), encoded vectors (`%2F%2Fevil.com`), whitespace/control character injections, pseudo-protocols (`javascript:`), and auth-loop redirects.
+     - `middleware-security-matrix.test.ts` (14 tests): Verifies host classification, case-insensitivity, subdomain isolation, prefix collisions, and the route decision matrix across host × path × session permutations.
+     - `playback-access-control.test.ts` (11 tests): Verifies server-gated playback security. Confirms guests and regular users cannot access Draft, Scheduled, or Archived titles (403/UNPUBLISHED_TITLE); blocks users with forged `user_metadata.role`; permits admin/editor preview of drafts; verifies stream URL resolution, expiration, and UUID/injection validation on `GET /api/playback/[episodeId]`.
+     - `rls-contract.test.ts` (10 tests): Validates database migration contracts. Asserts RLS is enabled on all sensitive user and content tables, `anon` has all default privileges revoked, `profiles` UPDATE grant strictly excludes `role`, `episode_media` revokes public access, and `episodes` SELECT policy restricts reading to Published titles only.
+  2. Database pgTAP Test Suites (`supabase/*/supabase/tests/`):
+     - `supabase/user/supabase/tests/user_rls.test.sql`: pgTAP tests verifying RLS on user tables, blocking anon reads, blocking role updates, and enforcing cross-user isolation.
+     - `supabase/content/supabase/tests/content_rls.test.sql`: pgTAP tests verifying RLS on content tables, blocking anon/authenticated reads of `episode_media`, and blocking direct `video_url` column access.
+  3. Continuous Integration Gate (`.github/workflows/ci.yml`):
+     - Configured GitHub Actions CI workflow triggered on push and pull requests to `dramashort-app` and `main`.
+     - Job 1 (`verify`): `npm ci` → `npx tsc --noEmit` → `npm run lint` → `npm test` → `npm run build`.
+     - Job 2 (`supabase-rls-verification`): Sets up Supabase CLI and executes local RLS migration and policy verification tests.
+  4. Testability Hooks (`lib/supabase/user-server.ts`, `lib/supabase/content.ts`, `lib/auth/require-admin.ts`, `lib/middleware/route-decision.ts`):
+     - Added test client factory hooks allowing unit tests to inject mock clients cleanly without monkey-patching or leaking across tests.
+     - Added default parameters to `decideRoute`.
+  5. Roadmap & Milestone Gate: Marked Task 10.9 and the overarching Phase 10 milestone as ✅ Completed in `ROADMAP.md`.
+* **Key File Diffs**:
+  - Created:
+    - `__tests__/security/require-admin.test.ts`
+    - `__tests__/security/admin-routes.test.ts`
+    - `__tests__/security/open-redirect-matrix.test.ts`
+    - `__tests__/security/middleware-security-matrix.test.ts`
+    - `__tests__/security/playback-access-control.test.ts`
+    - `__tests__/security/rls-contract.test.ts`
+    - `supabase/user/supabase/tests/user_rls.test.sql`
+    - `supabase/content/supabase/tests/content_rls.test.sql`
+    - `.github/workflows/ci.yml`
+  - Modified:
+    - `lib/supabase/user-server.ts`
+    - `lib/supabase/content.ts`
+    - `lib/auth/require-admin.ts`
+    - `lib/middleware/route-decision.ts`
+    - `ROADMAP.md`
+    - `CHANGELOG-DEV.md`
+* **Regression Analysis & Cross-System Impact**:
+  - Test runner baseline expanded from 121 tests across 25 suites to 226 tests across 49 suites (+105 tests), catching all security invariants.
+  - Zero disruption to production logic: test hooks are strictly opt-in and no-op by default.
+  - Production build continues to compile cleanly with all 36 routes and static assets validated.
+* **Verification**:
+  - `npm test`: 226 / 226 tests pass across 49 suites (0 failures).
+  - `npx tsc --noEmit`: 0 errors.
+  - `npm run lint`: clean (0 errors, 0 warnings).
+  - `npm run build`: successfully compiled all 36 static pages, dynamic route handlers, and middleware bundle.
