@@ -21,6 +21,8 @@ import { useAuth } from "@/contexts/AuthContext";
 import {
   getUserWatchHistory,
   getGuestWatchHistory,
+  getWatchProgress,
+  getGuestWatchProgress,
   upsertWatchProgress,
   saveGuestWatchProgress,
   syncGuestWatchHistory,
@@ -48,11 +50,18 @@ function WatchContent({ slug }: { slug: string }) {
   const [autoPlayNext, setAutoPlayNext] = useState(false);
   const lastRecordedSecondRef = useRef<number>(-1);
 
-  // Latest progress ref for beforeunload and unmount flush
+  // Latest progress ref for background beacons and unmount flush
   const currentProgressRef = useRef<{
     episode: number;
     progressRatio: number;
-  }>({ episode: currentEpisode, progressRatio: 0 });
+    positionSeconds: number;
+    durationSeconds: number;
+  }>({
+    episode: currentEpisode,
+    progressRatio: 0,
+    positionSeconds: 0,
+    durationSeconds: 0,
+  });
 
   useEffect(() => {
     currentProgressRef.current.episode = currentEpisode;
@@ -93,23 +102,20 @@ function WatchContent({ slug }: { slug: string }) {
       });
   }, [slug]);
 
-  // Load saved watch position and resume point for this drama
+  // Load saved watch position and resume point for this drama (Single-row lookup per Task 12.3)
   useEffect(() => {
     let isMounted = true;
 
     async function loadResumePoint() {
-      let historyRows = [];
+      const targetSlug = drama?.slug || slug;
+      let match = null;
       if (user) {
-        historyRows = await getUserWatchHistory(user.id);
+        match = await getWatchProgress(user.id, targetSlug);
       } else {
-        historyRows = getGuestWatchHistory();
+        match = getGuestWatchProgress(targetSlug);
       }
 
       if (!isMounted) return;
-
-      const match = historyRows.find(
-        (r) => r.title_slug === slug || (drama && r.title_slug === drama.slug)
-      );
 
       if (match) {
         // If an explicit ?ep= query parameter was not passed, use the last watched episode
@@ -120,8 +126,13 @@ function WatchContent({ slug }: { slug: string }) {
 
         // Offer resume position if current episode matches saved progress and is between 2% and 95%
         const epToCheck = initialEpParam ? parseInt(initialEpParam, 10) : match.episode_number;
-        if (epToCheck === match.episode_number && match.progress > 0.02 && match.progress < 0.95) {
-          setSavedProgressRatio(match.progress);
+        const progressRatio =
+          match.duration_seconds && match.duration_seconds > 0
+            ? (match.position_seconds || 0) / match.duration_seconds
+            : match.progress;
+
+        if (epToCheck === match.episode_number && progressRatio > 0.02 && progressRatio < 0.95) {
+          setSavedProgressRatio(progressRatio);
         }
       } else if (initialEpParam) {
         const ep = parseInt(initialEpParam, 10);
@@ -140,12 +151,51 @@ function WatchContent({ slug }: { slug: string }) {
   }, [user, slug, drama, initialEpParam]);
 
   const recordProgress = useCallback(
-    (epNum: number, progressRatio: number) => {
+    (
+      epNum: number,
+      progressRatio: number,
+      positionSec = 0,
+      durationSec = 0,
+      keepalive = false
+    ) => {
       const targetSlug = drama?.slug || slug;
       if (user) {
-        upsertWatchProgress(user.id, targetSlug, epNum, progressRatio);
+        if (keepalive && typeof window !== "undefined") {
+          // Beacon flush via POST /api/progress with keepalive: true (Task 12.3)
+          try {
+            fetch("/api/progress", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                titleSlug: targetSlug,
+                episodeNumber: epNum,
+                progress: progressRatio,
+                positionSeconds: positionSec,
+                durationSeconds: durationSec,
+              }),
+              keepalive: true,
+            }).catch(() => {});
+          } catch {
+            // Ignore beacon errors during unload
+          }
+        } else {
+          upsertWatchProgress(
+            user.id,
+            targetSlug,
+            epNum,
+            progressRatio,
+            positionSec,
+            durationSec
+          );
+        }
       } else {
-        saveGuestWatchProgress(targetSlug, epNum, progressRatio);
+        saveGuestWatchProgress(
+          targetSlug,
+          epNum,
+          progressRatio,
+          positionSec,
+          durationSec
+        );
       }
     },
     [user, drama?.slug, slug]
@@ -164,31 +214,39 @@ function WatchContent({ slug }: { slug: string }) {
         window.history.replaceState(null, "", url.toString());
       }
 
-      const total = drama?.totalEpisodes || 1;
-      const progress = Math.min(1.0, ep / total);
-      currentProgressRef.current = { episode: ep, progressRatio: progress };
-      recordProgress(ep, progress);
+      // Selecting an episode persists episode_number: ep and progress: 0 (Task 12.3)
+      currentProgressRef.current = {
+        episode: ep,
+        progressRatio: 0,
+        positionSeconds: 0,
+        durationSeconds: 0,
+      };
+      recordProgress(ep, 0, 0, 0);
     },
-    [drama?.totalEpisodes, recordProgress]
+    [recordProgress]
   );
 
   // Throttled timeupdate progress recording (every 10 seconds)
   const handleTimeUpdate = useCallback(
     (currentTime: number, duration: number, progressRatio: number) => {
+      const positionSec = Math.floor(currentTime);
+      const durationSec = Math.floor(duration);
+
       currentProgressRef.current = {
         episode: currentEpisode,
         progressRatio,
+        positionSeconds: positionSec,
+        durationSeconds: durationSec,
       };
 
-      const currentSec = Math.floor(currentTime);
       if (
-        currentSec > 0 &&
-        currentSec % 10 === 0 &&
-        currentSec !== lastRecordedSecondRef.current &&
-        duration > 0
+        positionSec > 0 &&
+        positionSec % 10 === 0 &&
+        positionSec !== lastRecordedSecondRef.current &&
+        durationSec > 0
       ) {
-        lastRecordedSecondRef.current = currentSec;
-        recordProgress(currentEpisode, progressRatio);
+        lastRecordedSecondRef.current = positionSec;
+        recordProgress(currentEpisode, progressRatio, positionSec, durationSec);
       }
     },
     [currentEpisode, recordProgress]
@@ -197,12 +255,16 @@ function WatchContent({ slug }: { slug: string }) {
   // Immediate save on pause
   const handlePause = useCallback(
     (currentTime: number, duration: number, progressRatio: number) => {
+      const positionSec = Math.floor(currentTime);
+      const durationSec = Math.floor(duration);
       currentProgressRef.current = {
         episode: currentEpisode,
         progressRatio,
+        positionSeconds: positionSec,
+        durationSeconds: durationSec,
       };
-      if (duration > 0) {
-        recordProgress(currentEpisode, progressRatio);
+      if (durationSec > 0) {
+        recordProgress(currentEpisode, progressRatio, positionSec, durationSec);
       }
     },
     [currentEpisode, recordProgress]
@@ -210,26 +272,55 @@ function WatchContent({ slug }: { slug: string }) {
 
   // Immediate save on episode finished
   const handleVideoEnded = useCallback(() => {
+    const dur = currentProgressRef.current.durationSeconds || 0;
     currentProgressRef.current = {
       episode: currentEpisode,
       progressRatio: 1.0,
+      positionSeconds: dur,
+      durationSeconds: dur,
     };
-    recordProgress(currentEpisode, 1.0);
+    recordProgress(currentEpisode, 1.0, dur, dur);
   }, [currentEpisode, recordProgress]);
 
-  // Flush watch progress immediately on beforeunload (tab close) or unmount
+  // Reliable progress flush on visibilitychange (hidden), pagehide, and beforeunload (Task 12.3)
   useEffect(() => {
-    const handleBeforeUnload = () => {
-      const { episode, progressRatio } = currentProgressRef.current;
+    const flushCurrentProgress = () => {
+      const { episode, progressRatio, positionSeconds, durationSeconds } =
+        currentProgressRef.current;
       if (progressRatio > 0 && progressRatio < 1.0) {
-        recordProgress(episode, progressRatio);
+        recordProgress(
+          episode,
+          progressRatio,
+          positionSeconds,
+          durationSeconds,
+          true // keepalive: true
+        );
       }
     };
 
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "hidden") {
+        flushCurrentProgress();
+      }
+    };
+
+    const handlePageHide = () => {
+      flushCurrentProgress();
+    };
+
+    const handleBeforeUnload = () => {
+      flushCurrentProgress();
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("pagehide", handlePageHide);
     window.addEventListener("beforeunload", handleBeforeUnload);
+
     return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("pagehide", handlePageHide);
       window.removeEventListener("beforeunload", handleBeforeUnload);
-      handleBeforeUnload();
+      flushCurrentProgress();
     };
   }, [recordProgress]);
 

@@ -185,16 +185,25 @@ export async function upsertWatchProgress(
   userId: string,
   titleSlug: string,
   episodeNumber: number,
-  progress: number
+  progress: number,
+  positionSeconds = 0,
+  durationSeconds = 0
 ): Promise<boolean> {
   try {
     const supabase = createUserClient();
+    const derivedProgress =
+      durationSeconds > 0
+        ? Math.min(1.0, Math.max(0.0, positionSeconds / durationSeconds))
+        : Math.min(1.0, Math.max(0.0, progress));
+
     const { error } = await supabase.from("watch_history").upsert(
       {
         user_id: userId,
         title_slug: titleSlug,
         episode_number: episodeNumber,
-        progress: Math.min(1.0, Math.max(0.0, progress)),
+        progress: derivedProgress,
+        position_seconds: Math.max(0, Math.floor(positionSeconds)),
+        duration_seconds: Math.max(0, Math.floor(durationSeconds)),
         updated_at: new Date().toISOString(),
       },
       { onConflict: "user_id,title_slug" }
@@ -204,6 +213,31 @@ export async function upsertWatchProgress(
   } catch (err) {
     console.error("Error updating watch history:", err);
     return false;
+  }
+}
+
+/**
+ * Single-row watch progress lookup for a specific drama (Task 12.3).
+ * Eliminates downloading the user's entire history to resume one title.
+ */
+export async function getWatchProgress(
+  userId: string,
+  titleSlug: string
+): Promise<WatchHistoryRow | null> {
+  try {
+    const supabase = createUserClient();
+    const { data, error } = await supabase
+      .from("watch_history")
+      .select("*")
+      .eq("user_id", userId)
+      .eq("title_slug", titleSlug)
+      .maybeSingle();
+
+    if (error || !data) return null;
+    return data;
+  } catch (err) {
+    console.error("Error fetching single watch progress:", err);
+    return null;
   }
 }
 
@@ -256,17 +290,26 @@ export function getGuestWatchHistory(): WatchHistoryRow[] {
 export function saveGuestWatchProgress(
   titleSlug: string,
   episodeNumber: number,
-  progress: number
+  progress: number,
+  positionSeconds = 0,
+  durationSeconds = 0
 ): WatchHistoryRow[] {
   if (typeof window === "undefined") return [];
   try {
     const current = getGuestWatchHistory();
+    const derivedProgress =
+      durationSeconds > 0
+        ? Math.min(1.0, Math.max(0.0, positionSeconds / durationSeconds))
+        : Math.min(1.0, Math.max(0.0, progress));
+
     const newEntry: WatchHistoryRow = {
       id: `guest-${titleSlug}`,
       user_id: "guest",
       title_slug: titleSlug,
       episode_number: episodeNumber,
-      progress: Math.min(1.0, Math.max(0.0, progress)),
+      progress: derivedProgress,
+      position_seconds: Math.max(0, Math.floor(positionSeconds)),
+      duration_seconds: Math.max(0, Math.floor(durationSeconds)),
       updated_at: new Date().toISOString(),
     };
     const filtered = current.filter((it) => it.title_slug !== titleSlug);
@@ -276,6 +319,15 @@ export function saveGuestWatchProgress(
   } catch {
     return [];
   }
+}
+
+/**
+ * Single-row guest watch progress lookup for a specific drama (Task 12.3).
+ */
+export function getGuestWatchProgress(titleSlug: string): WatchHistoryRow | null {
+  if (typeof window === "undefined") return null;
+  const items = getGuestWatchHistory();
+  return items.find((it) => it.title_slug === titleSlug) ?? null;
 }
 
 export function deleteGuestWatchHistoryItem(titleSlug: string): WatchHistoryRow[] {
@@ -305,7 +357,14 @@ export async function syncGuestWatchHistory(userId: string): Promise<void> {
     const guestItems = getGuestWatchHistory();
     if (guestItems.length === 0) return;
     for (const item of guestItems) {
-      await upsertWatchProgress(userId, item.title_slug, item.episode_number, item.progress);
+      await upsertWatchProgress(
+        userId,
+        item.title_slug,
+        item.episode_number,
+        item.progress,
+        item.position_seconds || 0,
+        item.duration_seconds || 0
+      );
     }
     localStorage.removeItem(GUEST_HISTORY_KEY);
   } catch (err) {

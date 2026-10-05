@@ -11,22 +11,15 @@ import {
   type WatchHistoryRow,
 } from "@/lib/services/user.service";
 import { getTitlesBySlugs } from "@/lib/services/content.service";
+import {
+  deriveContinueWatching,
+  type ContinueWatchingEntry,
+} from "@/lib/watch/continue-watching";
 
 // The /home page surfaces up to the 8 most recent in-progress watches
 const MAX_VISIBLE = 8;
 
-export interface ContinueWatchingDramaItem {
-  id: string;
-  slug: string;
-  title: string;
-  poster: string;
-  episodeNumber: number;
-  totalEpisodes: number;
-  episodeLabel: string;
-  progress: number; // 0..1
-  href: string;
-  channel?: string;
-}
+export type ContinueWatchingDramaItem = ContinueWatchingEntry;
 
 export default function ContinueWatching() {
   const { user, isLoading: isAuthLoading } = useAuth();
@@ -60,52 +53,7 @@ export default function ContinueWatching() {
       if (!isMounted) return;
 
       const titleMap = new Map(dbTitles.map((t) => [t.slug, t]));
-      const mappedItems: ContinueWatchingDramaItem[] = [];
-
-      for (const row of historyRows) {
-        const drama = titleMap.get(row.title_slug);
-        if (!drama) {
-          // Drama was deleted or no longer exists in database
-          continue;
-        }
-        const total = drama.totalEpisodes || 1;
-        const rawProgress = row.progress || 0;
-        const isCompletedSeries =
-          row.episode_number >= total && rawProgress >= 0.95;
-
-        // Omit finished dramas from Continue Watching
-        if (isCompletedSeries) {
-          continue;
-        }
-
-        let targetEp = row.episode_number;
-        let displayProgress = rawProgress;
-        let label = `EP ${targetEp} of ${total}`;
-
-        // If the current episode is finished (>= 95%) and next episode exists:
-        if (rawProgress >= 0.95 && targetEp < total) {
-          targetEp = row.episode_number + 1;
-          displayProgress = 0;
-          label = `Up Next: EP ${targetEp} of ${total}`;
-        }
-
-        mappedItems.push({
-          id: row.id || `cw-${row.title_slug}`,
-          slug: row.title_slug,
-          title: drama.title,
-          poster: drama.poster,
-          episodeNumber: targetEp,
-          totalEpisodes: total,
-          episodeLabel: label,
-          progress: displayProgress,
-          href: `/watch/${row.title_slug}?ep=${targetEp}`,
-          channel: drama.channel,
-        });
-
-        if (mappedItems.length >= MAX_VISIBLE) {
-          break;
-        }
-      }
+      const mappedItems = deriveContinueWatching(historyRows, titleMap, MAX_VISIBLE);
 
       setItems(mappedItems);
       setHasLoaded(true);

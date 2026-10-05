@@ -1497,20 +1497,42 @@ These items stay ✅ for history; the gaps are tracked as new tasks.
 ---
 
 ### Task 12.3: Watch Progress Semantics & Reliable Persistence
-* **Status**: ⏳ Planned
+* **Status**: ✅ Completed (2026-10-06)
 * **Problem**:
   - `handleSelectEpisode` saves `episode / totalEpisodes` as `progress` (`app/watch/[slug]/page.tsx` L159–161), while every reader treats `progress` as the position within the episode. Selecting the final episode saves `1.0`, so Continue Watching hides the series as finished; selecting episode 20 of 40 saves `0.5`, so resume offers the middle of episode 20. It corrects itself only after 10 seconds of playback.
   - Final flushes rely on `beforeunload`, which mobile browsers often do not fire.
   - The resume lookup downloads the user's entire history to find one drama (L96).
-* **Target Files**: `app/watch/[slug]/page.tsx`, `lib/services/user.service.ts`, `app/api/progress/route.ts` (new), `lib/watch/continue-watching.ts` (new), user DB migration
-* **Planned Specifications**:
-  1. Selecting an episode persists `{ episode_number: ep, progress: 0 }`.
-  2. Add `position_seconds INT` and `duration_seconds INT` to `watch_history`; derive the ratio from them for precise resume.
-  3. Flush on `visibilitychange` (hidden) and `pagehide` using `fetch(..., { keepalive: true })` to `POST /api/progress`.
-  4. Single-row lookup `getWatchProgress(userId, titleId)`.
-  5. Move the Continue Watching derivation into `lib/watch/continue-watching.ts` so it can be unit-tested.
-  6. Per-episode completion for analytics is tracked by Phase 15 events; `watch_history` stays "latest position per drama".
-* **Verification**: unit tests for the derivation (finished episode → "Up Next", finished series → hidden, freshly selected episode → 0%); a manual mobile test confirms progress survives backgrounding the tab.
+* **Target Files**: `app/watch/[slug]/page.tsx`, `lib/services/user.service.ts`, `app/api/progress/route.ts` (new), `lib/watch/continue-watching.ts` (new), `components/ContinueWatching.tsx`, `types/supabase-user.ts`, `supabase/user/supabase/migrations/20261006120000_watch_progress_semantics.sql` (new), `__tests__/watch/watch-progress-semantics.test.ts` (new)
+* **Delivered Capabilities**:
+  1. User Database Schema & Type Alignment:
+     - Authored migration `supabase/user/supabase/migrations/20261006120000_watch_progress_semantics.sql` adding `position_seconds INT NOT NULL DEFAULT 0` and `duration_seconds INT NOT NULL DEFAULT 0` to `public.watch_history` with authenticated column grants.
+     - Updated TypeScript types in `types/supabase-user.ts` for Row, Insert, and Update models.
+  2. Continue Watching Derivation Engine (`lib/watch/continue-watching.ts`):
+     - Extracted pure derivation logic into `deriveContinueWatching(historyRows, dramasBySlug, maxVisible)`.
+     - Completely finished series (`episode >= totalEpisodes` AND `progress >= 0.95`) are omitted from Continue Watching.
+     - Finished episodes (`progress >= 0.95`) automatically advance to the next episode (`episode + 1`) labelled with `"Up Next"`.
+     - Freshly selected episodes (`progress: 0`) preserve `"EP X of Y"` with 0% progress bar.
+     - Refactored `components/ContinueWatching.tsx` to consume the pure engine directly.
+  3. Single-Row Targeted Resume Lookups (`lib/services/user.service.ts`):
+     - Added `getWatchProgress(userId, titleSlug)` to perform a single-row indexed lookup instead of downloading the user's entire watch history.
+     - Added `getGuestWatchProgress(titleSlug)` for single-row guest localStorage retrieval.
+     - Updated `upsertWatchProgress` and `saveGuestWatchProgress` to store `position_seconds` and `duration_seconds`, automatically deriving the progress ratio.
+  4. Reliable Background Flush API (`POST /api/progress`):
+     - Created background beacon ingestion route handler `app/api/progress/route.ts`.
+     - Validates JSON payload (`titleSlug`, `episodeNumber`, `progress`, `positionSeconds`, `durationSeconds`).
+     - Uses `createUserServerClient()` to authenticate caller and persist to `watch_history`.
+  5. Watch Page Resilience & Lifecycle Flushes (`app/watch/[slug]/page.tsx`):
+     - Fixed `handleSelectEpisode` to persist `{ episode_number: ep, progress: 0, position_seconds: 0, duration_seconds: 0 }`. Eliminated faulty `episode / totalEpisodes` calculation.
+     - Maintained `currentProgressRef` tracking latest position and duration in seconds.
+     - Upgraded resume loading to call single-row `getWatchProgress()` / `getGuestWatchProgress()`.
+     - Attached listeners for `visibilitychange` (state: hidden), `pagehide`, and `beforeunload` using `fetch("/api/progress", { keepalive: true })` for reliable mobile and tab-switching flushes.
+  6. Automated Verification Test Suite (`__tests__/watch/watch-progress-semantics.test.ts`):
+     - 14 automated unit and integration tests covering continue watching state derivations, background beacon API validations and auth handling, single-row lookup operations, and watch page code invariants.
+* **Verification Results**:
+  - `__tests__/watch/watch-progress-semantics.test.ts` (14 tests passing).
+  - `npx tsc --noEmit`: 0 type errors.
+  - Full test runner `npm test`: 324 / 324 tests passing across 94 suites (0 failures).
+  - `npm run build`: cleanly compiles all 42 routes (including new `ƒ /api/progress`) with 0 errors.
 
 ---
 
