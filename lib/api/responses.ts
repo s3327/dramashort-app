@@ -13,11 +13,13 @@ import { NextResponse } from "next/server";
 export type ApiErrorCode =
   | "UNAUTHORIZED"
   | "FORBIDDEN"
+  | "PAYMENT_REQUIRED"
   | "AUTH_VERIFICATION_ERROR"
   | "INVALID_JSON"
   | "VALIDATION_ERROR"
   | "INVALID_ID"
   | "NOT_FOUND"
+  | "STREAM_UNAVAILABLE"
   | "DATABASE_ERROR";
 
 export interface ApiErrorBody {

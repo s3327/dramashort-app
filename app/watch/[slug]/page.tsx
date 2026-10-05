@@ -13,7 +13,9 @@ import { useTheme } from "@/contexts/ThemeContext";
 import {
   getTitleBySlug,
   getEpisodesByTitleId,
+  getEpisodePlayback,
   type Episode,
+  type PlaybackSource,
 } from "@/lib/services/content.service";
 import { useAuth } from "@/contexts/AuthContext";
 import {
@@ -225,8 +227,42 @@ function WatchContent({ slug }: { slug: string }) {
   }, [recordProgress]);
 
   const currentEpData = dbEpisodes.find((e) => e.episodeNumber === currentEpisode);
+
+  const [playbackSource, setPlaybackSource] = useState<PlaybackSource | null>(null);
+  const [_playbackLoading, setPlaybackLoading] = useState(false);
+  const [playbackError, setPlaybackError] = useState<string | null>(null);
+
+  // Fetch secure server-gated playback session whenever the active episode changes (Task 10.6)
+  useEffect(() => {
+    if (!currentEpData?.id) {
+      setPlaybackSource(null);
+      setPlaybackError(null);
+      return;
+    }
+
+    let isMounted = true;
+    setPlaybackLoading(true);
+    setPlaybackError(null);
+
+    getEpisodePlayback(currentEpData.id).then((res) => {
+      if (!isMounted) return;
+      setPlaybackLoading(false);
+      if (res.success && res.data) {
+        setPlaybackSource(res.data);
+      } else {
+        setPlaybackError(res.error || "Failed to load video stream.");
+      }
+    });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [currentEpData?.id]);
+
   const videoSrc =
-    currentEpData?.videoUrl && currentEpData.videoUrl.trim() !== ""
+    playbackSource?.url && playbackSource.url.trim() !== ""
+      ? playbackSource.url
+      : currentEpData?.videoUrl && currentEpData.videoUrl.trim() !== ""
       ? currentEpData.videoUrl
       : "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4";
 
@@ -279,6 +315,14 @@ function WatchContent({ slug }: { slug: string }) {
         <div className="flex flex-col lg:flex-row gap-6 items-start">
           {/* Main Video Streaming Player */}
           <div className="flex-1 w-full min-w-0">
+            {playbackError && (
+              <div
+                role="alert"
+                className="mb-3 px-4 py-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-500 text-xs sm:text-sm font-medium flex items-center justify-between"
+              >
+                <span>{playbackError}</span>
+              </div>
+            )}
             <VideoPlayer
               key={`${drama.slug}-${currentEpisode}`}
               src={videoSrc}

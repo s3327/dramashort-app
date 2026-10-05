@@ -43,7 +43,7 @@
 | **Phase 7** | 🟢 Low | L6: Implement automated test suite (Auth, services, critical journeys) | ✅ Done | Regression prevention and verified end-to-end reliability |
 | **Phase 8** | 🔴 Critical | Monetization Engine: Freemium Paywall & Coin Economy | ⏳ Planned · 🔒 Blocked by 10, 13.1, 15, 16 | Direct monetization, unlocks Ep 6+, daily streak rewards |
 | **Phase 9** | 🟠 High | Mobile PWA & Advanced Video Player UX | ⏳ Planned · 🔒 Blocked by 14 | Native app-like PWA, subtitles/VTT, keyboard hotkeys, PiP |
-| **Phase 10** | 🔴 Critical | Security Hardening & Access Control (admin role escalation, RLS & grants, admin API auth, subdomain guard, open redirect, episode media lockdown) | 🚧 In progress (10.1–10.5 ✅) | Closes privilege escalation and data exposure; gate for all further work |
+| **Phase 10** | 🔴 Critical | Security Hardening & Access Control (admin role escalation, RLS & grants, admin API auth, subdomain guard, open redirect, episode media lockdown) | 🚧 In progress (10.1–10.6 ✅) | Closes privilege escalation and data exposure; gate for all further work |
 | **Phase 11** | 🔴 Critical | Complete Stubbed User Flows (email verification, password recovery, account deletion, support pipeline, real 404s) | ⏳ Planned | Every visible action performs a real operation |
 | **Phase 12** | 🟠 High | Functional Bug Fixes & Data Integrity (12-item cap, admin drafts, progress semantics, no production mocks) | ⏳ Planned | Full catalog visible; admins see all content; trustworthy data |
 | **Phase 13** | 🟠 High | Backend Architecture Consolidation (database topology ADR, server-rendered catalog, service split, observability) | ⏳ Planned | Decision gate for Phase 8; faster pages; operability |
@@ -1115,9 +1115,9 @@ These items stay ✅ for history; the gaps are tracked as new tasks.
 ---
 
 ### Task 10.6: Episode Media Access Control & Server Playback Endpoint
-* **Status**: ⏳ Planned
+* **Status**: ✅ Completed
 * **Problem**: `Public read episodes ... USING (true)` (`supabase/content/supabase/migrations/20260930150000_content_schema.sql` L73) exposes every `episodes.video_url`, including episodes of Draft and Archived dramas and future paid episodes. Any paywall enforced only in the UI can be bypassed by querying the table with the public anon key.
-* **Target Files**: `supabase/content/supabase/migrations/<timestamp>_episode_media_lockdown.sql` (new), `app/api/playback/[episodeId]/route.ts` (new), `lib/server/playback.ts` (new), `lib/services/content.service.ts`, `app/watch/[slug]/page.tsx`
+* **Target Files**: `supabase/content/supabase/migrations/20261005120000_episode_media_lockdown.sql` (new), `app/api/playback/[episodeId]/route.ts` (new), `lib/server/playback.ts` (new), `lib/services/content.service.ts`, `app/watch/[slug]/page.tsx`
 * **Planned Specifications**:
   1. Episode RLS: readable only when the parent drama is published:
      ```sql
@@ -1128,7 +1128,33 @@ These items stay ✅ for history; the gaps are tracked as new tasks.
   3. `GET /api/playback/[episodeId]`: the server verifies the drama is published and the episode exists, then calls `canAccessEpisode(user, episode)` and returns `{ url, expiresAt }`. For now `canAccessEpisode` allows all published episodes, preserving current behavior; Phase 8 adds entitlement checks in this single function.
   4. Signed delivery: a signed HLS manifest alone does not protect segments. Choose a provider with signed playback tokens (e.g., Mux, Cloudflare Stream, Bunny Stream) or CDN signed cookies. Record the decision in ADR-0001 (Task 13.1).
   5. Replace `select("*")` on episodes with explicit column lists.
-* **Verification**: `anon` cannot read `episode_media`; `anon` gets no episode rows for a Draft drama; the playback endpoint returns a URL for a published episode and `404` for a draft.
+* **Delivered Capabilities (2026-10-05)**:
+  1. `supabase/content/supabase/migrations/20261005120000_episode_media_lockdown.sql`:
+     - Replaced open `episodes` SELECT policy with "Public read episodes of published titles" (`USING (EXISTS (SELECT 1 FROM titles t WHERE t.id = episodes.title_id AND t.status = 'Published'))`).
+     - Created `episode_media` table with RLS enabled and zero public policies (read/write exclusively for `service_role` and `postgres`).
+     - Revoked table-level SELECT on `episodes` from `anon` and `authenticated`; granted SELECT only on non-sensitive columns (`id`, `title_id`, `episode_number`, `title`, `thumbnail_url`, `duration_seconds`, `is_free`, `created_at`), blocking direct client queries for `video_url`.
+     - Idempotent backfill from `episodes.video_url` into `episode_media`.
+  2. `lib/server/playback.ts`:
+     - `canAccessEpisode(user, episode)` verifies that parent title is `Published` (or caller is authenticated with `admin` or `editor` role via `getUserRole()`). Single gatekeeper hook for Phase 8 monetization rules.
+     - `resolvePlaybackSession(info, expiresInSeconds)` derives stream source (`hls_url` → `mp4_url` → fallback) and returns ISO expiration timestamp.
+     - `getEpisodePlaybackInfo(episodeId)` retrieves episode, parent title, and privileged media through the service role client.
+  3. `app/api/playback/[episodeId]/route.ts`:
+     - Validates UUID parameter (rejects non-UUID and injection with `400 INVALID_ID`).
+     - Resolves user session (guest-safe; unauthenticated allowed for published episodes).
+     - Returns `404 NOT_FOUND` for non-existent or unpublished titles (preventing metadata leakage).
+     - Returns uniform JSON envelope `{ success: true, data: { url, expiresAt, provider, aspectRatio, durationSeconds } }`.
+  4. `lib/services/content.service.ts`:
+     - `getEpisodesByTitleId` now selects explicit public column projections without `video_url`.
+     - Added `getEpisodePlayback(episodeId)` helper returning typed `PlaybackSource`.
+  5. `app/watch/[slug]/page.tsx`:
+     - Dynamically loads secure stream via `getEpisodePlayback(currentEpData.id)` and prioritizes `playbackSource.url` in `<VideoPlayer>`.
+     - Displays clean user-facing error message if video stream fails or is unavailable.
+  6. Verification script `scripts/sql/verify-content-db-rls.sql` testing RLS denial on draft episodes, anon denial on `episode_media`, and column-level denial on `episodes.video_url`.
+* **Verification Results**:
+  - `npm test`: 100 / 100 tests pass across 19 suites (14 new tests in `__tests__/playback/playback.test.ts` and `__tests__/api/playback-route.test.ts`).
+  - `npx tsc --noEmit`: 0 errors.
+  - `npm run lint`: clean (0 errors, 0 warnings).
+  - `npm run build`: successfully built all routes including dynamic `ƒ /api/playback/[episodeId]`.
 
 ---
 

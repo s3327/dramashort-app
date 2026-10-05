@@ -532,3 +532,52 @@
   - `npm test`: 86 / 86 pass. `npx tsc --noEmit`: 0 errors. `next lint`: clean. `npm run build`: success.
   - Real browser — headless Edge driven over the Chrome DevTools Protocol against `next start -p 3100`, throwaway user and admin deleted afterwards: 11 / 11 PASS. `?redirect=https://example.com/phish` → landed on `/home`; `?returnUrl=//example.com` → `/home`; `?returnUrl=/account/history` → honored; login → signup link `?returnUrl=%2Fdrama%2Fceo-secret-wife` kept and an unsafe `redirect` dropped; admin login `returnUrl=//example.com` → `/admin/dashboard`; `returnUrl=/admin/dramas` → honored.
   - Not exercised: Google OAuth round trip; verify-email redirect (stub page); a negative control against the pre-fix build.
+---
+
+## [2026-10-05] Task 10.6: Episode Media Access Control & Server Playback Endpoint
+* **Milestone**: Phase 10 (Security Hardening) — Task 10.6
+* **Goal**: Close episode media data leakage where `episodes.video_url` and draft/archived episode rows were readable by the public anon key (`USING (true)` policy), isolate streaming media assets into a privileged `episode_media` table, restrict public reads of `episodes` to published parent dramas, and route all stream requests through an authenticated server-gated playback endpoint (`GET /api/playback/[episodeId]`).
+* **Implementation Steps Taken**:
+  1. `supabase/content/supabase/migrations/20261005120000_episode_media_lockdown.sql`:
+     - Replaced open `episodes` SELECT policy with `"Public read episodes of published titles"` checking `EXISTS (SELECT 1 FROM titles t WHERE t.id = episodes.title_id AND t.status = 'Published')`.
+     - Created `episode_media` table with columns (`id`, `episode_id`, `provider`, `asset_ref`, `hls_url`, `mp4_url`, `duration_seconds`, `aspect_ratio`, `status`, `created_at`, `updated_at`).
+     - Enabled RLS on `episode_media` with zero public policies (read/write restricted exclusively to `service_role` and `postgres`).
+     - Hardened column grants: revoked full table SELECT on `episodes` from `anon` and `authenticated`; granted SELECT only on non-sensitive columns (`id, title_id, episode_number, title, thumbnail_url, duration_seconds, is_free, created_at`), denying public access to `video_url`.
+     - Idempotent backfill from `episodes.video_url` into `episode_media`.
+  2. `types/supabase-content.ts`: Added TypeScript definition for `episode_media` table and foreign key relationship to `episodes`.
+  3. `lib/server/playback.ts`:
+     - `canAccessEpisode(user, episode)`: Enforces that parent title must be `Published` unless the user possesses an administrative role (`admin` or `editor` via `getUserRole()`). Serves as the single gatekeeper hook for upcoming Phase 8 monetization rules.
+     - `resolvePlaybackSession(info, expiresInSeconds)`: Selects primary stream URL (`hls_url` → `mp4_url` → fallback) and generates ISO future expiration timestamp (default 2 hours).
+     - `getEpisodePlaybackInfo(episodeId)`: Fetches episode, parent drama status, and privileged media via `getContentAdminClient()`.
+  4. `app/api/playback/[episodeId]/route.ts`:
+     - Validates UUID format via `isUuid()` (returns `400 INVALID_ID`).
+     - Resolves user session via `createUserServerClient()` without forcing guest login.
+     - Validates episode existence and evaluates `canAccessEpisode()`. Returns `404 NOT_FOUND` for non-existent or unpublished titles to prevent title status enumeration.
+     - Returns uniform JSON envelope `{ success: true, data: { url, expiresAt, provider, aspectRatio, durationSeconds } }`.
+  5. `lib/api/responses.ts`: Added `"PAYMENT_REQUIRED"` and `"STREAM_UNAVAILABLE"` to `ApiErrorCode`.
+  6. `lib/services/content.service.ts`:
+     - Updated `getEpisodesByTitleId()` to query explicit public projection (`id, title_id, episode_number, title, thumbnail_url, duration_seconds, is_free, created_at`), omitting raw `video_url`.
+     - Implemented `getEpisodePlayback(episodeId)` client-side service helper returning typed `PlaybackSource`.
+  7. `app/watch/[slug]/page.tsx`:
+     - Integrated `getEpisodePlayback(currentEpData.id)` effect hook on active episode changes.
+     - Prioritizes server `playbackSource.url` over legacy fallbacks for `<VideoPlayer>`.
+     - Added user-facing error notice banner if playback fails or is restricted.
+  8. `scripts/sql/verify-content-db-rls.sql`:
+     - Verification script asserting that `anon` cannot read `episode_media`, cannot select `video_url` from `episodes`, cannot view draft title episodes, and that `service_role` has full administrative access.
+  9. Tests:
+     - `__tests__/playback/playback.test.ts`: 12 unit tests verifying permission rules (guest, user, forged role, admin preview, editor preview, draft/archived denial) and stream URL resolution.
+     - `__tests__/api/playback-route.test.ts`: 2 route handler tests verifying UUID validation and injection rejection.
+  10. Docs: Updated `ROADMAP.md` matrix and Task 10.6 section.
+* **Key File Diffs**:
+  - Created: `supabase/content/supabase/migrations/20261005120000_episode_media_lockdown.sql`, `scripts/sql/verify-content-db-rls.sql`, `lib/server/playback.ts`, `app/api/playback/[episodeId]/route.ts`, `__tests__/playback/playback.test.ts`, `__tests__/api/playback-route.test.ts`.
+  - Modified: `types/supabase-content.ts`, `lib/api/responses.ts`, `lib/services/content.service.ts`, `app/watch/[slug]/page.tsx`, `ROADMAP.md`, `CHANGELOG-DEV.md`.
+* **Regression Analysis & Cross-System Impact**:
+  - Catalog playback: Existing published dramas continue streaming smoothly because `canAccessEpisode()` permits all published episodes, and `resolvePlaybackSession()` falls back gracefully to `video_url` if an episode hasn't been backfilled yet.
+  - Draft security: Episodes of unpublished/draft dramas cannot be enumerated or played by guests or regular users via API (returns 404). Staff with `admin` or `editor` in `app_metadata.role` can preview drafts.
+  - Public database exposure: Direct PostgREST queries using the anon key now receive 0 rows for draft episodes and permission denied for `video_url` and `episode_media`.
+  - Dual-database separation preserved: Content DB (`czkkzoiuyqybafacpgsp`) holds episode media assets; User DB (`bpidsbcrvpkavvdvtpgh`) holds auth and user sessions.
+* **Verification**:
+  - `npm test`: 100 / 100 pass across 19 test suites.
+  - `npx tsc --noEmit`: 0 errors.
+  - `npm run lint`: clean (0 errors, 0 warnings).
+  - `npm run build`: production build passed with all 36 static pages and dynamic `ƒ /api/playback/[episodeId]`.

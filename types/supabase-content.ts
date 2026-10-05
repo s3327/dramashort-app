@@ -91,6 +91,56 @@ export type Database = {
           },
         ]
       }
+      episode_media: {
+        Row: {
+          aspect_ratio: string | null
+          asset_ref: string | null
+          created_at: string | null
+          duration_seconds: number | null
+          episode_id: string
+          hls_url: string | null
+          id: string
+          mp4_url: string | null
+          provider: string
+          status: string
+          updated_at: string | null
+        }
+        Insert: {
+          aspect_ratio?: string | null
+          asset_ref?: string | null
+          created_at?: string | null
+          duration_seconds?: number | null
+          episode_id: string
+          hls_url?: string | null
+          id?: string
+          mp4_url?: string | null
+          provider?: string
+          status?: string
+          updated_at?: string | null
+        }
+        Update: {
+          aspect_ratio?: string | null
+          asset_ref?: string | null
+          created_at?: string | null
+          duration_seconds?: number | null
+          episode_id?: string
+          hls_url?: string | null
+          id?: string
+          mp4_url?: string | null
+          provider?: string
+          status?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "episode_media_episode_id_fkey"
+            columns: ["episode_id"]
+            isOneToOne: false
+            referencedRelation: "episodes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       titles: {
         Row: {
           channel_code: string

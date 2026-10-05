@@ -54,7 +54,9 @@ export function mapChannelRowToChannel(row: ChannelRow): Channel {
   };
 }
 
-export function mapEpisodeRowToEpisode(row: EpisodeRow): Episode {
+export function mapEpisodeRowToEpisode(
+  row: Pick<EpisodeRow, "id" | "title_id" | "episode_number"> & Partial<EpisodeRow>
+): Episode {
   return {
     id: row.id,
     titleId: row.title_id,
@@ -391,20 +393,64 @@ export async function getTitlesBySlugs(slugs: string[]): Promise<Title[]> {
 
 /**
  * Fetches episodes for a specific title ID ordered by episode_number ascending.
+ * Uses explicit non-sensitive public columns (excluding raw video_url).
  */
 export async function getEpisodesByTitleId(titleId: string): Promise<Episode[]> {
   try {
     const { data, error } = await contentClient
       .from("episodes")
-      .select("*")
+      .select("id, title_id, episode_number, title, thumbnail_url, duration_seconds, is_free, created_at")
       .eq("title_id", titleId)
       .order("episode_number", { ascending: true });
 
     if (error || !data) return [];
-    return data.map(mapEpisodeRowToEpisode);
+    return data.map((row) => mapEpisodeRowToEpisode(row));
   } catch (err) {
     console.error("Error in getEpisodesByTitleId:", err);
     return [];
+  }
+}
+
+export interface PlaybackSource {
+  url: string;
+  expiresAt: string;
+  provider: string;
+  aspectRatio: string;
+  durationSeconds: number;
+}
+
+/**
+ * Fetches secure server-gated playback session for an episode (Task 10.6).
+ */
+export async function getEpisodePlayback(
+  episodeId: string
+): Promise<{ success: boolean; data?: PlaybackSource; error?: string }> {
+  try {
+    const res = await fetch(`/api/playback/${encodeURIComponent(episodeId)}`);
+    const json = (await readJsonSafely(res)) as {
+      success?: boolean;
+      data?: PlaybackSource;
+      error?: { code: string; message: string };
+    } | null;
+
+    if (!res.ok || !json?.success || !json.data) {
+      return {
+        success: false,
+        error: getApiErrorMessage(json, `Failed to load playback (HTTP ${res.status})`),
+      };
+    }
+
+    return {
+      success: true,
+      data: json.data,
+    };
+  } catch (err: unknown) {
+    const msg =
+      err instanceof Error ? err.message : "Network error while loading video playback";
+    return {
+      success: false,
+      error: msg,
+    };
   }
 }
 
