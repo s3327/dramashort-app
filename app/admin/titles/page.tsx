@@ -1,19 +1,26 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { Suspense, useCallback, useEffect, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Search, List, LayoutGrid, Pencil, Plus, Loader2 } from "lucide-react";
 import AdminSidebar from "@/components/admin/AdminSidebar";
 import Pagination from "@/components/Pagination";
 import Modal from "@/components/Modal";
 import Toast from "@/components/Toast";
 import { useToast } from "@/hooks/useToast";
-import { channels as initialChannels, type Channel } from "@/data/channels.mock";
-import { titles as adminTitles, type TitleStatus, type Title } from "@/data/titles.mock";
-import { getAdminDramas, getChannels, createDrama } from "@/lib/services/content.service";
+import { channels as fallbackChannels, type Channel } from "@/data/channels.mock";
+import {
+  getAdminDramas,
+  getChannels,
+  createDrama,
+  type Drama,
+  type TitleStatus,
+} from "@/lib/services/content.service";
 
 const ALL_CHANNELS = "All Channels";
+const ALL_STATUSES = "all";
 const ROWS_PER_PAGE_OPTIONS = [20, 50, 75, 100, 250];
 
 const STATUS_STYLES: Record<TitleStatus, string> = {
@@ -23,14 +30,31 @@ const STATUS_STYLES: Record<TitleStatus, string> = {
   Archived: "bg-danger-soft text-danger border-danger-light",
 };
 
-export default function AdminTitlesPage() {
-  const [dramas, setDramas] = useState<Title[]>(adminTitles);
-  const [channelList, setChannelList] = useState<Channel[]>(initialChannels);
-  const [query, setQuery] = useState("");
-  const [selectedChannel, setSelectedChannel] = useState(ALL_CHANNELS);
+function AdminTitlesContent() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+
+  const initialQ = searchParams?.get("q") ?? "";
+  const initialChannel = searchParams?.get("channel") ?? ALL_CHANNELS;
+  const initialStatus = searchParams?.get("status") ?? ALL_STATUSES;
+  const initialPage = parseInt(searchParams?.get("page") ?? "1", 10);
+  const initialRows = parseInt(searchParams?.get("pageSize") ?? "20", 10);
+
+  const [dramas, setDramas] = useState<Drama[]>([]);
+  const [totalDramas, setTotalDramas] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
+  const [isLoading, setIsLoading] = useState(true);
+
+  const [channelList, setChannelList] = useState<Channel[]>(fallbackChannels);
+  const [searchInput, setSearchInput] = useState(initialQ);
+  const [query, setQuery] = useState(initialQ);
+  const [selectedChannel, setSelectedChannel] = useState(initialChannel);
+  const [selectedStatus, setSelectedStatus] = useState(initialStatus);
   const [view, setView] = useState<"list" | "card">("list");
-  const [rowsPerPage, setRowsPerPage] = useState(20);
-  const [page, setPage] = useState(1);
+  const [rowsPerPage, setRowsPerPage] = useState(
+    ROWS_PER_PAGE_OPTIONS.includes(initialRows) ? initialRows : 20
+  );
+  const [page, setPage] = useState(Math.max(1, isNaN(initialPage) ? 1 : initialPage));
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
   const { message: toastMessage, show: showToast } = useToast();
@@ -48,63 +72,103 @@ export default function AdminTitlesPage() {
     status: "Draft" as TitleStatus,
   });
 
-  // Dynamic catalog hydration from Supabase Content DB
+  // Load distinct channels from Content DB
   useEffect(() => {
     let mounted = true;
-    async function loadCatalog() {
+    async function loadChannels() {
       try {
-        const [dbDramas, dbChannels] = await Promise.all([
-          getAdminDramas(),
-          getChannels().catch(() => initialChannels),
-        ]);
-        if (!mounted) return;
-        if (dbDramas && dbDramas.length > 0) {
-          setDramas(dbDramas);
-        }
-        if (dbChannels && dbChannels.length > 0) {
+        const dbChannels = await getChannels();
+        if (mounted && dbChannels && dbChannels.length > 0) {
           setChannelList(dbChannels);
         }
-      } catch (err) {
-        console.warn("Failed to dynamically hydrate admin catalog:", err);
+      } catch {
+        // Fallback already assigned
       }
     }
-    loadCatalog();
+    loadChannels();
     return () => {
       mounted = false;
     };
   }, []);
 
+  // Fetch admin catalog from authenticated service API
+  const fetchCatalog = useCallback(
+    async (
+      qVal: string,
+      chanVal: string,
+      statVal: string,
+      pageVal: number,
+      rowsVal: number
+    ) => {
+      setIsLoading(true);
+      try {
+        const res = await getAdminDramas({
+          q: qVal.trim() || undefined,
+          channel: chanVal !== ALL_CHANNELS ? chanVal : undefined,
+          status: statVal !== ALL_STATUSES ? statVal : undefined,
+          page: pageVal,
+          pageSize: rowsVal,
+        });
+        setDramas(res.items);
+        setTotalDramas(res.total);
+        setTotalPages(res.totalPages);
+      } catch (err) {
+        console.error("Failed to load admin catalog:", err);
+        setDramas([]);
+        setTotalDramas(0);
+        setTotalPages(1);
+      } finally {
+        setIsLoading(false);
+      }
+    },
+    []
+  );
+
+  // Debounce search input
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (searchInput !== query) {
+        setQuery(searchInput);
+        setPage(1);
+      }
+    }, 350);
+    return () => clearTimeout(timer);
+  }, [searchInput, query]);
+
+  // Execute fetch when filters or pagination change and sync URL
+  useEffect(() => {
+    fetchCatalog(query, selectedChannel, selectedStatus, page, rowsPerPage);
+
+    // Synchronize query parameters to URL
+    const params = new URLSearchParams();
+    if (query.trim()) params.set("q", query.trim());
+    if (selectedChannel !== ALL_CHANNELS) params.set("channel", selectedChannel);
+    if (selectedStatus !== ALL_STATUSES) params.set("status", selectedStatus);
+    if (page > 1) params.set("page", String(page));
+    if (rowsPerPage !== 20) params.set("pageSize", String(rowsPerPage));
+
+    const newQueryString = params.toString() ? `?${params.toString()}` : "";
+    if (typeof window !== "undefined") {
+      const targetUrl = `${window.location.pathname}${newQueryString}`;
+      window.history.replaceState(null, "", targetUrl);
+    }
+  }, [fetchCatalog, query, selectedChannel, selectedStatus, page, rowsPerPage]);
+
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
+    setQuery(searchInput);
+    setPage(1);
   };
 
-  const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    return dramas.filter((t) => {
-      const matchesQuery = q === "" || t.title.toLowerCase().includes(q);
-      const matchesChannel =
-        selectedChannel === ALL_CHANNELS || t.channel === selectedChannel;
-      return matchesQuery && matchesChannel;
-    });
-  }, [dramas, query, selectedChannel]);
-
-  const totalPages = Math.max(1, Math.ceil(filtered.length / rowsPerPage));
-  const pageItems = filtered.slice((page - 1) * rowsPerPage, page * rowsPerPage);
-
-  // Keep the page valid whenever filters or page size change.
-  useEffect(() => {
-    setPage(1);
-  }, [query, selectedChannel, rowsPerPage]);
-
-  const allOnPageSelected = pageItems.length > 0 && pageItems.every((t) => selectedIds.has(t.id));
+  const allOnPageSelected = dramas.length > 0 && dramas.every((t) => selectedIds.has(t.id));
 
   const toggleAllOnPage = () => {
     setSelectedIds((prev) => {
       const next = new Set(prev);
       if (allOnPageSelected) {
-        pageItems.forEach((t) => next.delete(t.id));
+        dramas.forEach((t) => next.delete(t.id));
       } else {
-        pageItems.forEach((t) => next.add(t.id));
+        dramas.forEach((t) => next.add(t.id));
       }
       return next;
     });
@@ -146,7 +210,6 @@ export default function AdminTitlesPage() {
     setIsSubmittingDrama(false);
 
     if (res.success && res.data) {
-      setDramas((prev) => [res.data!, ...prev]);
       setIsAddModalOpen(false);
       setNewDrama({
         title: "",
@@ -159,6 +222,8 @@ export default function AdminTitlesPage() {
         status: "Draft",
       });
       showToast("Drama created successfully");
+      // Direct navigation to the newly created drama's edit page
+      router.push(`/admin/dramas/${res.data.id}/edit`);
     } else {
       setDramaFormError(res.error || "Failed to create drama");
     }
@@ -198,8 +263,8 @@ export default function AdminTitlesPage() {
             />
             <input
               type="text"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
               placeholder="Search dramas..."
               className="w-full rounded-md border border-border bg-surface pl-9 pr-3.5 py-2.5 text-sm text-text placeholder:text-text-muted/60 focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-colors"
             />
@@ -207,7 +272,10 @@ export default function AdminTitlesPage() {
 
           <select
             value={selectedChannel}
-            onChange={(e) => setSelectedChannel(e.target.value)}
+            onChange={(e) => {
+              setSelectedChannel(e.target.value);
+              setPage(1);
+            }}
             className="rounded-md border border-border bg-surface text-sm text-text px-3.5 py-2.5 focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-colors"
           >
             <option value={ALL_CHANNELS}>{ALL_CHANNELS}</option>
@@ -218,10 +286,25 @@ export default function AdminTitlesPage() {
             ))}
           </select>
 
+          <select
+            value={selectedStatus}
+            onChange={(e) => {
+              setSelectedStatus(e.target.value);
+              setPage(1);
+            }}
+            className="rounded-md border border-border bg-surface text-sm text-text px-3.5 py-2.5 focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-colors"
+          >
+            <option value={ALL_STATUSES}>All Statuses</option>
+            <option value="Draft">Draft</option>
+            <option value="Published">Published</option>
+            <option value="Scheduled">Scheduled</option>
+            <option value="Archived">Archived</option>
+          </select>
+
           <button
             type="submit"
             aria-label="Search"
-            className="flex items-center justify-center rounded-md bg-btn-primary hover:bg-btn-primary-hover text-btn-primary-text p-2.5 shadow-sm transition-colors"
+            className="flex items-center justify-center rounded-md bg-btn-primary hover:bg-btn-primary-hover text-btn-primary-text p-2.5 shadow-sm transition-colors cursor-pointer"
           >
             <Search size={16} strokeWidth={2.5} />
           </button>
@@ -233,7 +316,7 @@ export default function AdminTitlesPage() {
               onClick={() => setView("list")}
               aria-pressed={view === "list"}
               aria-label="List view"
-              className={`p-2.5 transition-colors ${
+              className={`p-2.5 transition-colors cursor-pointer ${
                 view === "list"
                   ? "bg-primary text-text-light"
                   : "bg-surface text-text-muted hover:text-text"
@@ -246,7 +329,7 @@ export default function AdminTitlesPage() {
               onClick={() => setView("card")}
               aria-pressed={view === "card"}
               aria-label="Card view"
-              className={`p-2.5 border-l border-border transition-colors ${
+              className={`p-2.5 border-l border-border transition-colors cursor-pointer ${
                 view === "card"
                   ? "bg-primary text-text-light"
                   : "bg-surface text-text-muted hover:text-text"
@@ -262,7 +345,7 @@ export default function AdminTitlesPage() {
           <p className="text-xs text-text-muted">
             {selectedIds.size > 0
               ? `${selectedIds.size} selected`
-              : `${filtered.length} drama${filtered.length === 1 ? "" : "s"}`}
+              : `${totalDramas} drama${totalDramas === 1 ? "" : "s"}`}
           </p>
           <div className="flex items-center gap-2">
             <label htmlFor="rowsPerPage" className="text-xs text-text-muted">
@@ -271,7 +354,10 @@ export default function AdminTitlesPage() {
             <select
               id="rowsPerPage"
               value={rowsPerPage}
-              onChange={(e) => setRowsPerPage(Number(e.target.value))}
+              onChange={(e) => {
+                setRowsPerPage(Number(e.target.value));
+                setPage(1);
+              }}
               className="rounded-md border border-border bg-surface text-xs text-text px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-colors"
             >
               {ROWS_PER_PAGE_OPTIONS.map((n) => (
@@ -283,9 +369,77 @@ export default function AdminTitlesPage() {
           </div>
         </div>
 
-        {filtered.length === 0 ? (
+        {/* Dynamic content rendering: Skeleton vs Empty vs Data */}
+        {isLoading ? (
+          view === "list" ? (
+            <div className="bg-surface border border-border rounded-lg shadow-sm overflow-hidden">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-border text-left text-xs font-semibold text-text-muted">
+                    <th className="w-10 px-4 py-3">
+                      <div className="h-4 w-4 bg-border/40 rounded animate-pulse" />
+                    </th>
+                    <th className="px-3 py-3">Title</th>
+                    <th className="px-3 py-3">Year</th>
+                    <th className="px-3 py-3">Episodes</th>
+                    <th className="px-3 py-3">Channel</th>
+                    <th className="px-3 py-3">Status</th>
+                    <th className="px-3 py-3 text-right">Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {Array.from({ length: 6 }).map((_, idx) => (
+                    <tr key={idx} className="border-b border-border last:border-0">
+                      <td className="px-4 py-3">
+                        <div className="h-4 w-4 bg-border/40 rounded animate-pulse" />
+                      </td>
+                      <td className="px-3 py-3">
+                        <div className="h-4 w-48 bg-border/40 rounded animate-pulse" />
+                      </td>
+                      <td className="px-3 py-3">
+                        <div className="h-4 w-12 bg-border/40 rounded animate-pulse" />
+                      </td>
+                      <td className="px-3 py-3">
+                        <div className="h-4 w-12 bg-border/40 rounded animate-pulse" />
+                      </td>
+                      <td className="px-3 py-3">
+                        <div className="h-4 w-28 bg-border/40 rounded animate-pulse" />
+                      </td>
+                      <td className="px-3 py-3">
+                        <div className="h-5 w-20 bg-border/40 rounded-full animate-pulse" />
+                      </td>
+                      <td className="px-3 py-3 text-right">
+                        <div className="h-4 w-6 bg-border/40 rounded ml-auto animate-pulse" />
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-5 gap-4">
+              {Array.from({ length: 10 }).map((_, idx) => (
+                <div
+                  key={idx}
+                  className="bg-surface border border-border rounded-lg shadow-sm overflow-hidden animate-pulse"
+                >
+                  <div className="aspect-[2/3] bg-border/30" />
+                  <div className="p-3 space-y-2">
+                    <div className="h-4 bg-border/40 rounded w-3/4" />
+                    <div className="h-3 bg-border/30 rounded w-1/2" />
+                    <div className="h-4 bg-border/40 rounded-full w-16" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          )
+        ) : dramas.length === 0 ? (
           <div className="bg-surface border border-border rounded-lg shadow-sm p-12 text-center">
-            <p className="text-sm text-text-muted">No dramas match your search or filters.</p>
+            <p className="text-sm text-text-muted">
+              {query || selectedChannel !== ALL_CHANNELS || selectedStatus !== ALL_STATUSES
+                ? "No dramas match your search or filters."
+                : "No dramas in catalog yet. Click 'Add Drama' to create one."}
+            </p>
           </div>
         ) : view === "list" ? (
           <div className="bg-surface border border-border rounded-lg shadow-sm overflow-hidden">
@@ -310,7 +464,7 @@ export default function AdminTitlesPage() {
                 </tr>
               </thead>
               <tbody>
-                {pageItems.map((t) => (
+                {dramas.map((t) => (
                   <tr key={t.id} className="border-b border-border last:border-0 hover:bg-surface transition-colors">
                     <td className="px-4 py-3">
                       <input
@@ -334,7 +488,7 @@ export default function AdminTitlesPage() {
                     <td className="px-3 py-3 text-text-muted">{t.channel}</td>
                     <td className="px-3 py-3">
                       <span
-                        className={`inline-flex rounded-pill border px-2.5 py-1 text-xs font-semibold ${STATUS_STYLES[t.status]}`}
+                        className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${STATUS_STYLES[t.status]}`}
                       >
                         {t.status}
                       </span>
@@ -355,7 +509,7 @@ export default function AdminTitlesPage() {
           </div>
         ) : (
           <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-5 gap-4">
-            {pageItems.map((t) => (
+            {dramas.map((t) => (
               <div
                 key={t.id}
                 className="bg-surface border border-border rounded-lg shadow-sm overflow-hidden"
@@ -394,7 +548,7 @@ export default function AdminTitlesPage() {
                     {t.year} · {t.totalEpisodes} eps
                   </p>
                   <span
-                    className={`mt-2 inline-flex rounded-pill border px-2 py-0.5 text-[10px] font-semibold ${STATUS_STYLES[t.status]}`}
+                    className={`mt-2 inline-flex rounded-full border px-2 py-0.5 text-[10px] font-semibold ${STATUS_STYLES[t.status]}`}
                   >
                     {t.status}
                   </span>
@@ -554,7 +708,7 @@ export default function AdminTitlesPage() {
               <button
                 type="button"
                 onClick={() => setIsAddModalOpen(false)}
-                className="rounded-md border border-border bg-surface px-4 py-2 text-sm font-semibold text-text hover:bg-surface-raised transition-colors"
+                className="rounded-md border border-border bg-surface px-4 py-2 text-sm font-semibold text-text hover:bg-surface-raised transition-colors cursor-pointer"
               >
                 Cancel
               </button>
@@ -579,5 +733,26 @@ export default function AdminTitlesPage() {
         <Toast message={toastMessage} />
       </main>
     </div>
+  );
+}
+
+export default function AdminTitlesPage() {
+  return (
+    <Suspense
+      fallback={
+        <div data-theme="light" className="min-h-screen bg-bg text-text flex">
+          <AdminSidebar />
+          <main className="flex-1 px-6 sm:px-8 py-8 max-w-[1200px]">
+            <div className="animate-pulse space-y-4">
+              <div className="h-8 bg-surface-raised rounded w-48 mb-6" />
+              <div className="h-10 bg-surface-raised rounded w-full mb-6" />
+              <div className="h-64 bg-surface-raised rounded w-full" />
+            </div>
+          </main>
+        </div>
+      }
+    >
+      <AdminTitlesContent />
+    </Suspense>
   );
 }

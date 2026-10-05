@@ -1467,16 +1467,32 @@ These items stay ✅ for history; the gaps are tracked as new tasks.
 ---
 
 ### Task 12.2: Admin Catalog Reads Through the Authenticated Admin API
-* **Status**: ⏳ Planned
+* **Status**: ✅ Completed (2026-10-06)
 * **Depends on**: 10.3
-* **Problem**: `getAdminDramas()` (`content.service.ts` L548) and `getDramaById()` (L516) use the public anon client, and RLS returns only `Published` rows. A new drama (default status Draft) vanishes from `/admin/dramas` after refresh, and its edit page shows "Drama Not Found". The 8 seeded non-published titles are invisible to admins. The admin list also starts with mock titles in state (`app/admin/titles/page.tsx` L27).
-* **Target Files**: `app/admin/titles/page.tsx`, `app/admin/titles/[id]/edit/page.tsx`, `app/api/admin/dramas/**`, `lib/services/content.service.ts`
-* **Planned Specifications**:
-  1. Admin pages fetch through `GET /api/admin/dramas` and `GET /api/admin/dramas/[id]` (protected per Task 10.3), which use the service role and return every status.
-  2. Server-side filtering, sorting, and pagination for the admin list (`?q=&channel=&status=&page=&pageSize=`), including a Status filter.
-  3. Initial state is empty with a skeleton; admin pages never use mock data.
-  4. After "Add Drama", navigate to the new drama's edit page, where episodes are managed (Task 16.1).
-* **Verification**: a new Draft stays visible after refresh, opens in the edit page, and the status filter returns it.
+* **Problem**: `getAdminDramas()` and `getDramaById()` previously queried via the public anon client, where Content DB RLS restricted results to `Published` rows only. Newly created `Draft` dramas disappeared from the admin list on refresh, and `/admin/dramas/[id]/edit` showed "Drama Not Found". Seeded non-published titles were invisible, and the admin list initialized with mock titles in state.
+* **Target Files**: `app/api/admin/dramas/route.ts`, `app/api/admin/titles/route.ts`, `lib/services/content.service.ts`, `app/admin/titles/page.tsx`, `app/admin/titles/[id]/edit/page.tsx`, `__tests__/admin/admin-catalog-reads.test.ts` (new)
+* **Delivered Capabilities**:
+  1. Authenticated Admin Catalog API (`GET /api/admin/dramas` & `/api/admin/titles`):
+     - Uses `getContentAdminClient()` (service role) protected behind `requireAdmin()`, bypassing RLS to retrieve all statuses (`Draft`, `Published`, `Scheduled`, `Archived`).
+     - Supports server-side search (`?q=`) with wildcard escaping (`escapeLikePattern`).
+     - Supports channel filtering (`?channel=`) and status filtering (`?status=`).
+     - Implements server-side pagination (`?page=&pageSize=`) with bounded limits and returns a uniform JSON envelope (`items`, `total`, `page`, `pageSize`, `totalPages`).
+  2. Content Service Integration (`lib/services/content.service.ts`):
+     - `getAdminDramas()` consumes `GET /api/admin/dramas` in the browser or queries via service role on server, returning `AdminDramasResult` without falling back to mock fixtures.
+     - `getDramaById()` consumes `GET /api/admin/dramas/:id` in the browser, allowing newly created drafts to open immediately in edit mode without mock fallbacks.
+  3. Dynamic Admin Titles UI (`app/admin/titles/page.tsx`):
+     - Removed `adminTitles` mock imports; initialized state with empty catalog and `isLoading: true`.
+     - Built responsive skeleton table and card grid placeholders during catalog hydration.
+     - Added `Status` dropdown filter alongside existing search and channel dropdowns.
+     - Wired server-side pagination and synchronized filter parameters into URL query string with `<Suspense>` boundary.
+     - Redirects directly to `/admin/dramas/${res.data.id}/edit` after creating a new drama.
+  4. Automated Verification Suite (`__tests__/admin/admin-catalog-reads.test.ts`):
+     - 10 automated unit and integration tests covering multi-status reads, status filtering, channel filtering, ILIKE search, pagination math and range derivation, Draft drama retrieval by UUID, 404 for missing UUIDs, zero-mock service behavior, and admin UI contract checks.
+* **Verification Results**:
+  - `__tests__/admin/admin-catalog-reads.test.ts` (10 tests passing).
+  - `npx tsc --noEmit`: 0 type errors.
+  - Full test runner `npm test`: 310 / 310 tests passing across 89 suites (0 failures).
+  - `npm run build`: cleanly compiles all 41 routes with 0 errors.
 
 ---
 

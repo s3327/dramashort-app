@@ -23,7 +23,7 @@ describe("Admin Route Handlers Security (Task 10.9)", () => {
         },
       }));
 
-      const response = await getDramas();
+      const response = await getDramas(new NextRequest("http://localhost:3000/api/admin/dramas"));
       assert.equal(response.status, 401);
 
       const body = await response.json();
@@ -47,7 +47,7 @@ describe("Admin Route Handlers Security (Task 10.9)", () => {
         },
       }));
 
-      const response = await getDramas();
+      const response = await getDramas(new NextRequest("http://localhost:3000/api/admin/dramas"));
       assert.equal(response.status, 403);
 
       const body = await response.json();
@@ -74,20 +74,26 @@ describe("Admin Route Handlers Security (Task 10.9)", () => {
       setTestContentAdminClientFactory(() => ({
         from: (table: string) => {
           assert.equal(table, "titles");
+          const qb: any = {
+            order: () => qb,
+            ilike: () => qb,
+            eq: () => qb,
+            range: async () => ({ data: [], count: 0, error: null }),
+            then: (resolve: any) => resolve({ data: [], count: 0, error: null }),
+          };
           return {
-            select: () => ({
-              order: async () => ({ data: [], error: null }),
-            }),
+            select: () => qb,
           };
         },
       }));
 
-      const response = await getDramas();
+      const response = await getDramas(new NextRequest("http://localhost:3000/api/admin/dramas"));
       assert.equal(response.status, 200);
 
       const body = await response.json();
       assert.equal(body.success, true);
-      assert.deepEqual(body.data, []);
+      assert.deepEqual(body.data.items, []);
+      assert.equal(body.data.total, 0);
     });
   });
 

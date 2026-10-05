@@ -1,6 +1,7 @@
-import { contentClient } from "@/lib/supabase/content";
+import { contentClient, getContentAdminClient } from "@/lib/supabase/content";
 import type { Database } from "@/types/supabase-content";
 import { titles as mockTitles, type Title, type TitleStatus } from "@/data/titles.mock";
+export type { TitleStatus };
 import type { Channel } from "@/data/channels.mock";
 import type { HeroSlide } from "@/data/hero-slides.mock";
 import { getApiErrorMessage, readJsonSafely } from "@/lib/api/error-message";
@@ -597,28 +598,56 @@ export async function getRelatedTitlesFromDb(
 }
 
 /**
- * Fetches a single drama by ID (Supabase Content DB first, mock fallback).
+ * Fetches a single drama by ID for administrative editing.
+ * In the browser, queries through the authenticated Admin API (/api/admin/dramas/:id),
+ * which bypasses RLS and returns drafts, scheduled, archived, and published dramas.
+ * Never falls back to mock titles.
  */
 export async function getDramaById(id: string): Promise<Drama | null> {
   if (!id) return null;
-  try {
-    const { data, error } = await contentClient
-      .from("titles")
-      .select("*")
-      .eq("id", id)
-      .maybeSingle();
 
-    if (!error && data) {
-      return mapTitleRowToTitle(data);
+  // 1. Browser context: call the authenticated admin API endpoint
+  if (typeof window !== "undefined") {
+    try {
+      const res = await fetch(`/api/admin/dramas/${encodeURIComponent(id)}`);
+      if (res.ok) {
+        const body = (await readJsonSafely(res)) as { success?: boolean; data?: Drama } | null;
+        if (body?.success && body.data) {
+          return body.data;
+        }
+      }
+    } catch (err) {
+      console.warn("Admin API getDramaById lookup failed:", err);
     }
-  } catch (err) {
-    console.warn("Supabase getDramaById lookup failed:", err);
+    return null;
   }
 
-  // Fallback to mock data by ID or slug
-  const mockItem = mockTitles.find((t) => t.id === id || t.slug === id);
-  if (mockItem) {
-    return mockItem;
+  // 2. Server-side or Node test context
+  try {
+    if (process.env.SUPABASE_CONTENT_SERVICE_ROLE_KEY) {
+      const adminClient = getContentAdminClient();
+      const { data, error } = await adminClient
+        .from("titles")
+        .select("*")
+        .eq("id", id)
+        .maybeSingle();
+
+      if (!error && data) {
+        return mapTitleRowToTitle(data);
+      }
+    } else {
+      const { data, error } = await contentClient
+        .from("titles")
+        .select("*")
+        .eq("id", id)
+        .maybeSingle();
+
+      if (!error && data) {
+        return mapTitleRowToTitle(data);
+      }
+    }
+  } catch (err) {
+    console.warn("Database getDramaById lookup failed:", err);
   }
 
   return null;
@@ -627,24 +656,169 @@ export async function getDramaById(id: string): Promise<Drama | null> {
 /** Domain entity alias for getDramaById */
 export const getTitleById = getDramaById;
 
-/**
- * Fetches all dramas for the administrative catalog.
- * Returns Supabase data ordered by creation date, or falls back to mock titles.
- */
-export async function getAdminDramas(): Promise<Drama[]> {
-  try {
-    const { data, error } = await contentClient
-      .from("titles")
-      .select("*")
-      .order("created_at", { ascending: false });
+export interface AdminDramaQueryOptions {
+  q?: string;
+  channel?: string;
+  status?: string;
+  page?: number;
+  pageSize?: number;
+  sort?: string;
+}
 
-    if (!error && data && data.length > 0) {
-      return data.map(mapTitleRowToTitle);
+export interface AdminDramasResult {
+  items: Drama[];
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+}
+
+/**
+ * Fetches dramas for the administrative catalog via the authenticated Admin API.
+ * Supports server-side search, channel filtering, status filtering, and pagination.
+ * Never falls back to mock titles.
+ */
+export async function getAdminDramas(
+  options?: AdminDramaQueryOptions
+): Promise<AdminDramasResult> {
+  const page = Math.max(1, options?.page || 1);
+  const pageSize = Math.min(250, Math.max(1, options?.pageSize || 20));
+
+  const params = new URLSearchParams();
+  if (options?.q) params.set("q", options.q);
+  if (options?.channel && options.channel !== "All Channels" && options.channel !== "All") {
+    params.set("channel", options.channel);
+  }
+  if (options?.status && options.status !== "all" && options.status !== "All Statuses" && options.status !== "All") {
+    params.set("status", options.status);
+  }
+  params.set("page", String(page));
+  params.set("pageSize", String(pageSize));
+  if (options?.sort) params.set("sort", options.sort);
+
+  const queryString = `?${params.toString()}`;
+
+  // 1. Browser context: call the authenticated admin API endpoint
+  if (typeof window !== "undefined") {
+    try {
+      const res = await fetch(`/api/admin/dramas${queryString}`);
+      if (res.ok) {
+        const json = (await readJsonSafely(res)) as {
+          success?: boolean;
+          data?: AdminDramasResult | Drama[];
+        } | null;
+        if (json?.success && json.data) {
+          if ("items" in json.data && Array.isArray(json.data.items)) {
+            return json.data as AdminDramasResult;
+          }
+          if (Array.isArray(json.data)) {
+            return {
+              items: json.data,
+              total: json.data.length,
+              page,
+              pageSize,
+              totalPages: Math.max(1, Math.ceil(json.data.length / pageSize)),
+            };
+          }
+        }
+      }
+    } catch (err) {
+      console.warn("Admin API getAdminDramas fetch failed:", err);
+    }
+    return {
+      items: [],
+      total: 0,
+      page,
+      pageSize,
+      totalPages: 1,
+    };
+  }
+
+  // 2. Server-side or Node test context
+  try {
+    if (process.env.SUPABASE_CONTENT_SERVICE_ROLE_KEY) {
+      const adminClient = getContentAdminClient();
+      let query = adminClient
+        .from("titles")
+        .select("*", { count: "exact" });
+
+      if (options?.q?.trim()) {
+        query = query.ilike("title", `%${options.q.trim()}%`);
+      }
+      if (options?.channel && options.channel !== "All Channels" && options.channel !== "All") {
+        query = query.eq("channel_name", options.channel);
+      }
+      if (options?.status && options.status !== "all" && options.status !== "All Statuses" && options.status !== "All") {
+        query = query.eq("status", options.status);
+      }
+
+      const from = (page - 1) * pageSize;
+      const to = from + pageSize - 1;
+
+      query = query
+        .order("created_at", { ascending: false })
+        .order("id", { ascending: true })
+        .range(from, to);
+
+      const { data, count, error } = await query;
+      if (!error && data) {
+        const items = data.map(mapTitleRowToTitle);
+        const total = count !== null && count !== undefined ? count : items.length;
+        return {
+          items,
+          total,
+          page,
+          pageSize,
+          totalPages: Math.max(1, Math.ceil(total / pageSize)),
+        };
+      }
+    } else {
+      let query = contentClient
+        .from("titles")
+        .select("*", { count: "exact" });
+
+      if (options?.q?.trim()) {
+        query = query.ilike("title", `%${options.q.trim()}%`);
+      }
+      if (options?.channel && options.channel !== "All Channels" && options.channel !== "All") {
+        query = query.eq("channel_name", options.channel);
+      }
+      if (options?.status && options.status !== "all" && options.status !== "All Statuses" && options.status !== "All") {
+        query = query.eq("status", options.status);
+      }
+
+      const from = (page - 1) * pageSize;
+      const to = from + pageSize - 1;
+
+      query = query
+        .order("created_at", { ascending: false })
+        .order("id", { ascending: true })
+        .range(from, to);
+
+      const { data, count, error } = await query;
+      if (!error && data) {
+        const items = data.map(mapTitleRowToTitle);
+        const total = count !== null && count !== undefined ? count : items.length;
+        return {
+          items,
+          total,
+          page,
+          pageSize,
+          totalPages: Math.max(1, Math.ceil(total / pageSize)),
+        };
+      }
     }
   } catch (err) {
-    console.warn("Failed to fetch admin dramas from Supabase:", err);
+    console.warn("Database getAdminDramas lookup failed:", err);
   }
-  return mockTitles;
+
+  return {
+    items: [],
+    total: 0,
+    page,
+    pageSize,
+    totalPages: 1,
+  };
 }
 
 export interface UpdateDramaPayload {

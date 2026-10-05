@@ -3,7 +3,12 @@ import { requireAdmin } from "@/lib/auth/require-admin";
 import { getContentAdminClient } from "@/lib/supabase/content";
 import { mapTitleRowToTitle } from "@/lib/services/content.service";
 import { apiError, apiSuccess } from "@/lib/api/responses";
-import { validateDramaPayload } from "@/lib/validation/drama";
+import {
+  validateDramaPayload,
+  escapeLikePattern,
+  DRAMA_STATUSES,
+  type DramaStatus,
+} from "@/lib/validation/drama";
 import { resolveChannelByName } from "@/lib/admin/resolve-channel";
 import type { Database } from "@/types/supabase-content";
 
@@ -29,9 +34,9 @@ function slugifyTitle(title: string): string {
 
 /**
  * GET /api/admin/dramas
- * Lists every drama (all statuses) from the Content DB. Admin only.
+ * Lists every drama (all statuses) with server-side search, filtering, and pagination. Admin only.
  */
-export async function GET() {
+export async function GET(request: NextRequest) {
   const auth = await requireAdmin();
   if (!auth.authorized) {
     return auth.response;
@@ -39,17 +44,72 @@ export async function GET() {
 
   try {
     const adminClient = getContentAdminClient();
-    const { data: rows, error } = await adminClient
+    const url = request ? new URL(request.url) : new URL("http://localhost/api/admin/dramas");
+    const q = url.searchParams.get("q")?.trim() || "";
+    const channel = url.searchParams.get("channel")?.trim() || "";
+    const statusParam = url.searchParams.get("status")?.trim() || "";
+    const pageParam = parseInt(url.searchParams.get("page") || "1", 10);
+    const pageSizeParam = parseInt(url.searchParams.get("pageSize") || "20", 10);
+    const sort = url.searchParams.get("sort")?.trim() || "newest";
+
+    const page = Math.max(1, isNaN(pageParam) ? 1 : pageParam);
+    const pageSize = Math.min(250, Math.max(1, isNaN(pageSizeParam) ? 20 : pageSizeParam));
+    const from = (page - 1) * pageSize;
+    const to = from + pageSize - 1;
+
+    let query = adminClient
       .from("titles")
-      .select("*")
-      .order("created_at", { ascending: false });
+      .select("*", { count: "exact" });
+
+    if (q) {
+      query = query.ilike("title", `%${escapeLikePattern(q)}%`);
+    }
+
+    if (channel && channel !== "All Channels" && channel !== "All") {
+      query = query.eq("channel_name", channel);
+    }
+
+    if (
+      statusParam &&
+      statusParam !== "all" &&
+      statusParam !== "All" &&
+      statusParam !== "All Statuses" &&
+      DRAMA_STATUSES.includes(statusParam as DramaStatus)
+    ) {
+      query = query.eq("status", statusParam);
+    }
+
+    if (sort === "title_asc") {
+      query = query.order("title", { ascending: true }).order("id", { ascending: true });
+    } else if (sort === "views_desc") {
+      query = query.order("views_count", { ascending: false, nullsFirst: false }).order("id", { ascending: true });
+    } else if (sort === "oldest") {
+      query = query.order("created_at", { ascending: true }).order("id", { ascending: true });
+    } else {
+      // Default: newest first
+      query = query.order("created_at", { ascending: false }).order("id", { ascending: true });
+    }
+
+    query = query.range(from, to);
+
+    const { data: rows, count, error } = await query;
 
     if (error) {
       console.error("[GET /api/admin/dramas] Supabase error:", error);
       return apiError("DATABASE_ERROR", "Failed to load dramas.", 500);
     }
 
-    return apiSuccess((rows ?? []).map(mapTitleRowToTitle));
+    const items = (rows ?? []).map(mapTitleRowToTitle);
+    const total = count !== null && count !== undefined ? count : items.length;
+    const totalPages = Math.max(1, Math.ceil(total / pageSize));
+
+    return apiSuccess({
+      items,
+      total,
+      page,
+      pageSize,
+      totalPages,
+    });
   } catch (err) {
     console.error("[GET /api/admin/dramas] Unexpected error:", err);
     return apiError("DATABASE_ERROR", "Failed to load dramas.", 500);

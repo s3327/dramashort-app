@@ -1106,3 +1106,60 @@
   - `npx tsc --noEmit`: 0 type errors.
   - `npm run lint`: clean (0 errors, 0 warnings).
   - `npm run build`: successfully generated all 40 pages with 0 errors.
+---
+
+## [2026-10-06] Task 12.2: Admin Catalog Reads Through the Authenticated Admin API
+* **Milestone**: Phase 12 (Functional Bug Fixes & Data Integrity) — Task 12.2
+* **Goal**: Ensure the administrative catalog reads through privileged service-role APIs rather than RLS-restricted public endpoints, surface non-published statuses (Draft, Scheduled, Archived), implement server-side catalog filtering & pagination, eliminate mock catalog state, and automatically redirect newly created dramas into edit mode.
+* **Implementation Steps Taken**:
+  1. Authenticated Admin Catalog API Route (`app/api/admin/dramas/route.ts` & alias `app/api/admin/titles/route.ts`):
+     - Added query parameter support for `q`, `channel`, `status`, `page`, `pageSize`, and `sort`.
+     - Built query using `getContentAdminClient()` protected by `requireAdmin()`, querying across all drama statuses (`Draft`, `Published`, `Scheduled`, `Archived`).
+     - Applied case-insensitive search (`.ilike`) with SQL LIKE wildcard escaping via `escapeLikePattern(q)`.
+     - Enforced valid status filtering checking against `DRAMA_STATUSES` allowlist.
+     - Implemented server-side pagination with bounded page sizes (1 to 250 rows) and deterministic tie-breaker sorting.
+     - Returned uniform envelope: `{ success: true, data: { items, total, page, pageSize, totalPages } }`.
+  2. Content Service Integration (`lib/services/content.service.ts`):
+     - Updated `getAdminDramas(options)` to consume `/api/admin/dramas` in the browser or direct service role client on server. Removed all fallbacks to mock titles (`mockTitles`), returning empty items on missing data or errors.
+     - Updated `getDramaById(id)` to query `/api/admin/dramas/:id` in browser contexts (bypassing RLS), enabling newly created `Draft` dramas to open directly in `/admin/dramas/:id/edit`. Removed mock item fallback.
+     - Exported `type TitleStatus` and `type AdminDramasResult`.
+  3. Dynamic Admin Catalog UI (`app/admin/titles/page.tsx`):
+     - Removed all imports of `adminTitles` from `@/data/titles.mock`.
+     - Initialized `dramas` as empty array `[]` and `isLoading: true`.
+     - Added responsive animated loading skeletons for both list table view (pulsing rows) and card grid view (pulsing cards).
+     - Added `Status` dropdown filter (`all`, `Draft`, `Published`, `Scheduled`, `Archived`) alongside channel and search filters.
+     - Wired server-side pagination with `<Pagination>` component and debounced search input (350ms).
+     - Synchronized active filters (`?q=`, `?channel=`, `?status=`, `?page=`, `?pageSize=`) into URL query parameters without scroll jumps.
+     - Wrapped client component reading `useSearchParams()` inside `<Suspense>` boundary.
+     - Updated `handleCreateDrama`: upon successful creation, immediately navigates to `/admin/dramas/${res.data.id}/edit` so administrators can configure drama episodes and metadata.
+  4. Automated Verification Suite (`__tests__/admin/admin-catalog-reads.test.ts` & `__tests__/security/admin-routes.test.ts`):
+     - Created 10 automated unit and integration tests covering:
+       - Multi-status drama retrieval via service role (`Draft`, `Published`, `Scheduled`, `Archived`).
+       - Query filtering by status (`?status=Draft`).
+       - Channel filtering (`?channel=Moonlight Dramas`).
+       - ILIKE title search with wildcard escaping.
+       - Server-side pagination range calculation and metadata generation.
+       - Retrieval of Draft dramas by UUID via `GET /api/admin/dramas/:id`.
+       - HTTP 404 `NOT_FOUND` response for non-existent drama UUIDs.
+       - Zero-mock service contracts for `getAdminDramas` and `getDramaById`.
+       - Admin UI file invariants preventing mock data imports and confirming route navigation.
+     - Updated `admin-routes.test.ts` to support chainable query builder mocks and NextRequest arguments.
+* **Key File Diffs**:
+  - Created:
+    - `app/api/admin/titles/route.ts`
+    - `__tests__/admin/admin-catalog-reads.test.ts`
+  - Modified:
+    - `app/api/admin/dramas/route.ts`
+    - `lib/services/content.service.ts`
+    - `app/admin/titles/page.tsx`
+    - `__tests__/security/admin-routes.test.ts`
+    - `ROADMAP.md`
+    - `CHANGELOG-DEV.md`
+* **Regression Analysis & Cross-System Impact**:
+  - Test runner expanded from 300 tests (84 suites) to 310 tests (89 suites) with 100% pass rate.
+  - Production build cleanly compiled all 41 routes with 0 errors.
+  - Alias `/admin/dramas` and `/api/admin/titles` remain 100% synchronized with primary handlers.
+* **Verification**:
+  - `npm test`: 310 / 310 tests pass across 89 suites (0 failures).
+  - `npx tsc --noEmit`: 0 type errors.
+  - `npm run build`: successfully generated all 41 pages with 0 errors.
