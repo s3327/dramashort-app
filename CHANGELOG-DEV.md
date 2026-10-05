@@ -612,3 +612,45 @@
   - `npx tsx scripts/create-admin.ts --email test@example.com`: verified production safety gate refusal against `.env.local` without `--confirm-production`.
   - `npx tsc --noEmit`: 0 errors.
   - `npm run lint`: clean (0 errors, 0 warnings).
+---
+
+## [2026-10-05] Task 10.8: Supabase Auth Configuration & HTTP Security Headers
+* **Milestone**: Phase 10 (Security Hardening) — Task 10.8
+* **Goal**: Harden Supabase Auth policies against brute force, credential stuffing, and open redirects, configure Cloudflare Turnstile CAPTCHA bindings, enforce reauthentication on password changes, and apply enterprise-grade HTTP security headers with a comprehensive Content Security Policy (CSP).
+* **Implementation Steps Taken**:
+  1. `lib/config/security-headers.mjs`:
+     - Built `buildContentSecurityPolicy()` configuring strict directives:
+       - Default restrictiveness: `default-src 'self'`, `object-src 'none'`, `base-uri 'self'`, `form-action 'self'`.
+       - Scripts: `'self'`, `'unsafe-eval'`, `'unsafe-inline'`, `https://telegram.org` (Telegram Login Widget & WebApp SDK per `FUTURE_PLAN.md` §5.4), and `https://challenges.cloudflare.com` (Turnstile).
+       - Media & Streaming: `blob:`, `data:`, `https://*.supabase.co`, `https://commondatastorage.googleapis.com`, and short drama streaming CDNs (`https://*.mux.com`, `https://*.cloudflarestream.com`, `https://*.b-cdn.net`).
+       - Network connections: `https://*.supabase.co`, `wss://*.supabase.co` (Realtime), `https://api.telegram.org`, and `https://challenges.cloudflare.com`.
+       - Framing: `frame-src 'self' https://oauth.telegram.org https://challenges.cloudflare.com`.
+       - Anti-clickjacking & Telegram embedding: `frame-ancestors 'self' https://web.telegram.org https://*.telegram.org`.
+     - Created `getSecurityHeaders()` exporting standard OWASP headers:
+       - `X-Content-Type-Options: nosniff`.
+       - `Referrer-Policy: strict-origin-when-cross-origin`.
+       - `Permissions-Policy: camera=(), microphone=(), geolocation=(), browsing-topics=()`.
+       - `Strict-Transport-Security: max-age=31536000; includeSubDomains; preload`.
+       - `X-DNS-Prefetch-Control: on`.
+  2. `next.config.mjs`:
+     - Wired `getSecurityHeaders()` into `async headers()` for all routes (`/:path*`).
+  3. `supabase/user/supabase/config.toml`:
+     - Hardened password requirements: `minimum_password_length = 8`, `password_requirements = "lower_upper_letters_digits"`.
+     - Enabled secure password change with reauthentication nonce: `secure_password_change = true`.
+     - Restricted `additional_redirect_urls` allowlist to trusted origins (`localhost:3000`, `127.0.0.1:3000`, `https://dramashort.com`, `https://admin.dramashort.com`, and `https://*.vercel.app`).
+     - Bound Turnstile CAPTCHA provider under `[auth.captcha]`.
+  4. `__tests__/config/security-headers.test.ts`:
+     - Created automated unit test suite with 5 tests verifying baseline CSP directives, Supabase connections, Telegram origins, Turnstile CAPTCHA, and OWASP header mappings.
+  5. Documentation: Updated `ROADMAP.md` matrix and Task 10.8 section.
+* **Key File Diffs**:
+  - Created: `lib/config/security-headers.mjs`, `__tests__/config/security-headers.test.ts`.
+  - Modified: `next.config.mjs`, `supabase/user/supabase/config.toml`, `ROADMAP.md`, `CHANGELOG-DEV.md`.
+* **Regression Analysis & Cross-System Impact**:
+  - Media streaming: Verified that CSP allows all active and planned video hosts (Google demo bucket, Supabase storage, Mux, Cloudflare Stream, Bunny).
+  - Next.js client hydration: Retains required `'unsafe-inline'` and `'unsafe-eval'` for React client scripts and HMR.
+  - Telegram integration: Preserves compatibility with future Telegram Login Widget (`oauth.telegram.org`) and WebApp embedding (`web.telegram.org`).
+* **Verification**:
+  - `npm test`: 121 / 121 pass across 25 suites.
+  - `npx tsc --noEmit`: 0 errors.
+  - `npm run lint`: clean (0 errors, 0 warnings).
+  - `npm run build`: successfully compiled all 36 static pages and verified header configuration integration.

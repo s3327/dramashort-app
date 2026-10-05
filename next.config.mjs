@@ -1,10 +1,19 @@
 import { imageRemotePatterns } from "./lib/config/image-hosts.mjs";
+import { getSecurityHeaders } from "./lib/config/security-headers.mjs";
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
   images: {
     remotePatterns: imageRemotePatterns,
+  },
+  async headers() {
+    return [
+      {
+        source: "/:path*",
+        headers: getSecurityHeaders(),
+      },
+    ];
   },
   async redirects() {
     return [

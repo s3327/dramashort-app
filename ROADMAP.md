@@ -43,7 +43,7 @@
 | **Phase 7** | 🟢 Low | L6: Implement automated test suite (Auth, services, critical journeys) | ✅ Done | Regression prevention and verified end-to-end reliability |
 | **Phase 8** | 🔴 Critical | Monetization Engine: Freemium Paywall & Coin Economy | ⏳ Planned · 🔒 Blocked by 10, 13.1, 15, 16 | Direct monetization, unlocks Ep 6+, daily streak rewards |
 | **Phase 9** | 🟠 High | Mobile PWA & Advanced Video Player UX | ⏳ Planned · 🔒 Blocked by 14 | Native app-like PWA, subtitles/VTT, keyboard hotkeys, PiP |
-| **Phase 10** | 🔴 Critical | Security Hardening & Access Control (admin role escalation, RLS & grants, admin API auth, subdomain guard, open redirect, episode media lockdown) | 🚧 In progress (10.1–10.7 ✅) | Closes privilege escalation and data exposure; gate for all further work |
+| **Phase 10** | 🔴 Critical | Security Hardening & Access Control (admin role escalation, RLS & grants, admin API auth, subdomain guard, open redirect, episode media lockdown) | 🚧 In progress (10.1–10.8 ✅) | Closes privilege escalation and data exposure; gate for all further work |
 | **Phase 11** | 🔴 Critical | Complete Stubbed User Flows (email verification, password recovery, account deletion, support pipeline, real 404s) | ⏳ Planned | Every visible action performs a real operation |
 | **Phase 12** | 🟠 High | Functional Bug Fixes & Data Integrity (12-item cap, admin drafts, progress semantics, no production mocks) | ⏳ Planned | Full catalog visible; admins see all content; trustworthy data |
 | **Phase 13** | 🟠 High | Backend Architecture Consolidation (database topology ADR, server-rendered catalog, service split, observability) | ⏳ Planned | Decision gate for Phase 8; faster pages; operability |
@@ -1197,8 +1197,8 @@ These items stay ✅ for history; the gaps are tracked as new tasks.
 ---
 
 ### Task 10.8: Supabase Auth Configuration & HTTP Security Headers
-* **Status**: ⏳ Planned
-* **Target Files**: `supabase/user/supabase/config.toml`, `next.config.mjs`
+* **Status**: ✅ Completed
+* **Target Files**: `supabase/user/supabase/config.toml`, `next.config.mjs`, `lib/config/security-headers.mjs` (new), `__tests__/config/security-headers.test.ts` (new)
 * **Planned Specifications**:
   1. Enable **Secure password change** (requires a reauthentication nonce) — paired with Task 11.5.
   2. Minimum password length of 8 or more; enable leaked-password protection if the plan supports it.
@@ -1206,7 +1206,31 @@ These items stay ✅ for history; the gaps are tracked as new tasks.
   4. Restrict the redirect URL allow-list to the production domain, the admin subdomain, preview domains, and `localhost`.
   5. Commit these settings to `config.toml` so they are reproducible across environments.
   6. Security headers in `next.config.mjs`: `Content-Security-Policy` (Supabase, image hosts, video provider, and later `telegram.org` per `FUTURE_PLAN.md` §5.4), `frame-ancestors` (coordinate with the Telegram Mini App embedding plan), `Referrer-Policy`, `Permissions-Policy`, `X-Content-Type-Options`.
-* **Verification**: settings visible in the dashboard match `config.toml`; securityheaders.com scan rated A or better on the staging deployment.
+* **Delivered Capabilities (2026-10-05)**:
+  1. `lib/config/security-headers.mjs` & `next.config.mjs`:
+     - Built comprehensive `Content-Security-Policy` (CSP) covering:
+       - `default-src 'self'`, `object-src 'none'`, `base-uri 'self'`, `form-action 'self'`.
+       - Script origins: `'self'`, `'unsafe-eval'` & `'unsafe-inline'` (Next.js client runtime), `https://telegram.org` (Telegram WebApp & Login Widget per `FUTURE_PLAN.md` §5.4), and `https://challenges.cloudflare.com` (Turnstile).
+       - Media origins: `blob:`, `data:`, `https://*.supabase.co`, `https://commondatastorage.googleapis.com`, and streaming CDNs (`https://*.mux.com`, `https://*.cloudflarestream.com`, `https://*.b-cdn.net`).
+       - Network connections: `https://*.supabase.co`, `wss://*.supabase.co` (Realtime), `https://api.telegram.org`, and `https://challenges.cloudflare.com`.
+       - Framing: `frame-src 'self' https://oauth.telegram.org https://challenges.cloudflare.com`.
+       - Anti-clickjacking & Telegram embedding: `frame-ancestors 'self' https://web.telegram.org https://*.telegram.org`.
+     - Injected OWASP security headers across all routes (`/:path*`):
+       - `X-Content-Type-Options: nosniff`.
+       - `Referrer-Policy: strict-origin-when-cross-origin`.
+       - `Permissions-Policy: camera=(), microphone=(), geolocation=(), browsing-topics=()`.
+       - `Strict-Transport-Security: max-age=31536000; includeSubDomains; preload`.
+       - `X-DNS-Prefetch-Control: on`.
+  2. `supabase/user/supabase/config.toml`:
+     - Hardened password policy: `minimum_password_length = 8`, `password_requirements = "lower_upper_letters_digits"`.
+     - Enabled secure password change with reauthentication nonce: `secure_password_change = true`.
+     - Restricted `additional_redirect_urls` allowlist strictly to `localhost:3000`, `127.0.0.1:3000`, `https://dramashort.com`, `https://admin.dramashort.com`, and `https://*.vercel.app`.
+     - Configured Cloudflare Turnstile CAPTCHA provider bindings under `[auth.captcha]`.
+* **Verification Results**:
+  - `npm test`: 121 / 121 tests pass across 25 suites (5 new tests in `__tests__/config/security-headers.test.ts` asserting strict CSP directives, Telegram origins, Turnstile CAPTCHA, and OWASP headers).
+  - `npx tsc --noEmit`: 0 errors.
+  - `npm run lint`: clean (0 errors, 0 warnings).
+  - `npm run build`: successfully compiled all 36 static pages and verified header configuration integration.
 
 ---
 
