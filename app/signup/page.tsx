@@ -25,7 +25,7 @@ function SignUpForm() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isGoogleSubmitting, setIsGoogleSubmitting] = useState(false);
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (password !== confirmPassword) {
       setPasswordError("Passwords don't match.");
@@ -34,7 +34,10 @@ function SignUpForm() {
     setPasswordError("");
     setIsSubmitting(true);
 
-    const res = await signUp(email, password);
+    const formData = new FormData(e.currentTarget);
+    const displayName = (formData.get("displayName") as string)?.trim() || undefined;
+
+    const res = await signUp(email, password, displayName);
     if (res.error) {
       setPasswordError(res.error);
       setIsSubmitting(false);
@@ -42,6 +45,13 @@ function SignUpForm() {
     }
 
     const returnUrl = readReturnUrl(searchParams);
+
+    // If email confirmation is disabled and session was returned, navigate directly
+    if (!res.needsEmailVerification && res.session) {
+      router.push(returnUrl);
+      return;
+    }
+
     const params = new URLSearchParams({ email });
     if (returnUrl !== "/home") params.set("returnUrl", returnUrl);
     router.push(`/verify-email?${params.toString()}`);

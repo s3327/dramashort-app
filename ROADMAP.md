@@ -44,7 +44,7 @@
 | **Phase 8** | 🔴 Critical | Monetization Engine: Freemium Paywall & Coin Economy | ⏳ Planned · 🔒 Blocked by 10, 13.1, 15, 16 | Direct monetization, unlocks Ep 6+, daily streak rewards |
 | **Phase 9** | 🟠 High | Mobile PWA & Advanced Video Player UX | ⏳ Planned · 🔒 Blocked by 14 | Native app-like PWA, subtitles/VTT, keyboard hotkeys, PiP |
 | **Phase 10** | 🔴 Critical | Security Hardening & Access Control (admin role escalation, RLS & grants, admin API auth, subdomain guard, open redirect, episode media lockdown, CI gate) | ✅ Completed (10.1–10.9 ✅) | Closes privilege escalation and data exposure; gate for all further work |
-| **Phase 11** | 🔴 Critical | Complete Stubbed User Flows (email verification, password recovery, account deletion, support pipeline, real 404s) | ⏳ Planned | Every visible action performs a real operation |
+| **Phase 11** | 🔴 Critical | Complete Stubbed User Flows (email verification, password recovery, account deletion, support pipeline, real 404s) | 🚧 In progress (11.1 ✅) | Every visible action performs a real operation |
 | **Phase 12** | 🟠 High | Functional Bug Fixes & Data Integrity (12-item cap, admin drafts, progress semantics, no production mocks) | ⏳ Planned | Full catalog visible; admins see all content; trustworthy data |
 | **Phase 13** | 🟠 High | Backend Architecture Consolidation (database topology ADR, server-rendered catalog, service split, observability) | ⏳ Planned | Decision gate for Phase 8; faster pages; operability |
 | **Phase 14** | 🟠 High | Mobile-First Vertical Watch Experience & UI Polish | ⏳ Planned | Core 9:16 viewing experience on phones |
@@ -1265,16 +1265,32 @@ These items stay ✅ for history; the gaps are tracked as new tasks.
 > **Objective**: Every button a user can press performs the real operation or is hidden behind a feature flag. No simulated outcomes ship to production.
 
 ### Task 11.1: Real Email Verification on Signup
-* **Status**: ⏳ Planned
-* **Problem**: `app/verify-email/page.tsx` L20–26 calls `login()` without credentials (it returns an error that is ignored) and redirects to `/home`, so any code "verifies". `signUp()` does not set `emailRedirectTo`, and no route handles Supabase's confirmation link, so users who click the email link land on the landing page signed out.
-* **Target Files**: `app/verify-email/page.tsx`, `contexts/AuthContext.tsx`, `app/auth/confirm/route.ts` (new), Supabase email templates (`config.toml`)
-* **Planned Specifications**:
-  1. OTP-code verification (matches the existing code-entry UI): the "Confirm signup" template includes `{{ .Token }}`; add `verifySignupOtp(email, token)` → `supabase.auth.verifyOtp({ email, token, type: "email" })`.
-  2. Link fallback: `app/auth/confirm/route.ts` handles `token_hash` + `type` through `verifyOtp({ token_hash, type })` and redirects with `getSafeRedirect(next)`. The template link points to `{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type=email&next=<returnUrl>`.
-  3. Resend through `supabase.auth.resend({ type: "signup", email })` with a 60-second cooldown (same pattern as Task 4.4).
-  4. If email confirmation is disabled and `signUp()` returns a session, skip the verify page.
-  5. Guest favorites and history migrate after verification (existing auth-state sync).
-* **Verification**: a wrong code shows an error and stays on the page; the correct code signs the user in; the link flow lands signed-in on `returnUrl`.
+* **Status**: ✅ Completed
+* **Target Files**: `app/verify-email/page.tsx`, `contexts/AuthContext.tsx`, `app/signup/page.tsx`, `app/auth/confirm/route.ts` (new), `supabase/user/supabase/templates/confirmation.html` (new), `supabase/user/supabase/config.toml`, `__tests__/auth/email-verification.test.ts` (new)
+* **Delivered Capabilities**:
+  1. OTP-Code Verification (`contexts/AuthContext.tsx`, `app/verify-email/page.tsx`):
+     - Implemented `verifySignupOtp(email, token)` in `AuthContext` calling `supabase.auth.verifyOtp({ email, token, type: "signup" })` with fallback to `"email"`.
+     - Automatically establishes active Supabase auth session, synchronizes user profile, and triggers `syncGuestWatchHistory()` on verification.
+     - `app/verify-email/page.tsx` handles real submission, displays inline error banners on invalid/expired OTP codes, and shows loading spinners during verification.
+  2. Resend Cooldown & Delivery:
+     - Implemented `resendSignupOtp(email)` in `AuthContext` using `supabase.auth.resend({ type: "signup", email, options: { emailRedirectTo } })`.
+     - 60-second client-side cooldown countdown prevents resend spam and provides real-time user feedback.
+  3. Server Route Handler for Link Fallbacks (`app/auth/confirm/route.ts`):
+     - Created PKCE/SSR email confirmation route handling `token_hash` + `type` via `supabase.auth.verifyOtp({ token_hash, type })`.
+     - Validates destination parameter via `getSafeRedirect(next, "/home")` (strictly preventing open-redirects and login-loop paths).
+     - On successful link verification, sets session cookies and redirects to destination; on failure redirects to `/login?error=verification_failed`.
+  4. Signup Flow Integration (`app/signup/page.tsx`):
+     - Passes `displayName` to `signUp` options.
+     - If Supabase project has confirmations disabled and returns an active session immediately, skips verify-email page and redirects directly to `returnUrl`.
+     - If confirmations are required (`needsEmailVerification: true`), forwards email and sanitized `returnUrl` to `/verify-email`.
+  5. Supabase Template & Config (`supabase/user/supabase/templates/confirmation.html`, `config.toml`):
+     - Built branded email confirmation HTML template containing 6-digit OTP code (`{{ .Token }}`) and one-click direct confirmation button (`{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type=email`).
+     - Updated `config.toml` enabling email confirmations (`enable_confirmations = true`) and binding template path.
+* **Verification Results**:
+  - `npm test`: 235 / 235 tests pass across 52 suites (9 new tests in `__tests__/auth/email-verification.test.ts`).
+  - `npx tsc --noEmit`: 0 type errors.
+  - `npm run lint`: clean (0 errors, 0 warnings).
+  - `npm run build`: successfully generated all 37 pages including dynamic route `ƒ /auth/confirm`.
 
 ---
 

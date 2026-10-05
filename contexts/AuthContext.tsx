@@ -23,7 +23,22 @@ type AuthContextValue = {
   isLoggedIn: boolean;
   isLoading: boolean;
   login: (email?: string, password?: string) => Promise<{ error: string | null }>;
-  signUp: (email: string, password: string, displayName?: string) => Promise<{ error: string | null }>;
+  signUp: (
+    email: string,
+    password: string,
+    displayName?: string
+  ) => Promise<{
+    error: string | null;
+    needsEmailVerification: boolean;
+    session: Session | null;
+  }>;
+  verifySignupOtp: (
+    email: string,
+    token: string
+  ) => Promise<{ error: string | null }>;
+  resendSignupOtp: (
+    email: string
+  ) => Promise<{ error: string | null }>;
   logout: () => Promise<void>;
   updateDisplayName: (displayName: string) => Promise<boolean>;
   changePassword: (
@@ -116,8 +131,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const signUp = async (email: string, password: string, displayName?: string) => {
+  const signUp = async (
+    email: string,
+    password: string,
+    displayName?: string
+  ): Promise<{
+    error: string | null;
+    needsEmailVerification: boolean;
+    session: Session | null;
+  }> => {
     try {
+      const emailRedirectTo =
+        typeof window !== "undefined"
+          ? `${window.location.origin}/auth/confirm`
+          : undefined;
+
       const { data, error } = await supabase.auth.signUp({
         email,
         password,
@@ -125,6 +153,102 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           data: {
             full_name: displayName || splitEmail(email),
           },
+          emailRedirectTo,
+        },
+      });
+
+      if (error) {
+        return { error: error.message, needsEmailVerification: false, session: null };
+      }
+
+      if (data.session) {
+        setSession(data.session);
+        setUser(data.session.user);
+        if (data.session.user) {
+          await fetchProfile(data.session.user.id);
+          syncGuestWatchHistory(data.session.user.id);
+        }
+        return { error: null, needsEmailVerification: false, session: data.session };
+      }
+
+      // If user was created but session is null, email confirmation is required
+      return {
+        error: null,
+        needsEmailVerification: true,
+        session: null,
+      };
+    } catch (err: unknown) {
+      const message =
+        err instanceof Error ? err.message : "An unexpected error occurred during signup.";
+      return { error: message, needsEmailVerification: false, session: null };
+    }
+  };
+
+  const verifySignupOtp = async (
+    email: string,
+    token: string
+  ): Promise<{ error: string | null }> => {
+    try {
+      const trimmedEmail = email.trim();
+      const trimmedToken = token.trim();
+
+      let result = await supabase.auth.verifyOtp({
+        email: trimmedEmail,
+        token: trimmedToken,
+        type: "signup",
+      });
+
+      if (
+        result.error &&
+        (result.error.message.toLowerCase().includes("type") ||
+          result.error.status === 400)
+      ) {
+        result = await supabase.auth.verifyOtp({
+          email: trimmedEmail,
+          token: trimmedToken,
+          type: "email",
+        });
+      }
+
+      if (result.error) {
+        return { error: result.error.message };
+      }
+
+      if (result.data.session) {
+        setSession(result.data.session);
+        setUser(result.data.session.user);
+        if (result.data.session.user) {
+          await fetchProfile(result.data.session.user.id);
+          syncGuestWatchHistory(result.data.session.user.id);
+        }
+      } else if (result.data.user) {
+        setUser(result.data.user);
+        await fetchProfile(result.data.user.id);
+        syncGuestWatchHistory(result.data.user.id);
+      }
+
+      return { error: null };
+    } catch (err: unknown) {
+      const message =
+        err instanceof Error ? err.message : "Failed to verify confirmation code.";
+      return { error: message };
+    }
+  };
+
+  const resendSignupOtp = async (
+    email: string
+  ): Promise<{ error: string | null }> => {
+    try {
+      const emailRedirectTo =
+        typeof window !== "undefined"
+          ? `${window.location.origin}/auth/confirm`
+          : undefined;
+
+      const { error } = await supabase.auth.resend({
+        type: "signup",
+        email: email.trim(),
+        options: {
+          emailRedirectTo,
         },
       });
 
@@ -135,7 +259,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return { error: null };
     } catch (err: unknown) {
       const message =
-        err instanceof Error ? err.message : "An unexpected error occurred during signup.";
+        err instanceof Error ? err.message : "Failed to resend confirmation code.";
       return { error: message };
     }
   };
@@ -291,6 +415,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         isLoading,
         login,
         signUp,
+        verifySignupOtp,
+        resendSignupOtp,
         logout,
         updateDisplayName,
         changePassword,

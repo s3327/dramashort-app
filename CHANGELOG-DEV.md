@@ -705,3 +705,48 @@
   - `npx tsc --noEmit`: 0 errors.
   - `npm run lint`: clean (0 errors, 0 warnings).
   - `npm run build`: successfully compiled all 36 static pages, dynamic route handlers, and middleware bundle.
+---
+
+## [2026-10-05] Task 11.1: Real Email Verification on Signup & Confirmation Route
+* **Milestone**: Phase 11 (Authentication & User Management Completeness) — Task 11.1
+* **Goal**: Implement real email verification on signup, replacing mock code bypasses with genuine Supabase GoTrue OTP verification, branded responsive HTML email templates, server-side PKCE link confirmation route handler (`/auth/confirm`), and 60s cooldown resend functionality.
+* **Implementation Steps Taken**:
+  1. Branded Confirmation Template & Supabase GoTrue Configuration:
+     - Authored responsive HTML email template at `supabase/user/supabase/templates/confirmation.html` featuring dark aesthetic branding (`#111827`, `#6366f1`), displaying both the 6-digit OTP verification code (`{{ .Token }}`) and one-click direct confirmation button (`{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type=email`).
+     - Configured `supabase/user/supabase/config.toml` under `[auth.email]` to enable `enable_confirmations = true` and bound `[auth.email.template.confirmation]` to the template.
+  2. Server-Side Link Confirmation Route Handler (`app/auth/confirm/route.ts`):
+     - Created PKCE/SSR email token confirmation route handler reading `token_hash`, `type` (`email` / `signup`), and destination redirect `next`.
+     - Integrated `createUserServerClient` to call `verifyOtp({ token_hash, type })` and persist session cookies.
+     - Hardened redirect handling with `getSafeRedirect(next, "/home")` to prevent open-redirect vulnerabilities and login-loop hazards.
+  3. AuthContext Verification Services (`contexts/AuthContext.tsx`):
+     - Updated `signUp()` to supply `emailRedirectTo: `${origin}/auth/confirm`` and return `{ error, needsEmailVerification, session }`.
+     - Implemented `verifySignupOtp(email, token)`: verifies OTP code against Supabase auth using `type: 'signup'` (with fallback to `type: 'email'`), updates state, and invokes `syncGuestWatchHistory()`.
+     - Implemented `resendSignupOtp(email)`: triggers `supabase.auth.resend({ type: 'signup', email, options: { emailRedirectTo } })`.
+  4. User Interface Integration:
+     - Updated `app/signup/page.tsx` to handle `needsEmailVerification`: skips `/verify-email` when session is created immediately (when confirmations are disabled in dev), and safely redirects to `/verify-email?email=...&returnUrl=...` when verification is required.
+     - Hardened `app/verify-email/page.tsx`: replaced mock `login()` call with `verifySignupOtp()`, implemented `resendSignupOtp()` with 60s countdown timer, added inline error alert banner and loading states.
+  5. Automated Verification Test Suite (`__tests__/auth/email-verification.test.ts`):
+     - Added 9 unit and integration tests verifying token verification success, safe redirect sanitization, open-redirect blocking, missing parameter handling, GoTrue verification failure handling, and template placeholder validation.
+  6. Roadmap Progress:
+     - Marked Task 11.1 as ✅ Completed and updated Phase 11 milestone status in `ROADMAP.md`.
+* **Key File Diffs**:
+  - Created:
+    - `app/auth/confirm/route.ts`
+    - `supabase/user/supabase/templates/confirmation.html`
+    - `__tests__/auth/email-verification.test.ts`
+  - Modified:
+    - `contexts/AuthContext.tsx`
+    - `app/signup/page.tsx`
+    - `app/verify-email/page.tsx`
+    - `supabase/user/supabase/config.toml`
+    - `ROADMAP.md`
+    - `CHANGELOG-DEV.md`
+* **Regression Analysis & Cross-System Impact**:
+  - Test suite grew to 235 tests across 50 suites with 100% pass rate.
+  - Full TypeScript type-checking and Next.js build compilation confirmed 37 routes with zero lint or build regressions.
+  - Backward compatibility preserved for direct logins and guests.
+* **Verification**:
+  - `npm test`: 235 / 235 tests pass across 50 suites (0 failures).
+  - `npx tsc --noEmit`: 0 errors.
+  - `npm run lint`: clean (0 errors, 0 warnings).
+  - `npm run build`: successfully generated all 37 pages including dynamic route `ƒ /auth/confirm`.
