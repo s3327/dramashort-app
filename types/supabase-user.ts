@@ -142,6 +142,50 @@ export type Database = {
         }
         Relationships: []
       }
+      support_tickets: {
+        Row: {
+          category: string
+          context: Json
+          created_at: string
+          email: string
+          id: string
+          message: string
+          status: string
+          subject: string
+          user_id: string | null
+        }
+        Insert: {
+          category: string
+          context?: Json
+          created_at?: string
+          email: string
+          id?: string
+          message: string
+          status?: string
+          subject: string
+          user_id?: string | null
+        }
+        Update: {
+          category?: string
+          context?: Json
+          created_at?: string
+          email?: string
+          id?: string
+          message?: string
+          status?: string
+          subject?: string
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "support_tickets_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never

@@ -841,3 +841,63 @@
   - `npx tsc --noEmit`: 0 type errors.
   - `npm run lint`: clean (0 errors, 0 warnings).
   - `npm run build`: successfully generated all 39 pages including dynamic route `ƒ /api/account`.
+---
+
+## [2026-10-05] Task 11.4: Support Contact & "Report Issue" Pipeline
+* **Milestone**: Phase 11 (Authentication & User Management Completeness) — Task 11.4
+* **Goal**: Replace mock `Math.random() > 0.15` contact submission with an authentic end-to-end support ticket pipeline, structured diagnostic context for video playback issue reporting, rate-limiting and anti-spam protection, dedicated User DB persistence (`public.support_tickets`), and Telegram ops bot notification readiness.
+* **Implementation Steps Taken**:
+  1. User Database Migration (`supabase/user/supabase/migrations/20261005160000_support_tickets.sql`):
+     - Created `public.support_tickets` table:
+       - Columns: `id UUID PRIMARY KEY`, `user_id UUID REFERENCES auth.users(id) ON DELETE SET NULL`, `email TEXT NOT NULL`, `category TEXT NOT NULL CHECK (category IN ('general', 'playback', 'billing', 'content', 'account'))`, `subject TEXT NOT NULL`, `message TEXT NOT NULL`, `context JSONB NOT NULL DEFAULT '{}'::jsonb`, `status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'in_progress', 'resolved'))`, `created_at TIMESTAMPTZ NOT NULL DEFAULT now()`.
+       - Indexes: `idx_support_tickets_user_id`, `idx_support_tickets_status`, `idx_support_tickets_category`, `idx_support_tickets_created_at`.
+       - Security & RLS: enabled RLS, revoked all privileges from `anon` and `authenticated` roles, granted exclusive access to `service_role`.
+  2. Database Schema Types (`types/supabase-user.ts`):
+     - Added `support_tickets` definition to `Database["public"]["Tables"]` enabling strict type checking on server writes.
+  3. Shared Types & Rate Limiting (`lib/support/types.ts`, `lib/support/rate-limiter.ts`):
+     - Created `lib/support/types.ts` defining `SUPPORT_CATEGORIES` and `SupportCategory` type, decoupled from server-only imports.
+     - Created `lib/support/rate-limiter.ts` with sliding-window in-memory rate limiter enforcing maximum 5 submissions per hour per user/IP, with `Retry-After` calculation and test isolation hooks.
+  4. Server Route Handler (`app/api/support/route.ts`):
+     - Implemented `POST /api/support` handling ticket ingestion.
+     - Anti-spam & Honeypot: rejects submissions containing filled bot honeypot fields (`hp`, `honeypot`, `website`) with `400 VALIDATION_ERROR`.
+     - Validates payload: RFC-compliant email, category enum validation, subject length (3–200 chars), message length (10–4000 chars), context payload size cap (10KB).
+     - Identifies optional user session: links `user_id` if authenticated; supports guest submissions with `user_id = null`.
+     - Inserts record into `support_tickets` via privileged `createUserServiceRoleClient()`.
+     - Ops Channel Notification: non-blocking Telegram notification dispatch when `TELEGRAM_BOT_TOKEN` and `TELEGRAM_OPS_CHAT_ID` are configured.
+     - Returns uniform envelope `201 Created` with ticket reference ID.
+  5. Interactive Contact & Support Page (`app/contact/page.tsx`):
+     - Removed `Math.random() > 0.15` simulated outcome.
+     - Parses URL search parameters for prefilled context (`category`, `title`, `titleName`, `ep`, `subject`, `message`).
+     - Renders diagnostic banner when reporting playback issues from watch stage (`Reporting issue for: <Title> (Episode <n>)`).
+     - Pre-fills email if user is authenticated via `useAuth()`.
+     - Submits payload to `/api/support` with hidden honeypot field and loading spinner.
+     - Displays feedback modal with real ticket reference ID (`#<ID>`) or specific server error messages.
+  6. Structured Context in Watch Page (`app/watch/[slug]/page.tsx`):
+     - Removed legacy `buildReportMessage` plaintext boilerplate generator.
+     - Updated "Report Issue" action button to link to `/contact?category=playback&title=<slug>&ep=<n>&titleName=<title>`.
+  7. API Response Error Codes (`lib/api/responses.ts`):
+     - Added `TOO_MANY_REQUESTS` to `ApiErrorCode`.
+  8. Automated Verification Test Suite (`__tests__/support/support-tickets.test.ts`):
+     - Created 14 unit and integration tests covering SQL migration contracts, schema constraints, index definitions, service-role privileges, route handler JSON validation, honeypot rejection, field boundary checks, guest ticket creation, authenticated member ticket creation, database failure handling, rate limit enforcement (5/hr with `Retry-After`), and watch page structured link contracts.
+* **Key File Diffs**:
+  - Created:
+    - `supabase/user/supabase/migrations/20261005160000_support_tickets.sql`
+    - `lib/support/types.ts`
+    - `lib/support/rate-limiter.ts`
+    - `app/api/support/route.ts`
+    - `__tests__/support/support-tickets.test.ts`
+  - Modified:
+    - `types/supabase-user.ts`
+    - `lib/api/responses.ts`
+    - `app/contact/page.tsx`
+    - `app/watch/[slug]/page.tsx`
+    - `ROADMAP.md`
+    - `CHANGELOG-DEV.md`
+* **Regression Analysis & Cross-System Impact**:
+  - Test runner expanded to 266 tests across 67 test suites with 100% pass rate.
+  - Zero disruption to existing playback, navigation, or catalog pages.
+* **Verification**:
+  - `npm test`: 266 / 266 tests pass across 67 suites (0 failures).
+  - `npx tsc --noEmit`: 0 type errors.
+  - `npm run lint`: clean (0 errors, 0 warnings).
+  - `npm run build`: successfully generated all 40 pages including dynamic route `ƒ /api/support` and static page `○ /contact`.

@@ -24,6 +24,7 @@ export type ApiErrorCode =
   | "REAUTHENTICATION_REQUIRED"
   | "DELETION_FAILED"
   | "INVALID_CREDENTIALS"
+  | "TOO_MANY_REQUESTS"
   | "INTERNAL_ERROR";
 
 export interface ApiErrorBody {

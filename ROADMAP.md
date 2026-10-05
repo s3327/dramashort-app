@@ -1354,16 +1354,32 @@ These items stay ✅ for history; the gaps are tracked as new tasks.
 ---
 
 ### Task 11.4: Support Contact & "Report Issue" Pipeline
-* **Status**: ⏳ Planned
-* **Problem**: `app/contact/page.tsx` L34–41 picks the outcome with `Math.random() > 0.15`. Messages go nowhere, and 15% of users see a random failure. "Report Issue" on the watch page routes here, so playback problem reports are lost.
-* **Target Files**: user DB migration `support_tickets` (new), `app/api/support/route.ts` (new), `app/contact/page.tsx`, `app/watch/[slug]/page.tsx`
-* **Planned Specifications**:
-  1. Table `support_tickets`: `id`, `user_id` (nullable), `email`, `category` (`general | playback | billing | content | account`), `subject`, `message`, `context jsonb` (`title_slug`, `episode_number`, `user_agent`, `url`), `status` (`open | in_progress | resolved`), `created_at`. No direct client access; inserts go through the route handler only.
-  2. The route handler validates input, enforces size limits, and rate-limits per IP and per user (e.g., 5 per hour); honeypot or CAPTCHA for guests.
-  3. "Report Issue" passes structured context (`?category=playback&title=<slug>&ep=<n>`) instead of pre-filled message text.
-  4. Team notification by email or a Telegram ops chat (aligns with the `FUTURE_PLAN.md` bot).
-  5. Admin inbox in Task 16.10.
-* **Verification**: a submission persists a row and notifies the team; real failures show a real error.
+* **Status**: ✅ Completed
+* **Target Files**: `supabase/user/supabase/migrations/20261005160000_support_tickets.sql` (new), `app/api/support/route.ts` (new), `lib/support/types.ts` (new), `lib/support/rate-limiter.ts` (new), `app/contact/page.tsx`, `app/watch/[slug]/page.tsx`, `__tests__/support/support-tickets.test.ts` (new)
+* **Delivered Capabilities**:
+  1. User Database Migration (`20261005160000_support_tickets.sql`):
+     - Created `public.support_tickets` with columns `id`, `user_id`, `email`, `category`, `subject`, `message`, `context`, `status`, and `created_at`.
+     - Added performance indexes on `user_id`, `status`, `category`, and `created_at`.
+     - Enabled RLS with exclusive `service_role` access, revoking all direct operations from `anon` and `authenticated`.
+  2. Ingestion Route Handler (`POST /api/support`):
+     - Validates payload with RFC email regex, category allowlist, length limits (subject 3–200, message 10–4000, context 10KB cap).
+     - Enforces bot deterrence via invisible honeypot check (`hp`, `honeypot`, `website`).
+     - Applies in-memory sliding-window rate limiting (5 tickets/hr per IP/user) with HTTP 429 and `Retry-After` header.
+     - Associates caller `user_id` if authenticated while allowing anonymous guest submissions.
+     - Persists ticket via service role client and provides non-blocking Telegram ops channel notification hook.
+  3. Interactive Contact Page (`app/contact/page.tsx`):
+     - Replaced `Math.random() > 0.15` mock outcome with real asynchronous submission to `/api/support`.
+     - Reads structured query parameters (`category`, `title`, `titleName`, `ep`, `subject`, `message`) to display a diagnostic banner when reporting from watch stage.
+     - Pre-fills email for authenticated users, provides honeypot spam protection, shows loading spinner, and displays modal with reference ticket ID.
+  4. Structured Context on Watch Stage (`app/watch/[slug]/page.tsx`):
+     - Replaced plaintext boilerplate with structured query parameters linking to `/contact?category=playback&title=<slug>&ep=<n>&titleName=<title>`.
+  5. Automated Verification Tests (`__tests__/support/support-tickets.test.ts`):
+     - 14 automated unit and integration tests verifying schema constraints, RLS policies, input validations, honeypot rejection, guest vs. member creation, database error handling, rate limiting (5/hr threshold and Retry-After), and watch page structured link contracts.
+* **Verification Results**:
+  - `npm test`: 266 / 266 tests pass across 67 suites (0 failures).
+  - `npx tsc --noEmit`: 0 type errors.
+  - `npm run lint`: clean (0 errors, 0 warnings).
+  - `npm run build`: successfully generated all 40 pages including dynamic route `ƒ /api/support` and static page `○ /contact`.
 
 ---
 

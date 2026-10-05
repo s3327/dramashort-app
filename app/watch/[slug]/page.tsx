@@ -28,15 +28,6 @@ import {
 
 const EPISODES_PER_TAB = 40;
 
-function buildReportMessage(title: string, episode: number) {
-  const date = new Intl.DateTimeFormat("en", {
-    month: "long",
-    day: "numeric",
-    year: "numeric",
-  }).format(new Date());
-  return `[reporting from "${title}" - Episode ${episode} at "${date}"]\n\nPlease elaborate on the error you're experiencing below this line.\n=================\n`;
-}
-
 function WatchContent({ slug }: { slug: string }) {
   const { theme } = useTheme();
   const { user } = useAuth();
@@ -367,9 +358,9 @@ function WatchContent({ slug }: { slug: string }) {
 
                 <div className="flex items-center gap-2">
                   <Link
-                    href={`/contact?subject=Report&message=${encodeURIComponent(
-                      buildReportMessage(drama.title, currentEpisode)
-                    )}`}
+                    href={`/contact?category=playback&title=${encodeURIComponent(
+                      drama.slug
+                    )}&ep=${currentEpisode}&titleName=${encodeURIComponent(drama.title)}`}
                     className="inline-flex items-center gap-1.5 text-xs font-semibold text-text-muted hover:text-danger px-3 py-1.5 rounded-md border border-border bg-bg hover:border-danger/30 transition-colors"
                   >
                     <Flag size={13} strokeWidth={2} />
