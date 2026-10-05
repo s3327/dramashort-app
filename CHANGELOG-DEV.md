@@ -797,3 +797,47 @@
   - `npx tsc --noEmit`: 0 type errors.
   - `npm run lint`: clean (0 errors, 0 warnings).
   - `npm run build`: successfully generated all 38 pages including dynamic route `ƒ /reset-password`.
+---
+
+## [2026-10-05] Task 11.3: Real Account Deletion & GDPR Data Erasure
+* **Milestone**: Phase 11 (Authentication & User Management Completeness) — Task 11.3
+* **Goal**: Replace no-op account deletion modal with GDPR Article 17 compliant permanent account erasure, server-side route handler (`DELETE /api/account`), cascading deletion across all user databases, strict reauthentication requirements, and ADR-0001 documentation for financial records retention.
+* **Implementation Steps Taken**:
+  1. Service Role Client & Server Route Handler (`app/api/account/route.ts`, `lib/supabase/user-server.ts`):
+     - Added `createUserServiceRoleClient()` with test injection hooks to `lib/supabase/user-server.ts`.
+     - Built `DELETE /api/account` route handler verifying caller session via `auth.getUser()`, requiring typed confirmation (`confirmationText: "DELETE"`), and enforcing re-authentication checks (password verification or recent authentication within 5 minutes).
+     - Calls privileged `auth.admin.deleteUser(user.id)` to permanently remove user and cascade foreign key deletions across user tables.
+  2. Database Cascading Erasure Verification:
+     - Confirmed `ON DELETE CASCADE` foreign key configuration on `profiles`, `favorites`, `watch_history`, `custom_lists`, and `custom_list_items` referencing `auth.users(id)`.
+  3. Interactive Settings UX (`app/account/settings/page.tsx`):
+     - Replaced stubbed modal with an accessible, GDPR-compliant permanent deletion modal.
+     - Mandates typing `DELETE` into a mono-spaced confirmation input, accepts optional/required password verification, displays loading state during execution, and shows feedback toast before redirecting to `/login?deleted=true`.
+  4. Client Cleanup in AuthContext (`contexts/AuthContext.tsx`):
+     - Implemented `deleteAccount()` calling `DELETE /api/account`.
+     - Purges local client storage (`localStorage` guest history and themes), terminates client auth state, and resets user profiles.
+  5. Architecture Decision Record (`docs/adr/0001-account-deletion-and-data-retention.md`):
+     - Authored ADR-0001 formally detailing GDPR Article 17 compliance, pre-deletion reauthentication requirements, and Phase 8 financial records retention rules (anonymizing transaction records while wiping personal data).
+  6. Automated Verification Test Suite (`__tests__/account/account-deletion.test.ts`):
+     - Added 10 automated unit and integration tests covering unauthenticated rejection (401), invalid confirmation keywords (400), stale session defense (403), password verification failure (400), successful recent deletion (200), successful password-verified deletion (200), service role gateway failure handling (500), foreign key cascade contracts, and ADR-0001 documentation.
+  7. API Response Error Codes (`lib/api/responses.ts`):
+     - Added `REAUTHENTICATION_REQUIRED`, `DELETION_FAILED`, `INVALID_CREDENTIALS`, and `INTERNAL_ERROR` to `ApiErrorCode`.
+* **Key File Diffs**:
+  - Created:
+    - `app/api/account/route.ts`
+    - `docs/adr/0001-account-deletion-and-data-retention.md`
+    - `__tests__/account/account-deletion.test.ts`
+  - Modified:
+    - `app/account/settings/page.tsx`
+    - `contexts/AuthContext.tsx`
+    - `lib/supabase/user-server.ts`
+    - `lib/api/responses.ts`
+    - `ROADMAP.md`
+    - `CHANGELOG-DEV.md`
+* **Regression Analysis & Cross-System Impact**:
+  - Expanded test runner to 252 tests across 58 test suites with 100% pass rate.
+  - Zero disruption to non-deletion account settings or public flows.
+* **Verification**:
+  - `npm test`: 252 / 252 tests pass across 58 suites (0 failures).
+  - `npx tsc --noEmit`: 0 type errors.
+  - `npm run lint`: clean (0 errors, 0 warnings).
+  - `npm run build`: successfully generated all 39 pages including dynamic route `ƒ /api/account`.

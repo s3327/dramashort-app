@@ -47,6 +47,10 @@ type AuthContextValue = {
   updatePassword: (
     newPassword: string
   ) => Promise<{ error: string | null }>;
+  deleteAccount: (
+    confirmationText: string,
+    password?: string
+  ) => Promise<{ error: string | null }>;
   logout: () => Promise<void>;
   updateDisplayName: (displayName: string) => Promise<boolean>;
   changePassword: (
@@ -385,6 +389,57 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  const deleteAccount = async (
+    confirmationText: string,
+    password?: string
+  ): Promise<{ error: string | null }> => {
+    try {
+      const response = await fetch("/api/account", {
+        method: "DELETE",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ confirmationText, password }),
+      });
+
+      const body = await response.json().catch(() => null);
+
+      if (!response.ok) {
+        const errorMsg =
+          body?.error?.message ||
+          body?.error ||
+          "Failed to delete account. Please try again.";
+        return { error: errorMsg };
+      }
+
+      // Cleanup local client state
+      if (typeof window !== "undefined") {
+        try {
+          localStorage.removeItem("dramashort_guest_watch_history");
+          localStorage.removeItem("dramashort_theme");
+        } catch {
+          // ignore storage clearing errors
+        }
+      }
+
+      try {
+        await supabase.auth.signOut();
+      } catch (signOutErr) {
+        console.warn("Sign out after deletion warning:", signOutErr);
+      }
+
+      setUser(null);
+      setSession(null);
+      setProfile(null);
+
+      return { error: null };
+    } catch (err: unknown) {
+      const message =
+        err instanceof Error ? err.message : "An unexpected error occurred.";
+      return { error: message };
+    }
+  };
+
   const updateDisplayName = async (displayName: string): Promise<boolean> => {
     if (!user) return false;
     const success = await updateUserProfile(user.id, { display_name: displayName });
@@ -530,6 +585,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         resetPasswordForEmail,
         verifyPasswordRecoveryOtp,
         updatePassword,
+        deleteAccount,
         logout,
         updateDisplayName,
         changePassword,

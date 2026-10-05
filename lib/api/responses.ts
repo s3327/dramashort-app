@@ -20,7 +20,11 @@ export type ApiErrorCode =
   | "INVALID_ID"
   | "NOT_FOUND"
   | "STREAM_UNAVAILABLE"
-  | "DATABASE_ERROR";
+  | "DATABASE_ERROR"
+  | "REAUTHENTICATION_REQUIRED"
+  | "DELETION_FAILED"
+  | "INVALID_CREDENTIALS"
+  | "INTERNAL_ERROR";
 
 export interface ApiErrorBody {
   success: false;

@@ -1,11 +1,26 @@
 "use client";
 
 import { useState } from "react";
-import { Check, AlertTriangle, Sun, Sunset, Moon } from "lucide-react";
+import { useRouter } from "next/navigation";
+import {
+  Check,
+  AlertTriangle,
+  Sun,
+  Sunset,
+  Moon,
+  Loader2,
+  Eye,
+  EyeOff,
+  AlertCircle,
+  CheckCircle2,
+} from "lucide-react";
 import Header from "@/components/Header";
 import AccountSidebar from "@/components/account/AccountSidebar";
 import Modal from "@/components/Modal";
+import Toast from "@/components/Toast";
 import { useTheme, type SiteTheme } from "@/contexts/ThemeContext";
+import { useAuth } from "@/contexts/AuthContext";
+import { useToast } from "@/hooks/useToast";
 
 type ThemeOption = {
   value: SiteTheme;
@@ -23,17 +38,72 @@ const themeOptions: ThemeOption[] = [
 ];
 
 export default function SettingsPage() {
+  const router = useRouter();
   const { theme, setTheme } = useTheme();
-  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const { user, deleteAccount } = useAuth();
+  const { message: toastMessage, show: showToast } = useToast(3000);
 
-  const handleConfirmDelete = () => {
-    // TODO: call the real account-deletion API once it exists.
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [deleteConfirmationText, setDeleteConfirmationText] = useState("");
+  const [deletePassword, setDeletePassword] = useState("");
+  const [showDeletePassword, setShowDeletePassword] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  const hasPasswordProvider =
+    user?.app_metadata?.provider === "email" ||
+    user?.identities?.some((id) => id.provider === "email");
+
+  const handleOpenDeleteModal = () => {
+    setDeleteConfirmationText("");
+    setDeletePassword("");
+    setDeleteError(null);
+    setIsDeleteModalOpen(true);
+  };
+
+  const handleCloseDeleteModal = () => {
+    if (isDeleting) return;
     setIsDeleteModalOpen(false);
+    setDeleteConfirmationText("");
+    setDeletePassword("");
+    setDeleteError(null);
+  };
+
+  const handleConfirmDelete = async () => {
+    if (deleteConfirmationText !== "DELETE") {
+      setDeleteError("You must type DELETE in all uppercase to confirm.");
+      return;
+    }
+
+    setIsDeleting(true);
+    setDeleteError(null);
+
+    const res = await deleteAccount(
+      deleteConfirmationText,
+      deletePassword || undefined
+    );
+    setIsDeleting(false);
+
+    if (res.error) {
+      setDeleteError(res.error);
+      return;
+    }
+
+    setIsDeleteModalOpen(false);
+    showToast("Your account has been permanently deleted.");
+
+    setTimeout(() => {
+      router.push("/login?deleted=true");
+    }, 1200);
   };
 
   return (
     <div data-theme={theme} className="min-h-screen bg-bg text-text">
       <Header />
+      <Toast
+        message={toastMessage}
+        icon={<CheckCircle2 size={16} className="text-emerald-400" />}
+      />
 
       <div className="max-w-[1100px] mx-auto px-6 pt-10 pb-16">
         <div className="flex flex-col lg:flex-row items-start gap-6 lg:gap-8">
@@ -88,7 +158,7 @@ export default function SettingsPage() {
               </p>
               <button
                 type="button"
-                onClick={() => setIsDeleteModalOpen(true)}
+                onClick={handleOpenDeleteModal}
                 className="rounded-full border border-danger-light text-danger hover:bg-danger-soft font-semibold text-sm px-4 py-2 transition-colors"
               >
                 Delete Account
@@ -98,33 +168,115 @@ export default function SettingsPage() {
         </div>
       </div>
 
-      <Modal
-        open={isDeleteModalOpen}
-        onClose={() => setIsDeleteModalOpen(false)}
-      >
-        <div className="text-center">
+      <Modal open={isDeleteModalOpen} onClose={handleCloseDeleteModal}>
+        <div className="text-left max-w-md">
           <div className="mx-auto mb-3 flex h-11 w-11 items-center justify-center rounded-full bg-danger-soft text-danger">
             <AlertTriangle size={20} strokeWidth={2.5} />
           </div>
-          <h2 className="font-display font-bold text-lg mb-1.5">Delete your account?</h2>
-          <p className="text-sm text-text-muted mb-6">
-            This is permanent. Your profile, favorites, lists, and watch history
-            will all be deleted immediately and can&apos;t be recovered.
+          <h2 className="font-display font-bold text-xl text-center mb-1.5">
+            Delete your account?
+          </h2>
+          <p className="text-xs text-text-muted text-center mb-5 leading-relaxed">
+            This action is permanent and cannot be undone. In accordance with GDPR
+            Right to Erasure, your profile, favorites, custom lists, and watch
+            history will be immediately erased.
           </p>
-          <div className="flex items-center justify-center gap-2">
+
+          {deleteError && (
+            <div
+              role="alert"
+              className="mb-4 flex items-start gap-2.5 rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-xs text-red-400"
+            >
+              <AlertCircle size={16} className="shrink-0 mt-0.5" />
+              <span>{deleteError}</span>
+            </div>
+          )}
+
+          <div className="space-y-4 mb-6">
+            <div>
+              <label
+                htmlFor="confirm-delete-input"
+                className="block text-xs font-semibold text-text mb-1.5"
+              >
+                Type <span className="font-bold text-danger">DELETE</span> to confirm:
+              </label>
+              <input
+                id="confirm-delete-input"
+                type="text"
+                autoComplete="off"
+                value={deleteConfirmationText}
+                onChange={(e) => {
+                  setDeleteConfirmationText(e.target.value);
+                  setDeleteError(null);
+                }}
+                placeholder="DELETE"
+                className="w-full rounded-md border border-border bg-bg px-3.5 py-2 text-sm text-text placeholder:text-text-muted/50 focus:outline-none focus:ring-2 focus:ring-danger/50 focus:border-danger transition-colors font-mono"
+              />
+            </div>
+
+            {hasPasswordProvider && (
+              <div>
+                <label
+                  htmlFor="delete-password-input"
+                  className="block text-xs font-semibold text-text mb-1.5"
+                >
+                  Password confirmation (optional if recently logged in):
+                </label>
+                <div className="relative">
+                  <input
+                    id="delete-password-input"
+                    type={showDeletePassword ? "text" : "password"}
+                    autoComplete="current-password"
+                    value={deletePassword}
+                    onChange={(e) => {
+                      setDeletePassword(e.target.value);
+                      setDeleteError(null);
+                    }}
+                    placeholder="Enter your password"
+                    className="w-full rounded-md border border-border bg-bg px-3.5 py-2 pr-10 text-sm text-text placeholder:text-text-muted/50 focus:outline-none focus:ring-2 focus:ring-danger/50 focus:border-danger transition-colors"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowDeletePassword((prev) => !prev)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-text-muted hover:text-text transition-colors"
+                    aria-label={
+                      showDeletePassword ? "Hide password" : "Show password"
+                    }
+                  >
+                    {showDeletePassword ? (
+                      <EyeOff size={16} />
+                    ) : (
+                      <Eye size={16} />
+                    )}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="flex items-center justify-end gap-2.5">
             <button
               type="button"
-              onClick={() => setIsDeleteModalOpen(false)}
-              className="rounded-full border border-border text-text hover:bg-surface font-semibold text-sm px-4 py-2 transition-colors"
+              onClick={handleCloseDeleteModal}
+              disabled={isDeleting}
+              className="rounded-full border border-border text-text hover:bg-surface font-semibold text-xs px-4 py-2 transition-colors disabled:opacity-50"
             >
               Cancel
             </button>
             <button
               type="button"
               onClick={handleConfirmDelete}
-              className="rounded-full bg-danger hover:bg-danger-hover text-text-light font-semibold text-sm px-4 py-2 shadow-sm transition-colors"
+              disabled={deleteConfirmationText !== "DELETE" || isDeleting}
+              className="rounded-full bg-danger hover:bg-danger-hover disabled:opacity-40 disabled:cursor-not-allowed text-text-light font-semibold text-xs px-4 py-2 shadow-sm transition-colors flex items-center gap-1.5"
             >
-              Yes, Delete My Account
+              {isDeleting ? (
+                <>
+                  <Loader2 size={14} className="animate-spin" />
+                  <span>Deleting Account...</span>
+                </>
+              ) : (
+                "Permanently Delete"
+              )}
             </button>
           </div>
         </div>

@@ -1325,14 +1325,31 @@ These items stay ✅ for history; the gaps are tracked as new tasks.
 ---
 
 ### Task 11.3: Account Deletion
-* **Status**: ⏳ Planned
-* **Problem**: `app/account/settings/page.tsx` L29–32 — confirming deletion only closes the modal, so users believe their account is gone. Deletion is required by GDPR (right to erasure) and by app stores if the PWA or Mini App is distributed through them.
-* **Target Files**: `app/api/account/route.ts` (new, `DELETE`), `app/account/settings/page.tsx`
-* **Planned Specifications**:
-  1. The server route authenticates with `auth.getUser()` and requires recent re-authentication (password re-entry or reauthentication nonce; OAuth users must have signed in within 5 minutes). It then calls `auth.admin.deleteUser(user.id)` with the service role; favorites, history, and lists cascade.
-  2. Financial records (Phase 8): transactions are anonymized rather than deleted when retention is required for accounting. Record the rule in ADR-0001.
-  3. UX: explain the consequences, require typing `DELETE`, then sign out and redirect with a toast. Clear guest `localStorage` keys.
-* **Verification**: a deleted user cannot sign in, and user tables contain no rows for that ID.
+* **Status**: ✅ Completed
+* **Target Files**: `app/api/account/route.ts` (new, `DELETE`), `app/account/settings/page.tsx`, `contexts/AuthContext.tsx`, `lib/supabase/user-server.ts`, `docs/adr/0001-account-deletion-and-data-retention.md` (new), `__tests__/account/account-deletion.test.ts` (new)
+* **Delivered Capabilities**:
+  1. Server-Side Deletion Route (`DELETE /api/account`):
+     - Authenticates user session with `auth.getUser()`; returns 401 UNAUTHORIZED on unauthenticated callers.
+     - Requires explicit confirmation keyword: `confirmationText === "DELETE"` (returns 400 VALIDATION_ERROR otherwise).
+     - Enforces re-authentication: verifies password if provided; blocks stale sessions (> 5 minutes ago) with 403 REAUTHENTICATION_REQUIRED.
+     - Executes `auth.admin.deleteUser(user.id)` via privileged service-role client (`createUserServiceRoleClient()`), cascading deletion across all user data.
+  2. Database Cascading Erasure (GDPR Right to Erasure):
+     - Validated foreign key constraints with `ON DELETE CASCADE` on `profiles`, `favorites`, `watch_history`, `custom_lists`, and `custom_list_items`.
+  3. Interactive Settings UX (`app/account/settings/page.tsx`):
+     - Replaced no-op modal with GDPR-compliant permanent deletion modal.
+     - Mandates typing `DELETE` into confirmation field, accepts password verification, shows loading spinner during deletion, displays success toast, and redirects to `/login?deleted=true`.
+  4. Client Cleanup in AuthContext (`contexts/AuthContext.tsx`):
+     - Implemented `deleteAccount()` calling `DELETE /api/account`.
+     - Clears local storage (`dramashort_guest_watch_history`, `dramashort_theme`), terminates client session, and resets auth states.
+  5. Architecture Decision Record (`docs/adr/0001-account-deletion-and-data-retention.md`):
+     - Documents GDPR Article 17 erasure policies, reauthentication requirements, and Phase 8 financial records retention/anonymization rules.
+  6. Automated Verification Test Suite (`__tests__/account/account-deletion.test.ts`):
+     - 10 automated unit and integration tests covering unauthenticated denial, validation checks, stale session reauth requirement, password verification, service role delete calls, database foreign key cascade rules, and ADR-0001 specifications.
+* **Verification Results**:
+  - `npm test`: all test suites pass (including 10 new tests in `__tests__/account/account-deletion.test.ts`).
+  - `npx tsc --noEmit`: 0 type errors.
+  - `npm run lint`: clean (0 errors, 0 warnings).
+  - `npm run build`: successfully generated all 39 pages including dynamic route `ƒ /api/account`.
 
 ---
 
