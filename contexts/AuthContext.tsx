@@ -55,8 +55,11 @@ type AuthContextValue = {
   updateDisplayName: (displayName: string) => Promise<boolean>;
   changePassword: (
     newPassword: string,
-    currentPassword?: string
-  ) => Promise<{ error: string | null }>;
+    currentPassword?: string,
+    nonce?: string
+  ) => Promise<{ error: string | null; needsReauthentication?: boolean }>;
+  reauthenticate: () => Promise<{ error: string | null }>;
+  hasPasswordIdentity: boolean;
   requestEmailChange: (newEmail: string) => Promise<{ error: string | null }>;
   verifyEmailChange: (
     newEmail: string,
@@ -449,34 +452,76 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return success;
   };
 
+  const hasPasswordIdentity = Boolean(
+    user?.identities?.some((id: { provider: string }) => id.provider === "email") ??
+    user?.app_metadata?.providers?.includes("email")
+  );
+
+  const reauthenticate = async (): Promise<{ error: string | null }> => {
+    try {
+      const { error } = await supabase.auth.reauthenticate();
+      if (error) {
+        return { error: error.message };
+      }
+      return { error: null };
+    } catch (err: unknown) {
+      const message =
+        err instanceof Error ? err.message : "Failed to send reauthentication code.";
+      return { error: message };
+    }
+  };
+
   const changePassword = async (
     newPassword: string,
-    currentPassword?: string
-  ): Promise<{ error: string | null }> => {
+    currentPassword?: string,
+    nonce?: string
+  ): Promise<{ error: string | null; needsReauthentication?: boolean }> => {
     if (!user) {
       return { error: "You must be signed in to change your password." };
     }
 
-    try {
-      // 1. Verify current password if provided and user has email
-      if (currentPassword && user.email) {
-        const { error: verifyError } = await supabase.auth.signInWithPassword({
-          email: user.email,
-          password: currentPassword,
-        });
+    if (newPassword.length < 8) {
+      return { error: "New password must be at least 8 characters long." };
+    }
 
-        if (verifyError) {
-          return { error: "Current password is incorrect." };
-        }
+    try {
+      const updatePayload: { password: string; current_password?: string; nonce?: string } = {
+        password: newPassword,
+      };
+
+      if (currentPassword?.trim()) {
+        updatePayload.current_password = currentPassword.trim();
       }
 
-      // 2. Update to new password via Supabase Auth
-      const { error: updateError } = await supabase.auth.updateUser({
-        password: newPassword,
-      });
+      if (nonce?.trim()) {
+        updatePayload.nonce = nonce.trim();
+      }
+
+      const { error: updateError } = await supabase.auth.updateUser(updatePayload);
 
       if (updateError) {
-        return { error: updateError.message };
+        const errorMsg = updateError.message || "";
+        const errorLower = errorMsg.toLowerCase();
+
+        // Check if GoTrue requires reauthentication or nonce
+        if (
+          errorLower.includes("reauth") ||
+          errorLower.includes("nonce") ||
+          errorLower.includes("recent") ||
+          updateError.status === 422 ||
+          updateError.status === 403
+        ) {
+          return { error: errorMsg, needsReauthentication: true };
+        }
+
+        return { error: errorMsg };
+      }
+
+      // Invalidate all other active sessions for this user (Task 11.5)
+      try {
+        await supabase.auth.signOut({ scope: "others" });
+      } catch (signOutErr) {
+        console.warn("Failed to sign out other sessions:", signOutErr);
       }
 
       return { error: null };
@@ -589,6 +634,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         logout,
         updateDisplayName,
         changePassword,
+        reauthenticate,
+        hasPasswordIdentity,
         requestEmailChange,
         verifyEmailChange,
         signInWithGoogle,

@@ -1384,15 +1384,27 @@ These items stay ✅ for history; the gaps are tracked as new tasks.
 ---
 
 ### Task 11.5: Password Change Hardening
-* **Status**: ⏳ Planned
-* **Depends on**: 10.8 (Secure password change enabled)
-* **Problem**: `changePassword()` (`contexts/AuthContext.tsx` L163–199) checks the current password by calling `signInWithPassword` again, which issues a new session. Verification is skipped entirely when `currentPassword` is omitted, and Google-only users, who have no password, get a confusing flow.
-* **Target Files**: `contexts/AuthContext.tsx`, `app/account/page.tsx`
-* **Planned Specifications**:
-  1. When Supabase requires reauthentication, call `supabase.auth.reauthenticate()` and collect the emailed nonce with `OtpInput`, then `updateUser({ password, nonce })`.
-  2. Accounts without an email/password identity see "Set a password" instead of "Change password".
-  3. After a successful change, call `signOut({ scope: "others" })`.
-* **Verification**: a password change without a valid nonce fails; other sessions are signed out after a change.
+* **Status**: ✅ Completed
+* **Target Files**: `contexts/AuthContext.tsx`, `app/account/page.tsx`, `__tests__/auth/password-change.test.ts` (new)
+* **Delivered Capabilities**:
+  1. Service Hardening in AuthContext (`contexts/AuthContext.tsx`):
+     - `changePassword(newPassword, currentPassword, nonce)`: enforces minimum 8 characters, passes `current_password` and security `nonce` directly to `supabase.auth.updateUser()`.
+     - Detects GoTrue reauthentication demands (422/403 or `reauth`/`nonce` messages) and returns `{ error, needsReauthentication: true }`.
+     - Automatically terminates all other active sessions upon success via `supabase.auth.signOut({ scope: "others" })`.
+     - Added `reauthenticate()` helper calling `supabase.auth.reauthenticate()` to dispatch 6-digit email security codes.
+     - Added `hasPasswordIdentity` boolean property derived from `user.identities` (`provider === "email"`) or `app_metadata.providers`.
+  2. Account Management UI (`app/account/page.tsx`):
+     - Displays "Set a password" for OAuth accounts and "Change Password" for email/password accounts.
+     - Hides "Current Password" field for OAuth accounts setting their first password.
+     - Supports multi-step reauthentication: automatically switches modal to OTP verification step (`OtpInput` 6-digit code) with 60-second resend cooldown timer and back navigation.
+     - Displays distinct success toasts: `"Password created successfully"` vs. `"Password updated successfully"`.
+  3. Automated Verification Tests (`__tests__/auth/password-change.test.ts`):
+     - 11 automated unit and integration tests verifying 8-character password length requirements, payload construction, GoTrue reauthentication detection, other session revocation (`signOut({ scope: "others" })`), button labels, and OtpInput integration.
+* **Verification Results**:
+  - `npm test`: 277 / 277 tests pass across 71 suites (0 failures).
+  - `npx tsc --noEmit`: 0 type errors.
+  - `npm run lint`: clean (0 errors, 0 warnings).
+  - `npm run build`: successfully generated all 40 pages.
 
 ---
 

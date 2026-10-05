@@ -19,6 +19,8 @@ export default function AccountPage() {
     profile,
     updateDisplayName,
     changePassword,
+    reauthenticate,
+    hasPasswordIdentity,
     requestEmailChange,
     verifyEmailChange,
   } = useAuth();
@@ -181,31 +183,59 @@ export default function AccountPage() {
   const [showConfirmNewPassword, setShowConfirmNewPassword] = useState(false);
   const [passwordError, setPasswordError] = useState("");
   const [isSubmittingPassword, setIsSubmittingPassword] = useState(false);
+  const [stepReauth, setStepReauth] = useState(false);
+  const [nonceCode, setNonceCode] = useState("");
+  const [isSendingNonce, setIsSendingNonce] = useState(false);
+  const [nonceCooldown, setNonceCooldown] = useState(0);
   const { message: passwordToastMessage, show: showPasswordToast } = useToast();
+
+  useEffect(() => {
+    if (nonceCooldown <= 0) return;
+    const timer = setInterval(() => {
+      setNonceCooldown((prev) => prev - 1);
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [nonceCooldown]);
 
   const openPasswordModal = () => {
     setCurrentPassword("");
     setNewPassword("");
     setConfirmNewPassword("");
     setPasswordError("");
+    setStepReauth(false);
+    setNonceCode("");
     setIsPasswordModalOpen(true);
+  };
+
+  const handleResendNonce = async () => {
+    if (nonceCooldown > 0 || isSendingNonce) return;
+    setIsSendingNonce(true);
+    setPasswordError("");
+    const res = await reauthenticate();
+    setIsSendingNonce(false);
+    if (res.error) {
+      setPasswordError(res.error);
+    } else {
+      setNonceCooldown(60);
+      showPasswordToast("Verification code resent");
+    }
   };
 
   const handleChangePassword = async (e: React.FormEvent) => {
     e.preventDefault();
     setPasswordError("");
 
-    if (!currentPassword) {
+    if (hasPasswordIdentity && !currentPassword && !stepReauth) {
       setPasswordError("Please enter your current password.");
       return;
     }
 
-    if (newPassword.length < 6) {
-      setPasswordError("New password must be at least 6 characters.");
+    if (newPassword.length < 8) {
+      setPasswordError("New password must be at least 8 characters.");
       return;
     }
 
-    if (newPassword === currentPassword) {
+    if (currentPassword && newPassword === currentPassword) {
       setPasswordError("New password must be different from your current password.");
       return;
     }
@@ -215,18 +245,40 @@ export default function AccountPage() {
       return;
     }
 
+    if (stepReauth && nonceCode.trim().length < 6) {
+      setPasswordError("Please enter the 6-digit verification code sent to your email.");
+      return;
+    }
+
     setIsSubmittingPassword(true);
-    const res = await changePassword(newPassword, currentPassword);
+    const res = await changePassword(
+      newPassword,
+      hasPasswordIdentity ? currentPassword : undefined,
+      stepReauth ? nonceCode.trim() : undefined
+    );
     setIsSubmittingPassword(false);
 
     if (res.error) {
-      setPasswordError(res.error);
+      if (res.needsReauthentication && !stepReauth) {
+        setStepReauth(true);
+        setNonceCooldown(60);
+        await reauthenticate();
+        setPasswordError("Security verification required: a 6-digit verification code has been sent to your email.");
+      } else {
+        setPasswordError(res.error);
+      }
     } else {
       setIsPasswordModalOpen(false);
       setCurrentPassword("");
       setNewPassword("");
       setConfirmNewPassword("");
-      showPasswordToast("Password updated successfully");
+      setStepReauth(false);
+      setNonceCode("");
+      showPasswordToast(
+        hasPasswordIdentity
+          ? "Password updated successfully"
+          : "Password created successfully"
+      );
     }
   };
 
@@ -463,7 +515,7 @@ export default function AccountPage() {
                       onClick={openPasswordModal}
                       className="text-xs font-semibold text-link hover:text-link-hover transition-colors"
                     >
-                      Change Password
+                      {hasPasswordIdentity ? "Change Password" : "Set a password"}
                     </button>
                   </div>
                   <input
@@ -474,6 +526,11 @@ export default function AccountPage() {
                     readOnly
                     className="w-full rounded-md border border-border bg-surface px-3.5 py-2.5 text-sm text-text-muted cursor-not-allowed"
                   />
+                  {!hasPasswordIdentity && (
+                    <p className="mt-1.5 text-xs text-text-muted">
+                      No password set (signed in with external provider).
+                    </p>
+                  )}
                 </div>
               </div>
             </div>
@@ -517,39 +574,89 @@ export default function AccountPage() {
       <Modal
         open={isPasswordModalOpen}
         onClose={() => setIsPasswordModalOpen(false)}
-        title="Change Password"
+        title={hasPasswordIdentity ? "Change Password" : "Set a Password"}
       >
         <form onSubmit={handleChangePassword} className="space-y-4">
-          <PasswordField
-            id="currentPassword"
-            label="Current Password"
-            value={currentPassword}
-            onChange={setCurrentPassword}
-            show={showCurrentPassword}
-            onToggleShow={() => setShowCurrentPassword((v) => !v)}
-            autoComplete="current-password"
-          />
-          <PasswordField
-            id="newPassword"
-            label="New Password"
-            value={newPassword}
-            onChange={setNewPassword}
-            show={showNewPassword}
-            onToggleShow={() => setShowNewPassword((v) => !v)}
-            autoComplete="new-password"
-          />
-          <PasswordField
-            id="confirmNewPassword"
-            label="Confirm New Password"
-            value={confirmNewPassword}
-            onChange={setConfirmNewPassword}
-            show={showConfirmNewPassword}
-            onToggleShow={() => setShowConfirmNewPassword((v) => !v)}
-            autoComplete="new-password"
-          />
+          {!stepReauth ? (
+            <>
+              {!hasPasswordIdentity ? (
+                <div className="p-3 rounded-lg bg-surface border border-border text-xs text-text-muted">
+                  You are currently signed in with an external account. Set a password to enable logging in directly with your email and password.
+                </div>
+              ) : (
+                <PasswordField
+                  id="currentPassword"
+                  label="Current Password"
+                  value={currentPassword}
+                  onChange={setCurrentPassword}
+                  show={showCurrentPassword}
+                  onToggleShow={() => setShowCurrentPassword((v) => !v)}
+                  autoComplete="current-password"
+                />
+              )}
+              <PasswordField
+                id="newPassword"
+                label="New Password (min 8 chars)"
+                value={newPassword}
+                onChange={setNewPassword}
+                show={showNewPassword}
+                onToggleShow={() => setShowNewPassword((v) => !v)}
+                autoComplete="new-password"
+              />
+              <PasswordField
+                id="confirmNewPassword"
+                label="Confirm New Password"
+                value={confirmNewPassword}
+                onChange={setConfirmNewPassword}
+                show={showConfirmNewPassword}
+                onToggleShow={() => setShowConfirmNewPassword((v) => !v)}
+                autoComplete="new-password"
+              />
+            </>
+          ) : (
+            <div className="space-y-3">
+              <div className="p-3 rounded-lg bg-primary/5 border border-primary/20 text-xs text-text">
+                <div className="flex items-center gap-2 mb-1 font-semibold text-primary">
+                  <Mail size={15} />
+                  <span>Security Verification</span>
+                </div>
+                <p className="text-text-muted">
+                  Enter the 6-digit verification code sent to{" "}
+                  <strong className="text-text">{currentEmail}</strong> to confirm your password change.
+                </p>
+              </div>
+              <OtpInput length={6} onChange={setNonceCode} />
+              <div className="flex items-center justify-between text-xs pt-1">
+                <button
+                  type="button"
+                  disabled={nonceCooldown > 0 || isSendingNonce}
+                  onClick={handleResendNonce}
+                  className="font-semibold text-primary hover:underline disabled:text-text-muted disabled:no-underline transition-colors"
+                >
+                  {nonceCooldown > 0
+                    ? `Resend code (${nonceCooldown}s)`
+                    : isSendingNonce
+                    ? "Resending..."
+                    : "Resend code"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setStepReauth(false);
+                    setPasswordError("");
+                  }}
+                  className="font-semibold text-text-muted hover:text-text transition-colors"
+                >
+                  Back
+                </button>
+              </div>
+            </div>
+          )}
+
           {passwordError && (
             <p className="text-xs font-semibold text-danger">{passwordError}</p>
           )}
+
           <button
             type="submit"
             disabled={isSubmittingPassword}
@@ -558,10 +665,14 @@ export default function AccountPage() {
             {isSubmittingPassword ? (
               <>
                 <Loader2 size={16} className="animate-spin" />
-                <span>Updating password...</span>
+                <span>{stepReauth ? "Verifying..." : "Saving password..."}</span>
               </>
-            ) : (
+            ) : stepReauth ? (
+              "Verify & Save Password"
+            ) : hasPasswordIdentity ? (
               "Save Password"
+            ) : (
+              "Set Password"
             )}
           </button>
         </form>

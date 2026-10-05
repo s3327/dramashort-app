@@ -901,3 +901,40 @@
   - `npx tsc --noEmit`: 0 type errors.
   - `npm run lint`: clean (0 errors, 0 warnings).
   - `npm run build`: successfully generated all 40 pages including dynamic route `ƒ /api/support` and static page `○ /contact`.
+---
+
+## [2026-10-05] Task 11.5: Password Change Hardening
+* **Milestone**: Phase 11 (Authentication & User Management Completeness) — Task 11.5
+* **Goal**: Harden the user password change and setting workflows against session cloning and unverified changes, support Supabase GoTrue `secure_password_change` with `supabase.auth.reauthenticate()` email nonce collection (`OtpInput`), adapt UX dynamically for OAuth/third-party accounts lacking email/password credentials ("Set a password" vs. "Change Password"), and automatically invalidate all other active sessions via `supabase.auth.signOut({ scope: "others" })`.
+* **Implementation Steps Taken**:
+  1. AuthContext Service Hardening (`contexts/AuthContext.tsx`):
+     - Enhanced `changePassword(newPassword, currentPassword, nonce)`:
+       - Enforces minimum 8 character length requirement matching `supabase/user/supabase/config.toml`.
+       - Passes `current_password` and optional security `nonce` directly to `supabase.auth.updateUser()`.
+       - Detects reauthentication/nonce requirements (`status: 422/403`, `reauth`, `nonce`, `recent`) and returns `{ error, needsReauthentication: true }`.
+       - Automatically revokes all other active sessions across browsers and devices on success via `supabase.auth.signOut({ scope: "others" })`.
+     - Added `reauthenticate()` helper invoking `supabase.auth.reauthenticate()` to dispatch a 6-digit verification code to the user's registered email address.
+     - Added `hasPasswordIdentity` boolean property derived from `user.identities` (`provider === "email"`) or `app_metadata.providers` to dynamically identify OAuth-only users.
+  2. Account Management UI (`app/account/page.tsx`):
+     - Dynamic button and modal title: displays "Set a password" for external OAuth accounts and "Change Password" for email/password accounts.
+     - Form adapting: hides the "Current Password" field for OAuth users setting a password for the first time while displaying helpful guidance.
+     - Multi-step security verification: when GoTrue requires reauthentication or a nonce, seamlessly switches the modal to an OTP verification step with `OtpInput` (6 digits), a 60-second cooldown timer for code resend via `reauthenticate()`, and a back navigation option.
+     - Displays distinct success toast messages: `"Password created successfully"` vs. `"Password updated successfully"`.
+  3. Automated Verification Test Suite (`__tests__/auth/password-change.test.ts`):
+     - Authored 11 unit and integration tests covering password length enforcement, payload construction (`current_password` and `nonce`), reauthentication requirement detection, session revocation contracts (`signOut({ scope: "others" })`), dynamic button label evaluation, external provider assistance, and OtpInput integration.
+* **Key File Diffs**:
+  - Created:
+    - `__tests__/auth/password-change.test.ts`
+  - Modified:
+    - `contexts/AuthContext.tsx`
+    - `app/account/page.tsx`
+    - `ROADMAP.md`
+    - `CHANGELOG-DEV.md`
+* **Regression Analysis & Cross-System Impact**:
+  - Test runner expanded to 277 tests across 71 test suites with 100% pass rate.
+  - Zero disruption to password reset, email change, profile edit, or deletion flows.
+* **Verification**:
+  - `npm test`: 277 / 277 tests pass across 71 suites (0 failures).
+  - `npx tsc --noEmit`: 0 type errors.
+  - `npm run lint`: clean (0 errors, 0 warnings).
+  - `npm run build`: successfully generated all 40 pages.
