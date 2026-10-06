@@ -26,6 +26,23 @@ import {
   ChevronDown,
   X,
 } from "lucide-react";
+import {
+  HLS_SHORT_VOD_CONFIG,
+  MAX_NETWORK_RETRIES,
+  MAX_MEDIA_RECOVERIES,
+  RETRY_BASE_DELAY_MS,
+  RESUME_NOTIFICATION_DURATION_MS,
+  calculateBackoffDelay,
+} from "@/lib/player/streaming-robustness";
+
+export {
+  HLS_SHORT_VOD_CONFIG,
+  MAX_NETWORK_RETRIES,
+  MAX_MEDIA_RECOVERIES,
+  RETRY_BASE_DELAY_MS,
+  RESUME_NOTIFICATION_DURATION_MS,
+  calculateBackoffDelay,
+};
 
 export type AspectRatioMode = "fit" | "9:16" | "16:9";
 
@@ -81,6 +98,12 @@ export default function VideoPlayer({
   const hlsRef = useRef<Hls | null>(null);
   const controlsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const countdownIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const resumeTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const retryTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const networkRetryCountRef = useRef<number>(0);
+  const mediaRecoveryCountRef = useRef<number>(0);
+  const hasAppliedInitialProgressRef = useRef<boolean>(false);
+  const [reloadIndex, setReloadIndex] = useState(0);
 
   // Playback states
   const [isPlaying, setIsPlaying] = useState(false);
@@ -140,14 +163,52 @@ export default function VideoPlayer({
     video.muted = isMuted;
   }, [volume, isMuted]);
 
-  // Video Source / HLS setup
+  // Manual retry handler for error overlay
+  const handleRetryPlayback = useCallback(() => {
+    setHasError(null);
+    setIsBuffering(true);
+    networkRetryCountRef.current = 0;
+    mediaRecoveryCountRef.current = 0;
+    hasAppliedInitialProgressRef.current = false;
+    if (retryTimeoutRef.current) {
+      clearTimeout(retryTimeoutRef.current);
+      retryTimeoutRef.current = null;
+    }
+    setReloadIndex((prev) => prev + 1);
+  }, []);
+
+  // Video Source / HLS setup & Robustness Lifecycle
   useEffect(() => {
     const video = videoRef.current;
     if (!video || !src) return;
 
+    // Clear prior timers and reset episode-specific state
+    if (controlsTimeoutRef.current) {
+      clearTimeout(controlsTimeoutRef.current);
+      controlsTimeoutRef.current = null;
+    }
+    if (retryTimeoutRef.current) {
+      clearTimeout(retryTimeoutRef.current);
+      retryTimeoutRef.current = null;
+    }
+    if (countdownIntervalRef.current) {
+      clearInterval(countdownIntervalRef.current);
+      countdownIntervalRef.current = null;
+    }
+    if (resumeTimeoutRef.current) {
+      clearTimeout(resumeTimeoutRef.current);
+      resumeTimeoutRef.current = null;
+    }
+
+    // Reset retry counters on episode change or source reload
+    networkRetryCountRef.current = 0;
+    mediaRecoveryCountRef.current = 0;
+    hasAppliedInitialProgressRef.current = false;
+
     setHasError(null);
     setIsBuffering(true);
     setNextCountdown(null);
+    setResumeNotification(null);
 
     // Destroy existing Hls instance if any
     if (hlsRef.current) {
@@ -159,10 +220,7 @@ export default function VideoPlayer({
 
     if (isHls) {
       if (Hls.isSupported()) {
-        const hls = new Hls({
-          enableWorker: true,
-          lowLatencyMode: true,
-        });
+        const hls = new Hls(HLS_SHORT_VOD_CONFIG);
         hlsRef.current = hls;
         hls.loadSource(src);
         hls.attachMedia(video);
@@ -172,23 +230,69 @@ export default function VideoPlayer({
           if (initialProgressSeconds > 0) {
             video.currentTime = initialProgressSeconds;
           }
-          if (autoPlay) {
+          if (autoPlay || reloadIndex > 0) {
             video.play().catch(() => setIsPlaying(false));
           }
+        });
+
+        // Successful segment download resets network retry counter
+        hls.on(Hls.Events.FRAG_LOADED, () => {
+          networkRetryCountRef.current = 0;
         });
 
         hls.on(Hls.Events.ERROR, (_, data) => {
           if (data.fatal) {
             switch (data.type) {
               case Hls.ErrorTypes.NETWORK_ERROR:
-                hls.startLoad();
+                if (networkRetryCountRef.current < MAX_NETWORK_RETRIES) {
+                  const delay = calculateBackoffDelay(networkRetryCountRef.current);
+                  networkRetryCountRef.current += 1;
+                  setIsBuffering(true);
+                  if (retryTimeoutRef.current) {
+                    clearTimeout(retryTimeoutRef.current);
+                  }
+                  retryTimeoutRef.current = setTimeout(() => {
+                    retryTimeoutRef.current = null;
+                    if (hlsRef.current) {
+                      hlsRef.current.startLoad();
+                    }
+                  }, delay);
+                } else {
+                  if (retryTimeoutRef.current) {
+                    clearTimeout(retryTimeoutRef.current);
+                    retryTimeoutRef.current = null;
+                  }
+                  if (hlsRef.current) {
+                    hlsRef.current.destroy();
+                    hlsRef.current = null;
+                  }
+                  setIsBuffering(false);
+                  setHasError("Network error: unable to load video stream. Please check your internet connection.");
+                }
                 break;
+
               case Hls.ErrorTypes.MEDIA_ERROR:
-                hls.recoverMediaError();
+                if (mediaRecoveryCountRef.current < MAX_MEDIA_RECOVERIES) {
+                  mediaRecoveryCountRef.current += 1;
+                  setIsBuffering(true);
+                  hls.recoverMediaError();
+                } else {
+                  if (hlsRef.current) {
+                    hlsRef.current.destroy();
+                    hlsRef.current = null;
+                  }
+                  setIsBuffering(false);
+                  setHasError("Playback error: unable to recover media stream.");
+                }
                 break;
+
               default:
-                hls.destroy();
-                setHasError("Playback error: unable to load HLS stream");
+                if (hlsRef.current) {
+                  hlsRef.current.destroy();
+                  hlsRef.current = null;
+                }
+                setIsBuffering(false);
+                setHasError("Playback error: unable to load HLS stream.");
                 break;
             }
           }
@@ -196,10 +300,11 @@ export default function VideoPlayer({
       } else if (video.canPlayType("application/vnd.apple.mpegurl")) {
         // Native HLS for Safari/iOS
         video.src = src;
+        video.load();
         if (initialProgressSeconds > 0) {
           video.currentTime = initialProgressSeconds;
         }
-        if (autoPlay) {
+        if (autoPlay || reloadIndex > 0) {
           video.play().catch(() => setIsPlaying(false));
         }
       } else {
@@ -208,21 +313,67 @@ export default function VideoPlayer({
     } else {
       // Standard MP4 / WebM
       video.src = src;
+      video.load();
       if (initialProgressSeconds > 0) {
         video.currentTime = initialProgressSeconds;
       }
-      if (autoPlay) {
+      if (autoPlay || reloadIndex > 0) {
         video.play().catch(() => setIsPlaying(false));
       }
     }
 
     return () => {
+      if (controlsTimeoutRef.current) {
+        clearTimeout(controlsTimeoutRef.current);
+        controlsTimeoutRef.current = null;
+      }
+      if (retryTimeoutRef.current) {
+        clearTimeout(retryTimeoutRef.current);
+        retryTimeoutRef.current = null;
+      }
       if (hlsRef.current) {
         hlsRef.current.destroy();
         hlsRef.current = null;
       }
+      if (countdownIntervalRef.current) {
+        clearInterval(countdownIntervalRef.current);
+        countdownIntervalRef.current = null;
+      }
+      if (resumeTimeoutRef.current) {
+        clearTimeout(resumeTimeoutRef.current);
+        resumeTimeoutRef.current = null;
+      }
+      if (video) {
+        video.pause();
+      }
     };
-  }, [src, autoPlay, initialProgressSeconds]);
+  }, [src, currentEpisode, autoPlay, initialProgressSeconds, reloadIndex]);
+
+  // Global unmount cleanup effect for all timers
+  useEffect(() => {
+    const video = videoRef.current;
+    return () => {
+      if (controlsTimeoutRef.current) {
+        clearTimeout(controlsTimeoutRef.current);
+        controlsTimeoutRef.current = null;
+      }
+      if (countdownIntervalRef.current) {
+        clearInterval(countdownIntervalRef.current);
+        countdownIntervalRef.current = null;
+      }
+      if (resumeTimeoutRef.current) {
+        clearTimeout(resumeTimeoutRef.current);
+        resumeTimeoutRef.current = null;
+      }
+      if (retryTimeoutRef.current) {
+        clearTimeout(retryTimeoutRef.current);
+        retryTimeoutRef.current = null;
+      }
+      if (video) {
+        video.pause();
+      }
+    };
+  }, []);
 
   // Fullscreen change listener
   useEffect(() => {
@@ -235,16 +386,58 @@ export default function VideoPlayer({
     };
   }, []);
 
+  const cancelNextCountdown = useCallback(() => {
+    if (countdownIntervalRef.current) {
+      clearInterval(countdownIntervalRef.current);
+      countdownIntervalRef.current = null;
+    }
+    setNextCountdown(null);
+  }, []);
+
+  const goToNextEpisode = useCallback(() => {
+    cancelNextCountdown();
+    if (currentEpisode < totalEpisodes && onNextEpisode) {
+      onNextEpisode();
+    }
+  }, [cancelNextCountdown, currentEpisode, totalEpisodes, onNextEpisode]);
+
+  const goToPrevEpisode = useCallback(() => {
+    cancelNextCountdown();
+    if (currentEpisode > 1 && onPrevEpisode) {
+      onPrevEpisode();
+    }
+  }, [cancelNextCountdown, currentEpisode, onPrevEpisode]);
+
+  // Cancel active countdown if user disables autoPlayNext
+  useEffect(() => {
+    if (!autoPlayNext) {
+      cancelNextCountdown();
+    }
+  }, [autoPlayNext, cancelNextCountdown]);
+
   // Controls auto-hide timer
   const resetControlsTimeout = useCallback(() => {
     setControlsVisible(true);
     if (controlsTimeoutRef.current) {
       clearTimeout(controlsTimeoutRef.current);
+      controlsTimeoutRef.current = null;
     }
     if (isPlaying && !showSpeedMenu && !showSettingsMenu && !isScrubbing) {
       controlsTimeoutRef.current = setTimeout(() => {
+        controlsTimeoutRef.current = null;
         setControlsVisible(false);
       }, 2500);
+    }
+  }, [isPlaying, showSpeedMenu, showSettingsMenu, isScrubbing]);
+
+  // Keep controls visible and clear auto-hide timer when paused, scrubbing, or menus are open
+  useEffect(() => {
+    if (!isPlaying || showSpeedMenu || showSettingsMenu || isScrubbing) {
+      if (controlsTimeoutRef.current) {
+        clearTimeout(controlsTimeoutRef.current);
+        controlsTimeoutRef.current = null;
+      }
+      setControlsVisible(true);
     }
   }, [isPlaying, showSpeedMenu, showSettingsMenu, isScrubbing]);
 
@@ -263,20 +456,26 @@ export default function VideoPlayer({
     const video = videoRef.current;
     if (!video) return;
 
+    cancelNextCountdown();
+
     if (video.paused || video.ended) {
+      if (video.ended) {
+        video.currentTime = 0;
+      }
       video.play().then(() => setIsPlaying(true)).catch(() => setIsPlaying(false));
     } else {
       video.pause();
       setIsPlaying(false);
     }
-  }, []);
+  }, [cancelNextCountdown]);
 
   // Seek relative
   const seekRelative = useCallback((seconds: number) => {
     const video = videoRef.current;
     if (!video) return;
+    cancelNextCountdown();
     video.currentTime = Math.max(0, Math.min(video.currentTime + seconds, video.duration || 0));
-  }, []);
+  }, [cancelNextCountdown]);
 
   // Volume slider
   const handleVolumeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -367,6 +566,7 @@ export default function VideoPlayer({
     const bar = scrubBarRef.current;
     const video = videoRef.current;
     if (!bar || !video || duration <= 0) return;
+    cancelNextCountdown();
     const rect = bar.getBoundingClientRect();
     const x = Math.max(0, Math.min(e.clientX - rect.left, rect.width));
     const targetTime = (x / rect.width) * duration;
@@ -418,16 +618,21 @@ export default function VideoPlayer({
 
     if (swipeOffset < -45) {
       // Swiped UP -> Next Episode
-      if (currentEpisode < totalEpisodes && onNextEpisode) {
-        onNextEpisode();
-      }
+      goToNextEpisode();
     } else if (swipeOffset > 45) {
       // Swiped DOWN -> Previous Episode
-      if (currentEpisode > 1 && onPrevEpisode) {
-        onPrevEpisode();
-      }
+      goToPrevEpisode();
     }
 
+    setSwipeOffset(0);
+    setSwipeHint(null);
+  };
+
+  const handleTouchCancel = () => {
+    if (!isDragging.current) return;
+    isDragging.current = false;
+    touchStartY.current = null;
+    touchStartX.current = null;
     setSwipeOffset(0);
     setSwipeHint(null);
   };
@@ -476,13 +681,9 @@ export default function VideoPlayer({
     touchStartX.current = null;
 
     if (swipeOffset < -45) {
-      if (currentEpisode < totalEpisodes && onNextEpisode) {
-        onNextEpisode();
-      }
+      goToNextEpisode();
     } else if (swipeOffset > 45) {
-      if (currentEpisode > 1 && onPrevEpisode) {
-        onPrevEpisode();
-      }
+      goToPrevEpisode();
     }
 
     setSwipeOffset(0);
@@ -544,15 +745,11 @@ export default function VideoPlayer({
           break;
         case "n":
           e.preventDefault();
-          if (currentEpisode < totalEpisodes && onNextEpisode) {
-            onNextEpisode();
-          }
+          goToNextEpisode();
           break;
         case "p":
           e.preventDefault();
-          if (currentEpisode > 1 && onPrevEpisode) {
-            onPrevEpisode();
-          }
+          goToPrevEpisode();
           break;
         default:
           break;
@@ -567,10 +764,8 @@ export default function VideoPlayer({
     togglePlay,
     toggleMute,
     seekRelative,
-    currentEpisode,
-    totalEpisodes,
-    onNextEpisode,
-    onPrevEpisode,
+    goToNextEpisode,
+    goToPrevEpisode,
     resetControlsTimeout,
   ]);
 
@@ -581,11 +776,16 @@ export default function VideoPlayer({
 
     if (autoPlayNext && currentEpisode < totalEpisodes && onNextEpisode) {
       setNextCountdown(3);
-      if (countdownIntervalRef.current) clearInterval(countdownIntervalRef.current);
+      if (countdownIntervalRef.current) {
+        clearInterval(countdownIntervalRef.current);
+      }
       countdownIntervalRef.current = setInterval(() => {
         setNextCountdown((prev) => {
           if (prev === null || prev <= 1) {
-            if (countdownIntervalRef.current) clearInterval(countdownIntervalRef.current);
+            if (countdownIntervalRef.current) {
+              clearInterval(countdownIntervalRef.current);
+              countdownIntervalRef.current = null;
+            }
             onNextEpisode();
             return null;
           }
@@ -593,11 +793,6 @@ export default function VideoPlayer({
         });
       }, 1000);
     }
-  };
-
-  const cancelNextCountdown = () => {
-    if (countdownIntervalRef.current) clearInterval(countdownIntervalRef.current);
-    setNextCountdown(null);
   };
 
   // Video Event Listeners
@@ -627,32 +822,104 @@ export default function VideoPlayer({
     setDuration(dur);
     setIsBuffering(false);
 
+    if (hasAppliedInitialProgressRef.current) {
+      return;
+    }
+
     let targetTime = 0;
-    if (initialProgressSeconds && initialProgressSeconds > 0 && initialProgressSeconds < dur - 2) {
+    if (
+      initialProgressSeconds &&
+      initialProgressSeconds > 0 &&
+      Number.isFinite(dur) &&
+      dur > 2 &&
+      initialProgressSeconds < dur - 2
+    ) {
       targetTime = initialProgressSeconds;
     } else if (
       initialProgressRatio &&
       initialProgressRatio > 0.02 &&
       initialProgressRatio < 0.95 &&
+      Number.isFinite(dur) &&
       dur > 0
     ) {
       targetTime = dur * initialProgressRatio;
     }
 
-    if (targetTime > 0) {
+    if (targetTime > 0 && Number.isFinite(targetTime)) {
       video.currentTime = targetTime;
       setCurrentTime(targetTime);
       setResumeNotification({
         formatted: formatTime(targetTime),
         ratio: targetTime / dur,
       });
-
-      const timer = setTimeout(() => {
-        setResumeNotification(null);
-      }, 6000);
-      return () => clearTimeout(timer);
+      hasAppliedInitialProgressRef.current = true;
     }
   };
+
+  // Apply initial progress if it resolves asynchronously after metadata has already loaded
+  useEffect(() => {
+    if (hasAppliedInitialProgressRef.current) return;
+    const video = videoRef.current;
+    if (!video) return;
+    const dur = video.duration || 0;
+    if (!Number.isFinite(dur) || dur <= 0) return;
+
+    // Do not jump backwards if user has already actively played past 2 seconds
+    if (video.currentTime > 2) {
+      hasAppliedInitialProgressRef.current = true;
+      return;
+    }
+
+    let targetTime = 0;
+    if (
+      initialProgressSeconds &&
+      initialProgressSeconds > 0 &&
+      Number.isFinite(dur) &&
+      dur > 2 &&
+      initialProgressSeconds < dur - 2
+    ) {
+      targetTime = initialProgressSeconds;
+    } else if (
+      initialProgressRatio &&
+      initialProgressRatio > 0.02 &&
+      initialProgressRatio < 0.95 &&
+      Number.isFinite(dur) &&
+      dur > 0
+    ) {
+      targetTime = dur * initialProgressRatio;
+    }
+
+    if (targetTime > 0 && Number.isFinite(targetTime)) {
+      video.currentTime = targetTime;
+      setCurrentTime(targetTime);
+      setResumeNotification({
+        formatted: formatTime(targetTime),
+        ratio: targetTime / dur,
+      });
+      hasAppliedInitialProgressRef.current = true;
+    }
+  }, [initialProgressRatio, initialProgressSeconds]);
+
+  // Auto-dismiss resume notification pill with proper React ref & effect lifecycle
+  useEffect(() => {
+    if (!resumeNotification) return;
+
+    if (resumeTimeoutRef.current) {
+      clearTimeout(resumeTimeoutRef.current);
+    }
+
+    resumeTimeoutRef.current = setTimeout(() => {
+      setResumeNotification(null);
+      resumeTimeoutRef.current = null;
+    }, RESUME_NOTIFICATION_DURATION_MS);
+
+    return () => {
+      if (resumeTimeoutRef.current) {
+        clearTimeout(resumeTimeoutRef.current);
+        resumeTimeoutRef.current = null;
+      }
+    };
+  }, [resumeNotification]);
 
   // Aspect Ratio Container Classes
   const aspectContainerClasses = useMemo(() => {
@@ -680,6 +947,7 @@ export default function VideoPlayer({
       onTouchStart={handleTouchStart}
       onTouchMove={handleTouchMove}
       onTouchEnd={handleTouchEnd}
+      onTouchCancel={handleTouchCancel}
       className={`relative group select-none overflow-hidden rounded-xl bg-black shadow-2xl transition-all ${aspectContainerClasses} flex items-center justify-center`}
     >
       {/* Ambient background blur for 9:16 mode on widescreen displays */}
@@ -716,6 +984,8 @@ export default function VideoPlayer({
           onPlaying={() => {
             setIsBuffering(false);
             setIsPlaying(true);
+            networkRetryCountRef.current = 0;
+            mediaRecoveryCountRef.current = 0;
           }}
           onPause={() => {
             setIsPlaying(false);
@@ -726,8 +996,10 @@ export default function VideoPlayer({
           }}
           onEnded={handleVideoEnded}
           onError={() => {
+            // If HLS.js is actively managing playback and recovery, allow HLS event handlers to manage retries/recoveries
+            if (hlsRef.current) return;
             setIsBuffering(false);
-            setHasError("Error loading video stream. Please check your connection.");
+            setHasError((prev) => prev || "Error loading video stream. Please check your connection.");
           }}
         />
       </div>
@@ -747,6 +1019,10 @@ export default function VideoPlayer({
                 videoRef.current.currentTime = 0;
                 setCurrentTime(0);
               }
+              if (resumeTimeoutRef.current) {
+                clearTimeout(resumeTimeoutRef.current);
+                resumeTimeoutRef.current = null;
+              }
               setResumeNotification(null);
             }}
             className="text-primary hover:text-primary-hover font-semibold underline underline-offset-2 ml-1 text-[11px]"
@@ -757,6 +1033,10 @@ export default function VideoPlayer({
             type="button"
             onClick={(e) => {
               e.stopPropagation();
+              if (resumeTimeoutRef.current) {
+                clearTimeout(resumeTimeoutRef.current);
+                resumeTimeoutRef.current = null;
+              }
               setResumeNotification(null);
             }}
             className="text-white/60 hover:text-white ml-0.5"
@@ -832,15 +1112,7 @@ export default function VideoPlayer({
           <p className="text-sm text-text-muted max-w-md mb-4">{hasError}</p>
           <button
             type="button"
-            onClick={() => {
-              setHasError(null);
-              setIsBuffering(true);
-              const video = videoRef.current;
-              if (video) {
-                video.load();
-                video.play().catch(() => {});
-              }
-            }}
+            onClick={handleRetryPlayback}
             className="px-4 py-2 rounded-md bg-btn-primary hover:bg-btn-primary-hover text-btn-primary-text text-sm font-semibold transition-colors"
           >
             Retry Playback
@@ -870,10 +1142,7 @@ export default function VideoPlayer({
             </button>
             <button
               type="button"
-              onClick={() => {
-                cancelNextCountdown();
-                onNextEpisode?.();
-              }}
+              onClick={goToNextEpisode}
               className="px-5 py-2 rounded-md bg-btn-primary hover:bg-btn-primary-hover text-btn-primary-text text-sm font-semibold flex items-center gap-2 transition-colors"
             >
               <Play size={15} className="fill-current" />
@@ -1014,7 +1283,7 @@ export default function VideoPlayer({
               aria-label="Previous Episode"
               title="Previous Episode (P)"
               disabled={currentEpisode <= 1 || !onPrevEpisode}
-              onClick={onPrevEpisode}
+              onClick={goToPrevEpisode}
               className="p-1.5 sm:p-2 rounded-md hover:bg-white/15 text-white disabled:opacity-30 disabled:pointer-events-none transition-colors"
             >
               <SkipBack size={17} />
@@ -1026,7 +1295,7 @@ export default function VideoPlayer({
               aria-label="Next Episode"
               title="Next Episode (N)"
               disabled={currentEpisode >= totalEpisodes || !onNextEpisode}
-              onClick={onNextEpisode}
+              onClick={goToNextEpisode}
               className="p-1.5 sm:p-2 rounded-md hover:bg-white/15 text-white disabled:opacity-30 disabled:pointer-events-none transition-colors"
             >
               <SkipForward size={17} />

@@ -26,3 +26,6 @@ yarn-error.log*
 # supabase temp
 .temp/
 supabase/.temp/
+
+# teamwork agent logs
+.agents/

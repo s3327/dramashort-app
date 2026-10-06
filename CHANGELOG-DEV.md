@@ -1502,3 +1502,100 @@
   - Next.js production build (`npm run build`): cleanly compiled all 42 routes with 0 errors.
 
 
+---
+
+## [2026-10-06] Task 12.8: Player Streaming Robustness & Lifecycle Reliability
+* **Milestone**: Phase 12 (Functional Bug Fixes & Data Integrity) — Task 12.8
+* **Goal**: Harden video streaming robustness and lifecycle reliability in the DramaShort web player (`components/VideoPlayer.tsx`), tuning HLS.js for short-form VOD episodes, implementing capped exponential-backoff retries for fatal network errors, bounding media error recovery, and eliminating memory leaks from uncleaned event timers.
+* **Implementation Steps Taken**:
+  1. HLS.js Short-Form VOD Configuration (`lib/player/streaming-robustness.ts`, `components/VideoPlayer.tsx`):
+     - Configured `lowLatencyMode: false` in `HLS_SHORT_VOD_CONFIG`, disabling live streaming overhead.
+     - Tuned buffer parameters for ~1–2 minute episodes: `backBufferLength: 15s` (lean backwards buffer preventing memory accumulation), `maxBufferLength: 30s` (target buffer covering 25–50% of the episode), `maxMaxBufferLength: 60s` (forward buffer capped to avoid excessive pre-fetching), and `maxBufferSize: 30MB`.
+  2. Capped Retries with Exponential Backoff (`lib/player/streaming-robustness.ts`, `components/VideoPlayer.tsx`):
+     - Implemented `calculateBackoffDelay(retryCount)` providing exponential backoff: 1s (attempt 0), 2s (attempt 1), 4s (attempt 2).
+     - Capped fatal network errors (`Hls.ErrorTypes.NETWORK_ERROR`) to at most 3 retries (`MAX_NETWORK_RETRIES = 3`).
+     - On reaching the retry cap or unrecoverable fatal error, safely destroys the Hls instance and transitions cleanly to the user-facing error overlay.
+  3. Bounded Fatal Media Error Recovery (`components/VideoPlayer.tsx`):
+     - Bounded `hls.recoverMediaError()` to at most 2 attempts (`MAX_MEDIA_RECOVERIES = 2`).
+     - Exceeding 2 media errors halts recovery loops, destroys the Hls instance, and transitions to the error overlay.
+  4. Playback and Episode Navigation Retry Resets:
+     - Reset `networkRetryCountRef` and `mediaRecoveryCountRef` to 0 on successful playback (`onPlaying`), segment downloads (`Hls.Events.FRAG_LOADED`), episode navigation, and manual retry.
+     - Wired "Retry Playback" overlay button to `handleRetryPlayback` which clears pending retry timers, resets retry counters, and triggers a full clean stream re-initialization.
+  5. Timer Lifecycle & Memory Leak Elimination:
+     - Fixed `handleLoadedMetadata` to return `void`, eliminating discarded cleanup functions returned from DOM event listeners.
+     - Managed auto-resume floating pill notification via React ref (`resumeTimeoutRef`) and dedicated `useEffect` lifecycle with guaranteed cleanup on unmount, dismiss, or episode switch.
+     - Managed auto-next countdown interval (`countdownIntervalRef`), controls hide timeout (`controlsTimeoutRef`), and retry backoff timer (`retryTimeoutRef`) with comprehensive unmount and episode change cleanups.
+  6. Automated Test Suite (`__tests__/player/player-streaming-robustness.test.ts`):
+     - Implemented 18 comprehensive unit, contract, and simulation tests covering VOD configuration, backoff calculation, retry caps, bounded media recovery, timer cleanup invariants, and mock HLS failure/recovery cycles.
+* **Key File Diffs**:
+  - Created:
+    - `lib/player/streaming-robustness.ts`
+    - `__tests__/player/player-streaming-robustness.test.ts`
+  - Modified:
+    - `components/VideoPlayer.tsx`
+    - `ROADMAP.md`
+    - `CHANGELOG-DEV.md`
+* **Regression Analysis & Cross-System Impact**:
+  - Test runner expanded from 411 tests (117 suites) to 429 tests (124 suites) with 100% pass rate.
+  - Zero type errors across all files (`npx tsc --noEmit`).
+  - Next.js production build (`npm run build`) cleanly compiled with 0 errors.
+* **Verification**:
+  - `npm test`: 429 / 429 tests pass across 124 suites (0 failures).
+  - `npx tsc --noEmit`: 0 type errors.
+  - `npm run build`: cleanly compiles all 42 routes with 0 errors.
+
+---
+
+## [2026-10-06] Task 12.8 Reviewer QA & Adversarial Hardening (Round 1)
+* **Milestone**: Phase 12 (Functional Bug Fixes & Data Integrity) — Task 12.8 QA Review
+* **Goal**: Conduct adversarial review, fix latent edge cases in player lifecycle and error recovery, and expand test verification.
+* **Findings & Issues Remediated**:
+  1. **Indeterminate / Live Stream Duration Guard**: Guarded `handleLoadedMetadata` with `Number.isFinite(dur)` and `dur > 2` / `dur > 0` to prevent `video.currentTime = Infinity` DOMException crashes when streaming manifests have unfinalized durations.
+  2. **Native Video Retry Reload Support**: Added `video.load()` to native HLS (Safari/iOS) and MP4 fallback branches in `components/VideoPlayer.tsx`, ensuring `handleRetryPlayback` actually reloads media elements even when `video.src` is identical, and starts playback when `reloadIndex > 0`.
+  3. **Race Condition Prevention in Video onError**: Guarded native `<video onError>` with `if (hlsRef.current) return;` so that native media errors do not prematurely trigger error overlays while HLS.js is actively managing bounded retries and recoveries.
+  4. **Stale Timer ID Clearance**: Cleared `retryTimeoutRef.current = null;` inside the backoff execution callback to prevent stale timer IDs from lingering after execution.
+  5. **Controls Timer Cleanup on Episode Transitions**: Added `controlsTimeoutRef.current` clearance in the episode change setup and cleanup effect blocks.
+  6. **Math Sanitization in Robustness Helpers**: Hardened `calculateBackoffDelay`, `handleNetworkError`, and `handleMediaError` against `NaN`, negative counts, and invalid base delays.
+  7. **Adversarial Test Suite Expansion**: Added 7 new tests in `__tests__/player/player-streaming-robustness.test.ts` covering non-finite durations, native reload contracts, timer lifecycles, and edge-case backoff inputs.
+* **Verification**:
+  - `npm test`: 436 / 436 tests passing across 125 suites (0 failures).
+  - `npx tsc --noEmit`: 0 type errors.
+  - `npm run build`: cleanly compiled all 42 routes with 0 errors.
+
+---
+
+## [2026-10-06] Task 12.8 Reviewer QA & Adversarial Hardening (Round 2)
+* **Milestone**: Phase 12 (Functional Bug Fixes & Data Integrity) — Task 12.8 QA Review Round 2
+* **Goal**: Conduct adversarial audit of player lifecycle, error recovery bounds, timer memory leaks, and navigation concurrency.
+* **Findings & Issues Remediated**:
+  1. **Infinite Media Recovery Loop Prevention (`FRAG_LOADED`)**: Removed `mediaRecoveryCountRef.current = 0` from `Hls.Events.FRAG_LOADED`. Previously, downloading a corrupted segment repeatedly triggered `FRAG_LOADED`, resetting `mediaRecoveryCountRef` to 0 before demuxing/decoding failed, preventing the retry count from ever reaching `MAX_MEDIA_RECOVERIES` (2) and causing an infinite reload loop. Media recovery resets are now strictly restricted to verified successful playback (`onPlaying`), manual retry, and episode navigation.
+  2. **Double-Advance / Episode Skipping Race Condition**: Identified that `cancelNextCountdown()` was only called in the overlay "Play Now" button. Manual episode navigation (controls bar Next/Prev buttons, keyboard 'n'/'p', touch swipe up/down, mouse swipe up/down) previously left the 3s auto-advance countdown timer ticking in the background, which subsequently fired and advanced an extra episode. Created unified `goToNextEpisode` and `goToPrevEpisode` helpers that guarantee countdown cancellation on all navigation triggers.
+  3. **Mid-Scrub & Seeking Interruption Prevention**: Wired `cancelNextCountdown()` into scrub clicks (`handleScrubClick`), relative seeking (`seekRelative`), and play toggle (`togglePlay`) to prevent countdown timers from navigating away while the user is rewinding or scrubbing.
+  4. **Initial Progress Idempotency Guard**: Added `hasAppliedInitialProgressRef` to `components/VideoPlayer.tsx`. Previously, subsequent `loadedmetadata` events (e.g. from HLS bitrate switches, track reloads, or media recoveries) unconditionally re-evaluated `initialProgressRatio` / `initialProgressSeconds`, jumping playback backwards to the starting position and re-displaying the resume notification pill. Initial progress is now strictly applied once per episode load.
+  5. **Mobile Gesture State Freeze Prevention**: Added `onTouchCancel={handleTouchCancel}` to the video container element. On mobile devices where browser scroll or OS gestures cancel an active touch drag, the drag state and swipe offset are now cleanly reset instead of remaining visually shifted or frozen.
+  6. **Controls Auto-Hide Stale Ref Nulling & ESLint Cleanliness**: Wrapped `cancelNextCountdown`, `goToNextEpisode`, and `goToPrevEpisode` in `useCallback` to satisfy React hook dependencies, and ensured `controlsTimeoutRef.current = null;` executes inside the auto-hide `setTimeout` callback.
+  7. **Diagnostic Error Message Preservation**: Protected `<video onError>` with `setHasError((prev) => prev || "...")` so that native media error events do not overwrite specific diagnostic messages set by Hls.js error handlers.
+  8. **Adversarial Test Suite Expansion**: Added 5 new automated tests in `__tests__/player/player-streaming-robustness.test.ts` verifying `FRAG_LOADED` bounds isolation, initial progress idempotency, navigation countdown cancellation, `onTouchCancel` wiring, and `controlsTimeoutRef` nulling.
+* **Verification**:
+  - `npm test`: 441 / 441 tests passing across 125 suites (0 failures).
+  - `npx tsc --noEmit`: 0 type errors.
+  - `npm run build`: cleanly compiled all 42 routes with 0 warnings and 0 errors.
+
+---
+
+## [2026-10-06] Task 12.8 Reviewer QA & Adversarial Hardening (Round 3)
+* **Milestone**: Phase 12 (Functional Bug Fixes & Data Integrity) — Task 12.8 QA Review Round 3
+* **Goal**: Conduct adversarial review targeting asynchronous prop resolution race conditions, timer-driven UI disappearing acts, unmount media element teardowns, and edge-case replay lifecycles.
+* **Findings & Issues Remediated**:
+  1. **Asynchronous Watch Progress Resume Race Condition**: In `app/watch/[slug]/page.tsx`, `savedProgressRatio` is fetched asynchronously via `getWatchProgress()` or `getGuestWatchProgress()`. On fast video CDN loads, `loadedmetadata` fired prior to database query resolution, at which time `initialProgressRatio` was `undefined`. Previously, `handleLoadedMetadata` prematurely locked `hasAppliedInitialProgressRef.current = true`, dropping the user's saved resume position when the prop arrived moments later. Fixed by adding a reactive `useEffect` monitoring `[initialProgressRatio, initialProgressSeconds]` when metadata is ready, while guarding against backwards jumps once active playback exceeds 2 seconds.
+  2. **Controls Auto-Hide Ghost Timer When Pausing**: Moving the cursor while playing starts a 2500ms auto-hide timer (`controlsTimeoutRef`). Previously, pressing pause did not clear this timer, causing controls to disappear 2.5 seconds after pausing. Added reactive effect ensuring controls remain visible and any pending hide timer is cancelled whenever `!isPlaying`, scrubbing, or speed/aspect menus are open.
+  3. **Auto-Next Countdown Continues When User Toggles Auto-Next OFF**: Clicking the "Auto-Next: ON" quick toggle in the player header to switch it to OFF while a countdown was ticking did not cancel `countdownIntervalRef`. The interval kept ticking and forced navigation to the next episode. Added reactive effect cancelling `countdownIntervalRef` immediately when `autoPlayNext` becomes `false`.
+  4. **Video Element Audio & Decoder Leak Prevention on Unmount**: Calling `hls.destroy()` or unmounting `<VideoPlayer>` did not explicitly pause `videoRef.current`. In several browser media engines, unmounted `<video>` tags with active streams can linger in audio render threads. Added explicit `video.pause()` inside effect cleanups using a locally captured element reference (satisfying React `react-hooks/exhaustive-deps`).
+  5. **Ended Video Replay Reset**: When replaying an episode from the ended state (`video.ended === true`), calling `video.play()` without resetting `video.currentTime = 0` could immediately re-trigger native `ended` events in certain browsers. Updated `togglePlay` to reset `video.currentTime = 0` on ended video replay.
+  6. **Adversarial Test Suite Expansion**: Added 5 new automated tests in `__tests__/player/player-streaming-robustness.test.ts` verifying async progress reactivity, paused controls visibility, auto-play next cancellation, unmount video pause, and replay reset.
+* **Verification**:
+  - `npm test`: 446 / 446 tests passing across 125 suites (0 failures).
+  - `npx tsc --noEmit`: 0 type errors.
+  - `npm run lint`: clean (0 warnings, 0 errors).
+  - `npm run build`: cleanly compiled all 42 routes with 0 warnings and 0 errors.
+

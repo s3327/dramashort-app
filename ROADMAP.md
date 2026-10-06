@@ -45,7 +45,7 @@
 | **Phase 9** | 🟠 High | Mobile PWA & Advanced Video Player UX | ⏳ Planned · 🔒 Blocked by 14 | Native app-like PWA, subtitles/VTT, keyboard hotkeys, PiP |
 | **Phase 10** | 🔴 Critical | Security Hardening & Access Control (admin role escalation, RLS & grants, admin API auth, subdomain guard, open redirect, episode media lockdown, CI gate) | ✅ Completed (10.1–10.9 ✅) | Closes privilege escalation and data exposure; gate for all further work |
 | **Phase 11** | 🔴 Critical | Complete Stubbed User Flows (email verification, password recovery, account deletion, support pipeline, real 404s) | 🚧 In progress (11.1 ✅) | Every visible action performs a real operation |
-| **Phase 12** | 🟠 High | Functional Bug Fixes & Data Integrity (12-item cap, admin drafts, progress semantics, no production mocks) | ⏳ Planned | Full catalog visible; admins see all content; trustworthy data |
+| **Phase 12** | 🟠 High | Functional Bug Fixes & Data Integrity (12.1–12.8 ✅) | ✅ Completed | Full catalog visible, admin drafts, progress semantics, zero mocks, session, lists, integrity, player robustness |
 | **Phase 13** | 🟠 High | Backend Architecture Consolidation (database topology ADR, server-rendered catalog, service split, observability) | ⏳ Planned | Decision gate for Phase 8; faster pages; operability |
 | **Phase 14** | 🟠 High | Mobile-First Vertical Watch Experience & UI Polish | ⏳ Planned | Core 9:16 viewing experience on phones |
 | **Phase 15** | 🟠 High | Product Analytics, Engagement Tracking & Real Trending | ⏳ Planned | Real views, trending and dashboard; data to tune the paywall |
@@ -1663,13 +1663,27 @@ These items stay ✅ for history; the gaps are tracked as new tasks.
 ---
 
 ### Task 12.8: Player Streaming Robustness
-* **Status**: ⏳ Planned
-* **Problem**: `hls.js` is configured with `lowLatencyMode: true` (`components/VideoPlayer.tsx` L164), which is meant for live streams. Fatal network errors call `hls.startLoad()` with no retry limit. `handleLoadedMetadata` returns a cleanup function from an event handler, so the resume-pill timer is never cleared.
-* **Planned Specifications**:
-  1. `lowLatencyMode: false`, with buffer settings tuned for short episodes.
-  2. Capped retries with exponential backoff, then the error overlay.
-  3. Manage the resume-pill timer in an effect with proper cleanup.
-* **Verification**: with the network throttled to offline, the player shows the error overlay after the retry cap instead of retrying forever.
+* **Status**: ✅ Completed (2026-10-06)
+* **Problem**: `hls.js` was configured with `lowLatencyMode: true` (`components/VideoPlayer.tsx`), which is meant for live streams. Fatal network errors called `hls.startLoad()` with no retry limit, causing infinite loops. Fatal media decoding/demuxing errors repeatedly called `hls.recoverMediaError()` without bounds. `handleLoadedMetadata` returned a no-op cleanup function from a DOM event handler, leaking the resume-notification pill timer. Timers were not guaranteed to clear on unmount or episode changes.
+* **Delivered Capabilities**:
+  1. Short-Form VOD HLS Configuration:
+     - Configured `lowLatencyMode: false` and tuned buffer parameters (`maxBufferLength: 30`, `maxMaxBufferLength: 60`, `maxBufferSize: 30MB`, `backBufferLength: 15s`) in `HLS_SHORT_VOD_CONFIG` (`lib/player/streaming-robustness.ts`, re-exported in `components/VideoPlayer.tsx`), preventing over-buffering while maintaining smooth playback.
+  2. Capped Fatal Network Retries with Exponential Backoff:
+     - Implemented 3-retry cap with exponential backoff (1s, 2s, 4s) via `calculateBackoffDelay()`.
+     - On 4th fatal network error, cleanly destroys Hls instance and transitions to the user-facing error overlay with retry option.
+  3. Bounded Fatal Media Error Recovery:
+     - Bounded `hls.recoverMediaError()` to maximum 2 recovery attempts before destroying the player and displaying the error overlay.
+  4. Playback and Episode Navigation Retry Resets:
+     - Successful playback (`onPlaying`), episode transitions, and user "Retry Playback" clicks reset both network and media retry counters to 0; successful fragment loads (`Hls.Events.FRAG_LOADED`) reset network retries only, avoiding infinite recovery loops on corrupted or un-decodable streams.
+  5. Timer Lifecycle & Memory Leak Elimination:
+     - Fixed `handleLoadedMetadata` to return `void`, eliminating discarded cleanup functions from DOM event handlers.
+     - Managed the resume-notification pill timer (`resumeTimeoutRef`) via a dedicated React effect lifecycle with guaranteed cleanup on unmount, dismiss, or episode switch.
+     - Managed auto-advance countdown interval (`countdownIntervalRef`), controls hide timeout (`controlsTimeoutRef`), and retry backoff timer (`retryTimeoutRef`) with strict unmount and episode change cleanup; unified countdown cancellation across all navigation gestures, scrubbing, and seeking to prevent double-advance race conditions.
+* **Verification Results**:
+  - `__tests__/player/player-streaming-robustness.test.ts` (35 unit, contract, and adversarial QA tests passing across VOD configuration, retry caps, backoff delays, bounded recovery, timer lifecycles, async watch progress reactive resume, and paused controls persistence).
+  - `npx tsc --noEmit`: 0 type errors.
+  - Full test runner `npm test`: 446 / 446 tests passing across 125 suites (0 failures).
+  - Next.js production build (`npm run build`): cleanly compiles all 42 routes with 0 warnings and 0 errors.
 
 ---
 
