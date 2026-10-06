@@ -49,16 +49,16 @@ flowchart TB
         end
     end
 
-    subgraph SupabaseDBs["🗄️ Supabase Dual-Database"]
-        subgraph UserDB["User Database (bpidsbcrvpkavvdvtpgh)"]
+    subgraph SupabaseDBs["🗄️ Supabase Database Architecture (Consolidating to content + public schemas per ADR-0003)"]
+        subgraph UserDB["User Domain / public schema (bpidsbcrvpkavvdvtpgh)"]
             ProfilesTable["public.profiles<br/>(telegram_user_id, telegram_username)"]
             TokensTable["public.telegram_link_tokens<br/>(ephemeral handshake OTP)"]
             SubsTable["public.telegram_subscriptions<br/>(drama_id alerts)"]
         end
 
-        subgraph ContentDB["Content Database (czkkzoiuyqybafacpgsp)"]
-            DramasTable["public.titles / dramas<br/>(read-only metadata)"]
-            EpisodesTable["public.episodes<br/>(streaming assets)"]
+        subgraph ContentDB["Content Domain / content schema (czkkzoiuyqybafacpgsp)"]
+            DramasTable["content.titles / dramas<br/>(read-only metadata)"]
+            EpisodesTable["content.episodes<br/>(streaming assets)"]
         end
     end
 
@@ -470,6 +470,9 @@ export function verifyTelegramInitData(
 
 ### 5.2 Dual-Database Architectural Separation Integrity
 
+> [!NOTE] **Architectural Decision Update (ADR-0003)**
+> Per **ADR-0003: Database Topology Decision** ([`docs/adr/0003-database-topology.md`](docs/adr/0003-database-topology.md)), DramaShort has accepted **Option A (Consolidation)**. In Task 13.2, Content DB (`czkkzoiuyqybafacpgsp`) is being merged into User DB (`bpidsbcrvpkavvdvtpgh`) under the `content` schema. Once Task 13.2 executes, `telegram_subscriptions` can enforce real foreign keys (`drama_id UUID REFERENCES content.titles(id) ON DELETE CASCADE`), eliminating application-layer orphan pruning. The guidelines below reflect the pre-consolidation operational isolation rules.
+
 DramaShort maintains a strict architectural split between two independent Supabase projects:
 1. **Content Database (`czkkzoiuyqybafacpgsp`)**: `channels`, `titles` (dramas), `episodes`, `genres`.
 2. **User Database (`bpidsbcrvpkavvdvtpgh`)**: `profiles`, `user_watch_history`, `favorites`.
@@ -551,6 +554,6 @@ Before deploying the Telegram feature to production, execute the following regre
 - [ ] **Video Player**: HLS/MP4 playback, vertical swipe navigation, cinema mode, and episode progress continue without regression.
 - [ ] **Continue Watching**: Hydration and progress percentage calculation on `/home` remain accurate.
 - [ ] **Admin CMS**: Drama creation, editing, channel assignment, and admin route middleware guards remain unaffected.
-- [ ] **Database Integrity**: Dual-database isolation is preserved; Content DB schema is unchanged.
-- [ ] **Automated Test Suite**: `npm test` executes with 14/14 passing tests, plus new Telegram crypto unit tests.
+- [ ] **Database Integrity**: Dual-database isolation is preserved (or schema-level isolation under ADR-0003 Option A); content schema is unchanged.
+- [ ] **Automated Test Suite**: `npm test` executes with 100% pass rate (470+ tests passing), plus new Telegram crypto unit tests.
 - [ ] **Production Build**: `npm run build` succeeds with 0 type errors and 0 lint warnings.

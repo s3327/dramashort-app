@@ -1599,3 +1599,94 @@
   - `npm run lint`: clean (0 warnings, 0 errors).
   - `npm run build`: cleanly compiled all 42 routes with 0 warnings and 0 errors.
 
+---
+
+## [2026-10-06] Task 13.1: ADR-0003 Database Topology Decision & ADR Index Registry
+* **Milestone**: Phase 13 (Backend Architecture Consolidation) — Task 13.1 Decision Gate
+* **Goal**: Establish the definitive architectural decision record governing database topology ahead of Task 13.2, Phase 15 analytics, and Phase 8 freemium monetization, indexing all project ADRs in a central registry.
+* **Implementation Steps Taken**:
+  1. Authored `docs/adr/0003-database-topology.md`:
+     - Captured historical context of the initial split between Content DB (`czkkzoiuyqybafacpgsp`) and User DB (`bpidsbcrvpkavvdvtpgh`).
+     - Formulated problem statement detailing referential integrity breakdown (`title_slug` orphans), inability to perform cross-database SQL joins/aggregations, Phase 8 monetization entitlement barriers (double service-role proxying), and dual-project operational costs ($50/mo).
+     - Rigorously evaluated Option A (Merge into single Supabase project partitioned into `content` and `public` schemas) vs Option B (Retain dual-database split with `title_id UUID` references and application-level eventual consistency).
+     - Constructed an exhaustive 6-dimension comparative trade-off matrix:
+       1. Data Integrity & Referential Constraints (DB-enforced cascading deletes vs application-level eventual consistency).
+       2. Query Performance & Aggregations (Single-query SQL joins <10ms vs 2-round-trip application-level merges 150–350ms+).
+       3. Phase 8 Coin Economy & Paywall Integration (Direct native RLS evaluation vs multi-project service-role proxying).
+       4. Operational Overhead & Financial Cost (Single Supabase Pro tier $25/mo vs dual-project $50/mo, $300/yr savings).
+       5. Migration Effort & Rollback Risk (Schema export/import cutover window vs gradual dual-read UUID backfill).
+       6. Multi-tenant / Reusability considerations for headless content reuse (Logical schema isolation vs physical hardware separation).
+     - Applied 6 objective decision criteria (zero external headless consumers in 12 months, Phase 8 velocity/security, ACID data integrity, operational simplicity, Task 10.6 video signed delivery tokens, and Task 15.1 hybrid analytics) and definitively recommended and adopted **Option A (Merge)**.
+     - Formulated a 6-step Implementation Roadmap for Task 13.2 execution (schema creation in `supabase/user/supabase/migrations/`, data dump/restore cutover window, UUID foreign key migration, client/env consolidation, service layer update, `FUTURE_PLAN.md` alignment, and 30-day decommissioning).
+  2. Created `docs/adr/README.md`:
+     - Centralized index registry cataloging ADR-0001 (Account Deletion & Data Retention), ADR-0002 (Notification System Architecture), and ADR-0003 (Database Topology Decision).
+     - Documented ADR governance lifecycle, format standards, and decision gate dependencies for Phase 13.2, Phase 15, and Phase 8.
+  3. Aligned `ROADMAP.md`:
+     - Updated Phase 13 header status to In Progress (Task 13.1 ✅).
+     - Aligned Phase 8 prerequisites, Phase 10 signed delivery specs, Phase 13 Task 13.1 specs, Phase 13 Task 13.2 Option A execution roadmap, Phase 15 analytics, and Mermaid roadmap diagrams to cite ADR-0003.
+     - Marked Task 13.1 status as `✅ Completed (Accepted — Option A Merge)`.
+  4. Implemented Contract Tests (`__tests__/docs/adr-topology.test.ts`):
+     - Added 20 comprehensive automated unit and contract tests verifying ADR-0003 document sections, technical option specifications, matrix dimensions, pricing metrics, Task 10.6 video provider tokens, Task 15.1 hybrid analytics, migration paths, link integrity (zero broken links), registry index links, and roadmap alignment.
+* **Key File Diffs**:
+  - Created:
+    - `docs/adr/0003-database-topology.md`
+    - `docs/adr/README.md`
+    - `__tests__/docs/adr-topology.test.ts`
+  - Modified:
+    - `ROADMAP.md`
+    - `CHANGELOG-DEV.md`
+* **Regression Analysis & Cross-System Impact**:
+  - Zero code changes to runtime applications or API routes; documentation and decision contracts established with zero risk of regressions.
+  - Test suite grew from 446 tests (125 suites) to 466 tests (126 suites) with 100% pass rate.
+* **Verification**:
+  - `npx tsx --test "__tests__/docs/adr-topology.test.ts"`: 20 / 20 tests pass across 7 suites (0 failures).
+  - `npm test`: 466 / 466 tests pass across 126 suites (0 failures).
+  - `npx tsc --noEmit`: 0 type errors.
+  - `npm run build`: cleanly compiled all routes with 0 warnings and 0 errors.
+
+---
+
+## [2026-10-06] Task 13.1 Reviewer QA & Adversarial Hardening (Round 2)
+* **Milestone**: Phase 13 (Backend Architecture Consolidation) — Task 13.1 QA Review Round 2
+* **Goal**: Conduct adversarial review targeting cross-schema RLS syntax validity, foreign key index performance, Task 12.7 emergency slug constraint history, ADR breadcrumb link uniformity, and cross-document architectural cohesion.
+* **Findings & Issues Remediated**:
+  1. **Invalid RLS Policy Reference to Non-Existent Column**: In `docs/adr/0003-database-topology.md`, the proposed RLS policy on `content.episode_media` used `is_free = true` directly. In PostgreSQL, `content.episode_media` does not contain an `is_free` column (it exists on `content.episodes`). Running this policy directly would trigger `ERROR: column "is_free" does not exist`. Corrected the SQL policy to join `content.episodes e` on `e.id = content.episode_media.episode_id AND e.is_free = true`, while expanding the target role to `TO authenticated, anon` so unauthenticated guests can stream free episodes (Episodes 1–5).
+  2. **Cascading Delete Sequential Table Scan Risk**: Step 3 of the Implementation Roadmap previously added foreign key constraints without explicit indexes on the foreign key columns in `favorites`, `watch_history`, and `custom_list_items`. In PostgreSQL, foreign keys without B-tree indexes cause full table scans on child tables whenever a parent row is deleted. Added explicit index specifications (`CREATE INDEX idx_favorites_title_id`, `idx_watch_history_title_id`, `idx_custom_list_items_title_id`) and updated unique constraints (`(user_id, title_id)`, `(list_id, title_id)`).
+  3. **Task 12.7 Emergency Slug Constraint History**: Integrated the historical context of Task 12.7's emergency trigger (`trg_enforce_title_slug_immutability`) into ADR-0003 Problem Statement Point 1, explaining why freezing published slugs was required as a defensive patch under the split database, and how Option A eliminates this artificial restriction.
+  4. **ADR Breadcrumb Navigation Uniformity**: Added `[← Back to ADR Registry](README.md)` navigation breadcrumbs to `docs/adr/0001-account-deletion-and-data-retention.md` and `docs/adr/0002-notifications-system-architecture.md`, establishing consistent bi-directional navigation across all ADR documents.
+  5. **Cross-Document Alignment**:
+     - Updated root `README.md` to index `docs/adr/README.md` in Architecture & Features and project directory tree.
+     - Updated `FUTURE_PLAN.md` §5.2 with an Architectural Decision Update banner citing ADR-0003 Option A consolidation.
+     - Updated `lib/services/README.md` §1 with an Architectural Decision Update banner citing ADR-0003 consolidation into `content` and `public` schemas.
+     - Aligned `ROADMAP.md` Task 8.1 schema definition for `public.user_unlocked_episodes` with `content.titles(id)` and `content.episodes(id)` foreign key references and indexes.
+  6. **Contract Test Suite Expansion**: Expanded `__tests__/docs/adr-topology.test.ts` from 20 to 24 tests across 8 suites, validating RLS schema correctness, foreign key indexing, link integrity across all 4 ADR files, and cross-document alignment across `README.md`, `FUTURE_PLAN.md`, `lib/services/README.md`, and `ROADMAP.md`.
+* **Verification**:
+  - `npx tsx --test "__tests__/docs/adr-topology.test.ts"`: 24 / 24 tests pass across 8 suites (0 failures).
+  - `npm test`: 470 / 470 tests pass across 132 suites (0 failures).
+  - `npx tsc --noEmit`: 0 type errors.
+  - `npm run build`: cleanly compiled all 42 routes with 0 warnings and 0 errors.
+
+---
+
+## [2026-10-06] Task 13.1 Reviewer QA & Adversarial Hardening (Round 3)
+* **Milestone**: Phase 13 (Backend Architecture Consolidation) — Task 13.1 Final Adversarial Review
+* **Goal**: Conduct deep adversarial audit probing database migration execution risks, PostgreSQL privilege boundaries, catalog schema taxonomy definitions, obsolete ADR references in production server code, and cross-specification consistency across `ROADMAP.md` and `FUTURE_PLAN.md`.
+* **Findings & Issues Remediated**:
+  1. **Obsolete ADR Reference in Server Playback Resolver**: In `lib/server/playback.ts` (line 83), the architecture docstring for `resolvePlaybackSession` referenced `(ADR-0001)`. ADR-0001 governs Account Deletion and Data Retention, whereas signed video streaming delivery (Task 10.6) was deferred to and resolved by ADR-0003. Corrected docstring to cite `(ADR-0003 / Task 10.6)`.
+  2. **Catalog Schema Table Taxonomy Correction**: In `docs/adr/0003-database-topology.md` Option A definition, `genres` and `tags` were erroneously listed as separate tables in the `content` schema. As defined in migration `20260930150000_content_schema.sql`, `genre` is a `TEXT NOT NULL` column and `tags` is a `TEXT[]` array column on `content.titles`. Corrected Option A schema definition to accurately specify `channels`, `titles` (including genre and tags array columns), `episodes`, and `episode_media`.
+  3. **PostgreSQL Multi-Schema PostgREST Grant Prerequisite**: In PostgreSQL, configuring Supabase PostgREST `db-schemas = "public, content"` without explicit schema usage and table grants triggers `403 Forbidden` (`permission denied for schema content` or `permission denied for table episode_media`) before RLS is evaluated. Added explicit `GRANT USAGE ON SCHEMA content TO anon, authenticated, service_role;` and `GRANT SELECT ON TABLE content.episode_media TO authenticated, anon;` to Option A and Step 1 of the Implementation Roadmap.
+  4. **Pre-Constraint Orphan Cleanup & Unique Constraint Migration Safeguards**: Step 3 of the Implementation Roadmap previously attempted to apply foreign keys and unique constraints without handling pre-existing orphaned rows resulting from the dual-database split. Under PostgreSQL, adding a foreign key or unique constraint against rows with unresolvable slugs would abort the migration. Explicitly specified pre-constraint orphan pruning (`DELETE FROM public.favorites WHERE title_id IS NULL;`, `watch_history`, `custom_list_items`), dropping legacy slug unique constraints (`DROP CONSTRAINT IF EXISTS favorites_user_id_title_slug_key;`), and dropping emergency trigger `trg_enforce_title_slug_immutability` to restore admin flexibility for SEO slug updates once true foreign keys are active.
+  5. **Cross-Document Harmonization**:
+     - Updated `FUTURE_PLAN.md` §2 architecture diagram to annotate schema consolidation under ADR-0003.
+     - Updated `FUTURE_PLAN.md` §6 checklist to reflect schema-level isolation under ADR-0003 Option A and current 470+ passing test count.
+     - Updated `ROADMAP.md` §22.2 to align database integrity notes with ADR-0003 Option A consolidation.
+  6. **Contract Test Suite Expansion**: Expanded `__tests__/docs/adr-topology.test.ts` from 24 to 27 tests across 8 suites, validating RLS grant prerequisites, Step 1 schema grants, Step 3 orphan pruning, constraint drops, trigger retirement, playback server docstring ADR-0003 citation, `FUTURE_PLAN.md` checklist/diagram alignment, and `ROADMAP.md` section 22 alignment.
+* **Verification**:
+  - `npx tsx --test "__tests__/docs/adr-topology.test.ts"`: 27 / 27 tests pass across 8 suites (0 failures).
+  - `npm test`: 470 / 470 tests pass across 133 suites (0 failures).
+  - `npx tsc --noEmit`: 0 type errors.
+  - `npm run build`: cleanly compiled all 42 routes with 0 warnings and 0 errors.
+
+
+
+

@@ -1,5 +1,7 @@
 # ADR-0001: Account Deletion, Right to Erasure, and Financial Records Retention Policy
 
+[← Back to ADR Registry](README.md)
+
 ## Status
 Accepted
 

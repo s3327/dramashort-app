@@ -11,6 +11,7 @@ DramaShort is a vertical drama streaming web platform built for high-retention s
 * **Unified Drama Catalog**: Single source of truth in [`data/titles.mock.ts`](data/titles.mock.ts) powering public feeds, detail views, and backoffice management.
 * **Subdomain Admin Routing**: Next.js middleware automatically detects `admin.*` hostnames and internally rewrites requests to `/admin`.
 * **Client State & Persistence**: `AuthContext` (mock session) and `FavoritesContext` with `localStorage` synchronization.
+* **Architecture Decision Records**: Formal platform architectural choices and decision gates are maintained in [`docs/adr/README.md`](docs/adr/README.md).
 
 ---
 
@@ -86,6 +87,7 @@ dramashort/
 ├── contexts/                     # AuthContext, AdminAuthContext, FavoritesContext, ThemeContext
 ├── data/                         # unified catalog (titles.mock.ts) and static data mocks
 ├── design-tokens/                # tokens.css (color scales, theme tokens) and tailwind config
+├── docs/                         # Architecture Decision Records (ADR) registry
 ├── hooks/                        # useToast and custom utility hooks
 ├── lib/                          # formatting utilities and recommendation algorithms
 ├── middleware.ts                 # admin subdomain URL rewrite rules

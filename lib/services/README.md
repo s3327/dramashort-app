@@ -6,6 +6,9 @@ This directory contains the central data access layers for the DramaShort applic
 
 ## 1. Dual Supabase Architecture
 
+> [!NOTE] **Topology Decision Update (ADR-0003)**
+> Per **ADR-0003: Database Topology Decision** ([`docs/adr/0003-database-topology.md`](../../docs/adr/0003-database-topology.md)), DramaShort will consolidate Content and User data into a single Supabase project partitioned into `content` and `public` schemas (Task 13.2). Dual clients in `lib/supabase/*` will be consolidated into unified singletons.
+
 The project maintains two decoupled Supabase projects:
 
 | Project | Supabase Ref | Primary Scope | Client Access |

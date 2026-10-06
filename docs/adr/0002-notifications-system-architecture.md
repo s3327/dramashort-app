@@ -1,5 +1,7 @@
 # ADR-0002: Notification System Architecture, Schema Contract, and Delivery Pipeline
 
+[← Back to ADR Registry](README.md)
+
 ## Status
 Accepted
 

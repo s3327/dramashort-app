@@ -46,7 +46,7 @@
 | **Phase 10** | 🔴 Critical | Security Hardening & Access Control (admin role escalation, RLS & grants, admin API auth, subdomain guard, open redirect, episode media lockdown, CI gate) | ✅ Completed (10.1–10.9 ✅) | Closes privilege escalation and data exposure; gate for all further work |
 | **Phase 11** | 🔴 Critical | Complete Stubbed User Flows (email verification, password recovery, account deletion, support pipeline, real 404s) | 🚧 In progress (11.1 ✅) | Every visible action performs a real operation |
 | **Phase 12** | 🟠 High | Functional Bug Fixes & Data Integrity (12.1–12.8 ✅) | ✅ Completed | Full catalog visible, admin drafts, progress semantics, zero mocks, session, lists, integrity, player robustness |
-| **Phase 13** | 🟠 High | Backend Architecture Consolidation (database topology ADR, server-rendered catalog, service split, observability) | ⏳ Planned | Decision gate for Phase 8; faster pages; operability |
+| **Phase 13** | 🟠 High | Backend Architecture Consolidation (database topology ADR-0003, server-rendered catalog, service split, observability) | 🚧 In progress (13.1 ✅) | Decision gate for Phase 8; faster pages; operability |
 | **Phase 14** | 🟠 High | Mobile-First Vertical Watch Experience & UI Polish | ⏳ Planned | Core 9:16 viewing experience on phones |
 | **Phase 15** | 🟠 High | Product Analytics, Engagement Tracking & Real Trending | ⏳ Planned | Real views, trending and dashboard; data to tune the paywall |
 | **Phase 16** | 🟠 High | Admin Content Operations Console (episodes, uploads, scheduling, taxonomy, users, audit log) | ⏳ Planned | Catalog operable end-to-end without SQL |
@@ -696,7 +696,7 @@ To eliminate ambiguity across product requirements, admin CMS, and codebase inte
 > **Prerequisites (added by the 2026-10-04 platform audit — see §12)**:
 > * **Phase 10 complete.** `coin_balance` / `is_vip` must never be writable by users. Under the original `profiles` policy (`FOR ALL` + `GRANT ALL ... TO authenticated`) any user could set their own balance. Recommended: keep the balance in a dedicated `wallets` table (select-only RLS for the owner; writes only through `SECURITY DEFINER` RPCs or the service role) rather than on `profiles`. Normalize naming as well — this phase currently uses both `coin_balance` (8.1) and `coins_balance` (8.1 item 5, 8.4).
 > * **Paywall enforced server-side.** Locked-episode media must only be obtainable through the playback endpoint from Task 10.6 (`canAccessEpisode()`); the player gatekeeper in Task 8.3 is presentation only.
-> * **ADR-0001 accepted (Task 13.1)** — decides whether `user_unlocked_episodes` can reference `episodes(id)` with a real foreign key.
+> * **ADR-0003 accepted (Task 13.1)** — decides that the database topology merges into a single Supabase project with `content` & `public` schemas (Option A), allowing `user_unlocked_episodes` to reference `content.episodes(id)` with a real foreign key and native RLS entitlement policies.
 > * **Phase 15 events** (`paywall_view`, `unlock`, per-episode continuation rates) so the free-episode threshold is chosen from data instead of fixed at 5.
 > * **Tasks 16.1 and 16.8** — admins can set `is_free` / `free_episodes_count` per drama and a platform default.
 > * The player target file is `components/VideoPlayer.tsx` (split into `components/player/*` by Task 14.1); `components/WatchVideo.tsx` does not exist.
@@ -711,15 +711,17 @@ To eliminate ambiguity across product requirements, admin CMS, and codebase inte
      CREATE TABLE IF NOT EXISTS public.user_unlocked_episodes (
          id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
          user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-         drama_id UUID NOT NULL,
+         drama_id UUID NOT NULL REFERENCES content.titles(id) ON DELETE CASCADE,
          drama_slug TEXT NOT NULL,
-         episode_id UUID NOT NULL,
+         episode_id UUID NOT NULL REFERENCES content.episodes(id) ON DELETE CASCADE,
          episode_number INTEGER NOT NULL,
          coins_spent INTEGER NOT NULL DEFAULT 10,
          unlocked_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now()),
          UNIQUE(user_id, drama_id, episode_number)
      );
      CREATE INDEX IF NOT EXISTS idx_unlocked_user_drama ON public.user_unlocked_episodes(user_id, drama_slug);
+     CREATE INDEX IF NOT EXISTS idx_unlocked_drama_id ON public.user_unlocked_episodes(drama_id);
+     CREATE INDEX IF NOT EXISTS idx_unlocked_episode_id ON public.user_unlocked_episodes(episode_id);
      ```
   3. Create `public.coin_transactions` for audit and financial tracking:
      ```sql
@@ -927,7 +929,7 @@ To eliminate ambiguity across product requirements, admin CMS, and codebase inte
 | 1 | Phase 10 — Security Hardening | Security regression suite (10.9) green in CI; no authorization decision reads user-writable data |
 | 2 | Phase 11 — Stubbed Flows | Every visible auth, account, and support action performs a real operation or is hidden behind a flag |
 | 3 | Phase 12 — Bug Fixes & Data Integrity | Discovery pages paginate the full catalog; admins see every status; production builds contain no mock fallbacks |
-| 4 | Phase 13 — Architecture | ADR-0001 accepted and executed; public catalog pages server-rendered |
+| 4 | Phase 13 — Architecture | ADR-0003 accepted and executed; public catalog pages server-rendered |
 | 5 | Phase 14 — Mobile Watch UX | Phones default to full-screen 9:16 playback; no theme flash on first paint |
 | 6 | Phase 15 — Analytics | Episode events ingested; `views_count` and trending computed from events; dashboard live |
 | 7 | Phase 16 — Admin Operations | A drama with 40+ episodes can be created, populated, scheduled, and published without SQL |
@@ -1126,7 +1128,7 @@ These items stay ✅ for history; the gaps are tracked as new tasks.
      ```
   2. Move media references into a new `episode_media` table (`episode_id`, `provider`, `asset_ref`, `hls_url`, `mp4_url`, `duration_seconds`, `aspect_ratio`, `status`) with **no** public policy. It is read only by the server. This also supports multiple renditions and subtitles later.
   3. `GET /api/playback/[episodeId]`: the server verifies the drama is published and the episode exists, then calls `canAccessEpisode(user, episode)` and returns `{ url, expiresAt }`. For now `canAccessEpisode` allows all published episodes, preserving current behavior; Phase 8 adds entitlement checks in this single function.
-  4. Signed delivery: a signed HLS manifest alone does not protect segments. Choose a provider with signed playback tokens (e.g., Mux, Cloudflare Stream, Bunny Stream) or CDN signed cookies. Record the decision in ADR-0001 (Task 13.1).
+  4. Signed delivery: a signed HLS manifest alone does not protect segments. Choose a provider with signed playback tokens (e.g., Mux, Cloudflare Stream, Bunny Stream) or CDN signed cookies. Record the decision in ADR-0003 (Task 13.1).
   5. Replace `select("*")` on episodes with explicit column lists.
 * **Delivered Capabilities (2026-10-05)**:
   1. `supabase/content/supabase/migrations/20261005120000_episode_media_lockdown.sql`:
@@ -1691,34 +1693,41 @@ These items stay ✅ for history; the gaps are tracked as new tasks.
 
 > **Objective**: Decide the database topology before monetization depends on it, move the public catalog to server rendering, separate server and client data access, and make the platform observable.
 
-### Task 13.1: ADR-0001 — Database Topology Decision (Decision Gate)
-* **Status**: ⏳ Planned
+### Task 13.1: ADR-0003 — Database Topology Decision (Decision Gate)
+* **Status**: ✅ Completed (Accepted — Option A Merge)
+* **Target Files**: `docs/adr/0003-database-topology.md` (new), `docs/adr/README.md` (new)
 * **Problem**: Content and user data live in two Supabase projects. Observed costs:
   - Favorites, history, and lists reference dramas by `title_slug` with no foreign key, so deleted or renamed dramas leave orphans and slug edits break user data.
   - No cross-database joins: real trending, "most favorited", and admin user analytics require application-side merging.
   - Two auth, billing, and backup surfaces.
   - Phase 8 needs entitlements (User DB) to gate episode media (Content DB), which forces a server layer across both anyway.
-* **Target Files**: `docs/adr/0001-database-topology.md` (new), `docs/adr/README.md` (new)
-* **Options**:
-  - **A — Merge** into one Supabase project with two schemas: `content` (titles, episodes, episode_media, channels, taxonomy) and `public` (profiles, favorites, history, lists, wallet, events). User tables get real foreign keys to `content.titles(id)`, a single auth, and RLS that can reference entitlements directly. **Recommended**, unless another product consumes the Content DB today or within six months.
-  - **B — Keep the split**: every user table references `title_id UUID` instead of slugs; all cross-database logic lives in server code (`lib/server/*`); a nightly job removes orphans; sync contracts are documented.
-* **Decision criteria**: actual reuse of the Content DB by another product, monthly cost, migration effort, Phase 8 entitlement complexity, and the video-provider choice from Task 10.6.
-* **Exit**: ADR accepted before Tasks 15.1, 15.3, and Phase 8 begin.
+* **Options Evaluated**:
+  - **Option A (Merge into Single Supabase Project with `content` & `public` Schemas)**: Consolidating into one Supabase project (`bpidsbcrvpkavvdvtpgh`) with two Postgres schemas (`content` for catalog, `public` for users/profiles/favorites/wallets), real foreign keys from user tables to `content.titles(id)`, unified auth, native cross-schema RLS for Phase 8 paywalls, and single-query SQL joins for trending. **Accepted & Recommended**.
+  - **Option B (Retain Dual-Database Split with `title_id UUID`)**: Retaining two separate Supabase projects, replacing `title_slug` with `title_id UUID` in user tables, managing cross-project relationships via server-layer orchestration (`lib/server/*`), and scheduling asynchronous orphan-cleanup routines.
+* **Decision Criteria**: Evaluated zero third-party headless catalog consumers in the next 12 months, 50% infrastructure cost savings ($25/mo vs $50/mo), sub-10ms query performance, absolute ACID data integrity, and direct RLS entitlement evaluation for Phase 8 freemium coin economy.
+* **Delivered Artifacts**:
+  1. `docs/adr/0003-database-topology.md`: Comprehensive ADR documenting Context, Problem Statement, Options Considered, 6-dimension Comparative Trade-Off Matrix, Decision Criteria, Recommendation (Option A), 6-step Implementation Roadmap for Task 13.2, and Consequences.
+  2. `docs/adr/README.md`: Central ADR registry indexing ADR-0001, ADR-0002, and ADR-0003 with status, context, and file links.
+  3. `__tests__/docs/adr-topology.test.ts`: Automated contract tests verifying structure, trade-off matrix coverage, decision criteria, and index link integrity.
+* **Verification**: All contract tests pass; `npx tsc --noEmit` clean; zero application regressions.
+* **Exit**: ADR-0003 accepted and establishes the execution contract for Task 13.2 and Phase 8.
 
 ---
 
 ### Task 13.2: Execute the Topology Decision
-* **Status**: ⏳ Planned
-* **Depends on**: 13.1
+* **Status**: ⏳ Planned (Targeting Option A Merge per ADR-0003)
+* **Depends on**: 13.1 (ADR-0003 Accepted)
 * **Planned Specifications**:
-  1. **If A (merge)**:
-     - Create the `content` schema in the User project and migrate the data (`pg_dump --data-only`, then import).
-     - Expose the `content` schema in API settings and regenerate types into a single `types/supabase.ts`.
+  1. **Option A Execution Path (Accepted per ADR-0003)**:
+     - Create the `content` schema in the User project (`supabase/user/supabase/migrations/`) and migrate catalog data (`pg_dump --data-only`, then import).
+     - Expose the `content` schema in PostgREST API settings (`db-schemas = "public, content"`) and regenerate types into a single `types/supabase.ts`.
      - Collapse the clients in `lib/supabase/*` to one URL and key.
-     - Read-only cutover window; decommission the old project after 30 days.
-  2. **If B (split)**: add `title_id` columns, backfill them, switch reads, and schedule the orphan-cleanup job.
-  3. **Both**: user-data references move from `title_slug` to `title_id`; slugs remain for URLs only. Update `FUTURE_PLAN.md` §5.2 to match.
-* **Verification**: deleting a drama leaves no orphaned favorites or history rows; renaming a slug keeps every user's favorites intact.
+     - Move user-data references (`favorites`, `watch_history`, `custom_list_items`) to `title_id UUID REFERENCES content.titles(id) ON DELETE CASCADE`; slugs remain for URLs only.
+     - Configure video delivery signed tokens (Bunny Stream / Cloudflare Stream HMAC tokens) via `/api/playback/[episodeId]`.
+     - Update `FUTURE_PLAN.md` §5.2 to reflect single consolidated database topology.
+     - Read-only cutover window (~10 mins); decommission legacy Content DB project after 30-day grace period.
+  2. **Alternative B (Rejected)**: Preserved in ADR-0003 for historical trade-off context.
+* **Verification**: deleting a drama leaves no orphaned favorites or history rows; renaming a slug keeps every user's favorites intact; unified types compile cleanly.
 
 ---
 
@@ -1899,7 +1908,7 @@ These items stay ✅ for history; the gaps are tracked as new tasks.
      - Monthly partitions or a 13-month retention job.
   2. `POST /api/events` accepts batches of up to 50 events: schema-validated, rate-limited, and compatible with `keepalive` / `sendBeacon`. No client RLS access.
   3. Privacy: disclose the anonymous ID cookie in the privacy policy, add a consent banner where required (EU), and do not store raw IPs.
-  4. Alternative considered: a product-analytics service (e.g., PostHog) for funnels, with only play events mirrored into the database for trending. Decide in ADR-0001.
+  4. Hybrid analytics architecture (decided in ADR-0003): in-database `public.analytics_events` for play events and real-time SQL trending rollups (Task 15.3); external client-side telemetry (e.g., PostHog or Plausible) for product funnels to protect database compute.
 * **Verification**: events from a test session appear in the table with correct types and no PII beyond IDs.
 
 ---
@@ -2130,7 +2139,7 @@ These items stay ✅ for history; the gaps are tracked as new tasks.
   1. A README "Known stubs & limitations" section, kept current until Phases 11 and 16 close.
   2. Fix Phase 8/9 file references after Task 14.1 lands; finalize the Phase 9.3 keymap.
   3. Status rule: a task is ✅ only when its verification steps pass in an automated test or a manual check recorded in `CHANGELOG-DEV.md`.
-  4. `docs/adr/` index; architecture diagram updated after ADR-0001.
+  4. `docs/adr/` index; architecture diagram updated after ADR-0003.
   5. Update `lib/services/README.md` with the no-mock production rule (Task 12.4).
 * **Verification**: a documentation review at each phase close confirms the README status table and this roadmap match the code.
 
@@ -2160,7 +2169,7 @@ flowchart TD
         P10["Phase 10: Security Hardening & Access Control<br/>• app_metadata roles + requireAdmin()<br/>• RLS & column-level grants<br/>• Admin API auth, subdomain guard, safe redirects<br/>• Episode media lockdown + playback endpoint<br/>• Security tests + CI gate"]
         P11["Phase 11: Complete Stubbed User Flows<br/>• Email verification & password recovery<br/>• Account deletion & support pipeline<br/>• Real 404s, mock notifications hidden"]
         P12["Phase 12: Bug Fixes & Data Integrity<br/>• Server pagination on discovery pages<br/>• Admin sees all statuses<br/>• Progress semantics, no production mocks"]
-        P13["Phase 13: Architecture Consolidation<br/>• ADR-0001 database topology (decision gate)<br/>• Server-rendered catalog (RSC + ISR)<br/>• Service split, search scaling, observability"]
+        P13["Phase 13: Architecture Consolidation<br/>• ADR-0003 database topology (decision gate)<br/>• Server-rendered catalog (RSC + ISR)<br/>• Service split, search scaling, observability"]
         P14["Phase 14: Mobile-First Vertical Watch & UI<br/>• Full-screen 9:16 default + episode sheet<br/>• Gestures, iOS fullscreen, autoplay & preload<br/>• Entry flow, hero, theme without flash"]
         P15["Phase 15: Analytics & Real Trending<br/>• Playback events + ingestion<br/>• Views & trending rollups<br/>• Real admin dashboard"]
         P16["Phase 16: Admin Content Operations<br/>• Episode & media management, uploads<br/>• Scheduling, taxonomy, channels, users<br/>• Settings, audit log, roles, import"]
@@ -2205,7 +2214,7 @@ flowchart TD
    - Frontend components & hooks (`TelegramLoginButton`, `useTelegramWebApp`, interactive `/account` card).
 2. **Comprehensive Regression Prevention & Impact Analysis**:
    - **Authentication Collisions**: Strategy for account linking, email-less Telegram users, and orphaned unlinking.
-   - **Dual-Database Integrity**: Strict isolation ensuring Telegram data lives solely in the User DB, leaving Content DB decoupled.
+   - **Database & Schema Integrity (ADR-0003 Alignment)**: Strict isolation ensuring Telegram data lives solely in the User domain (`public` schema), transitioning to direct foreign keys (`drama_id UUID REFERENCES content.titles(id)`) upon Task 13.2 consolidation.
    - **Watch History & Favorites Merging**: Guest localStorage migration to Supabase without loss or duplication.
    - **Content Security Policy (CSP)**: Safe whitelisting for `telegram.org` and `oauth.telegram.org`.
    - **Rate Limits & Webhooks**: Handling Telegram's 30 msg/sec global limit and 2-second webhook acknowledgment.

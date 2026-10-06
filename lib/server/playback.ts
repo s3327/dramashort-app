@@ -80,7 +80,7 @@ export async function canAccessEpisode(
 
 /**
  * Resolves the streaming media source and signed expiration for an episode.
- * Architecture Note (ADR-0001):
+ * Architecture Note (ADR-0003 / Task 10.6):
  * HLS manifests alone do not protect media segments. In production, providers such as
  * Cloudflare Stream, Mux, or Bunny Stream provide cryptographically signed playback tokens
  * or CDN signed cookies. This resolver generates the active stream URL and expiration.
