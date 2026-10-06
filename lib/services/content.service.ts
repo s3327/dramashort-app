@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { contentClient, getContentAdminClient } from "@/lib/supabase/content";
 import type { Database } from "@/types/supabase-content";
 import type {
@@ -344,8 +345,9 @@ export const getPublishedDramas = getPublishedTitles;
 
 /**
  * Fetches distinct available genres across all published dramas.
+ * Wrapped in React.cache() for per-request query deduplication across layouts and pages.
  */
-export async function getDistinctGenres(): Promise<string[]> {
+export const getDistinctGenres = cache(async function getDistinctGenres(): Promise<string[]> {
   try {
     const { data, error } = await contentClient
       .from("titles")
@@ -372,7 +374,7 @@ export async function getDistinctGenres(): Promise<string[]> {
     ];
   }
   return [];
-}
+});
 
 /**
  * Fetches popular taxonomy tags / tropes across all published dramas.
@@ -410,8 +412,9 @@ export async function getPopularTags(): Promise<string[]> {
 /**
  * Fetches a single title by its unique slug (e.g. "the-ceos-secret-wife-ds").
  * Also supports matching by partial or old slug format.
+ * Wrapped in React.cache() for per-request query deduplication across layouts and pages.
  */
-export async function getTitleBySlug(slug: string): Promise<Title | null> {
+export const getTitleBySlug = cache(async function getTitleBySlug(slug: string): Promise<Title | null> {
   try {
     // 1. Try exact slug match
     let { data, error } = await contentClient
@@ -438,7 +441,7 @@ export async function getTitleBySlug(slug: string): Promise<Title | null> {
     console.error("Error in getTitleBySlug:", err);
     return null;
   }
-}
+});
 
 /**
  * Fetches multiple titles matching a list of slugs from Supabase.
@@ -540,10 +543,11 @@ export async function getEpisodePlayback(
 
 /**
  * Top Trending titles for Home & Trending page.
+ * Wrapped in React.cache() for per-request query deduplication across layouts and pages.
  */
-export async function getTopTrendingTitles(limit = 10): Promise<Title[]> {
+export const getTopTrendingTitles = cache(async function getTopTrendingTitles(limit = 10): Promise<Title[]> {
   return getPublishedTitles({ sort: "trending", limit });
-}
+});
 
 /**
  * New Releases for Home & New Release page.
@@ -572,14 +576,25 @@ export async function getChannels(): Promise<Channel[]> {
 
 /**
  * Fetches a single channel by its slug.
+ * Wrapped in React.cache() for per-request query deduplication across layouts and pages.
  */
-export async function getChannelBySlug(slug: string): Promise<Channel | null> {
+export const getChannelBySlug = cache(async function getChannelBySlug(slug: string): Promise<Channel | null> {
   try {
-    const { data, error } = await contentClient
+    const normalized = (slug || "").toLowerCase().trim();
+    let { data, error } = await contentClient
       .from("channels")
       .select("*")
-      .eq("slug", slug)
+      .eq("slug", normalized)
       .maybeSingle();
+
+    if (!data && normalized) {
+      const { data: fallbackData } = await contentClient
+        .from("channels")
+        .select("*")
+        .ilike("slug", normalized)
+        .maybeSingle();
+      data = fallbackData;
+    }
 
     if (error || !data) return null;
     return mapChannelRowToChannel(data);
@@ -587,12 +602,13 @@ export async function getChannelBySlug(slug: string): Promise<Channel | null> {
     console.error("Error in getChannelBySlug:", err);
     return null;
   }
-}
+});
 
 /**
  * Generates hero slides from top trending titles.
+ * Wrapped in React.cache() for per-request query deduplication across layouts and pages.
  */
-export async function getHeroSlides(): Promise<HeroSlide[]> {
+export const getHeroSlides = cache(async function getHeroSlides(): Promise<HeroSlide[]> {
   const titles = await getTopTrendingTitles(4);
   if (!titles || titles.length === 0) {
     return [];
@@ -607,7 +623,7 @@ export async function getHeroSlides(): Promise<HeroSlide[]> {
     image: t.poster,
     href: `/drama/${t.slug}`,
   }));
-}
+});
 
 /**
  * Escapes values used in PostgREST filter expressions (such as `.or()`),

@@ -20,12 +20,43 @@ const RANK_ACCENTS = [
   { bg: "bg-[#D8477F]", text: "text-text-light" }, // pink
 ];
 
-export default function TopTrending() {
-  const [items, setItems] = useState<TrendingTitle[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+import type { Title } from "@/types/content";
+
+export interface TopTrendingProps {
+  initialTitles?: Title[];
+}
+
+export default function TopTrending({ initialTitles }: TopTrendingProps = {}) {
+  const [items, setItems] = useState<TrendingTitle[]>(() => {
+    if (initialTitles && initialTitles.length > 0) {
+      return initialTitles.map((t, idx) => ({
+        id: t.id,
+        rank: idx + 1,
+        title: t.title,
+        poster: t.poster,
+        href: `/drama/${t.slug}`,
+      }));
+    }
+    return [];
+  });
+  const [isLoading, setIsLoading] = useState(!initialTitles || initialTitles.length === 0);
   const scrollerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    if (initialTitles && initialTitles.length > 0) {
+      setItems(
+        initialTitles.map((t, idx) => ({
+          id: t.id,
+          rank: idx + 1,
+          title: t.title,
+          poster: t.poster,
+          href: `/drama/${t.slug}`,
+        }))
+      );
+      setIsLoading(false);
+      return;
+    }
+
     let isMounted = true;
     getTopTrendingTitles(10)
       .then(async (titles) => {
@@ -63,7 +94,7 @@ export default function TopTrending() {
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [initialTitles]);
 
   if (!isLoading && items.length === 0) {
     return null;

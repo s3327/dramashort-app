@@ -195,3 +195,6 @@ export default function ContinueWatching() {
     </section>
   );
 }
+
+export { ContinueWatching as ContinueWatchingIsland };
+

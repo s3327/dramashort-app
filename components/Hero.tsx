@@ -12,13 +12,23 @@ import { CarouselSkeleton } from "@/components/skeletons";
 const AUTOPLAY_DELAY_MS = 5000;
 const TRANSITION_MS = 700;
 
-export default function Hero() {
-  const [slides, setSlides] = useState<HeroSlide[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+export interface HeroProps {
+  initialSlides?: HeroSlide[];
+}
+
+export default function Hero({ initialSlides }: HeroProps = {}) {
+  const [slides, setSlides] = useState<HeroSlide[]>(initialSlides || []);
+  const [isLoading, setIsLoading] = useState(!initialSlides || initialSlides.length === 0);
   const [active, setActive] = useState(0);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
+    if (initialSlides && initialSlides.length > 0) {
+      setSlides(initialSlides);
+      setIsLoading(false);
+      return;
+    }
+
     let isMounted = true;
     getHeroSlides()
       .then(async (dbSlides) => {
@@ -48,7 +58,7 @@ export default function Hero() {
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [initialSlides]);
 
   const total = slides.length;
 

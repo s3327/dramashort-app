@@ -8,11 +8,12 @@ export async function generateMetadata({
   params: Promise<{ slug: string }>;
 }): Promise<Metadata> {
   const { slug } = await params;
-  let channel = await getChannelBySlug(slug);
+  const normalizedSlug = slug.toLowerCase();
+  let channel = await getChannelBySlug(normalizedSlug);
 
   if (!channel && ENABLE_MOCK_FALLBACK) {
     const { channels } = await import("@/data/channels.mock");
-    channel = channels.find((c) => c.slug === slug) || null;
+    channel = channels.find((c) => c.slug.toLowerCase() === normalizedSlug) || null;
   }
 
   if (!channel) {

@@ -1736,16 +1736,20 @@ These items stay ✅ for history; the gaps are tracked as new tasks.
 ---
 
 ### Task 13.3: Server-Rendered Public Catalog (RSC + ISR)
-* **Status**: ⏳ Planned
-* **Problem**: The drama, channel, genres, trending, new-release, and home sections are client components that fetch in `useEffect`. Server HTML contains only skeletons, crawlers index skeletons, and on slow mobile networks content waits for JavaScript plus a Supabase round trip.
-* **Target Files**: `app/drama/[slug]/*`, `app/channel/[slug]/*`, `app/genres/page.tsx`, `app/trending/page.tsx`, `app/new-release/page.tsx`, `app/home/page.tsx`, `app/watch/[slug]/page.tsx` (shell only)
-* **Planned Specifications**:
-  1. Page shells become Server Components using server data functions. Interactive islands — `FavoriteButton`, `AddToList`, `VideoPlayer`, `ContinueWatching` — remain client components.
-  2. `revalidate = 300` on catalog pages, plus tag-based `revalidateTag("drama:<id>")` triggered by admin mutations (Phase 16).
-  3. `generateStaticParams` for the top N dramas; `notFound()` per Task 11.6.
-  4. Deduplicate the metadata and page fetches with `React.cache`.
-  5. Record LCP and TTFB on a mobile 4G profile before and after.
-* **Verification**: view-source of `/drama/<slug>` contains the title and synopsis; Lighthouse mobile results recorded in `CHANGELOG-DEV.md`.
+* **Status**: ✅ Completed (2026-10-07)
+* **Problem**: The drama, channel, genres, trending, new-release, and home sections were client components fetching in `useEffect`. Server HTML contained only skeletons, crawlers indexed skeletons, and on slow mobile networks content waited for JavaScript plus a Supabase round trip.
+* **Target Files**: `app/drama/[slug]/page.tsx`, `app/channel/[slug]/page.tsx`, `app/genres/page.tsx`, `app/trending/page.tsx`, `app/new-release/page.tsx`, `app/home/page.tsx`, `app/watch/[slug]/page.tsx`, `lib/services/content.service.ts`, `components/islands/*`
+* **Implementation Summary**:
+  1. Converted public catalog routes from client useEffect fetchers into async React Server Components streaming full titles, synopses, and pre-rendered drama cards directly to browsers and crawlers.
+  2. Wrapped server catalog lookups (`getTitleBySlug`, `getChannelBySlug`, `getDistinctGenres`, `getTopTrendingTitles`, `getHeroSlides`) with `React.cache()` to deduplicate database queries between `generateMetadata()` and page rendering within a single request.
+  3. Exported `export const revalidate = 300` across all 7 catalog pages for 5-minute CDN/ISR caching.
+  4. Implemented `generateStaticParams()` on `app/drama/[slug]/page.tsx` for top published dramas, ensuring `notFound()` and `permanentRedirect()` execute cleanly per Task 11.6.
+  5. Extracted modular client islands: `<PageShell>` (inherits active theme from ThemeContext without SSR context errors), `DramaInteractiveActions` (favorites, custom lists, login required modals), `SynopsisExpandable` (crawler-visible synopsis with expand/collapse), `ContinueWatchingIsland` (reads watch history), `GenreFilterIsland` (chips with URL navigation), and `PaginationIsland` (smooth scroll with preserved query params).
+* **Verification**:
+  - `__tests__/catalog/server-rendered-catalog.test.ts` passes 30 automated tests verifying RSC contracts, ISR revalidation constants, React.cache deduplication, generateStaticParams, client island boundaries, and edge-case invariants.
+  - `npm test` passes all 535 tests across 145 suites with 0 failures.
+  - `npx tsc --noEmit` compiles cleanly with 0 type errors.
+  - `npm run build` succeeds cleanly across all 62 Next.js routes with SSG and ISR.
 
 ---
 

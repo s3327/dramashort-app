@@ -9,12 +9,40 @@ import { ENABLE_MOCK_FALLBACK } from "@/lib/config";
 import { getNewReleaseTitles } from "@/lib/services/content.service";
 
 import { TitleCardSkeleton } from "@/components/TitleCard";
+import type { Title } from "@/types/content";
 
-export default function NewRelease() {
-  const [items, setItems] = useState<NewReleaseTitle[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+export interface NewReleaseProps {
+  initialTitles?: Title[];
+}
+
+export default function NewRelease({ initialTitles }: NewReleaseProps = {}) {
+  const [items, setItems] = useState<NewReleaseTitle[]>(() => {
+    if (initialTitles && initialTitles.length > 0) {
+      return initialTitles.map((t) => ({
+        id: t.id,
+        title: t.title,
+        poster: t.poster,
+        href: `/drama/${t.slug}`,
+      }));
+    }
+    return [];
+  });
+  const [isLoading, setIsLoading] = useState(!initialTitles || initialTitles.length === 0);
 
   useEffect(() => {
+    if (initialTitles && initialTitles.length > 0) {
+      setItems(
+        initialTitles.map((t) => ({
+          id: t.id,
+          title: t.title,
+          poster: t.poster,
+          href: `/drama/${t.slug}`,
+        }))
+      );
+      setIsLoading(false);
+      return;
+    }
+
     let isMounted = true;
     getNewReleaseTitles(12)
       .then(async (titles) => {
@@ -51,7 +79,7 @@ export default function NewRelease() {
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [initialTitles]);
 
   if (!isLoading && items.length === 0) {
     return null;

@@ -1807,3 +1807,80 @@
   - `npm test` : 505 / 505 tests pass across 139 suites (0 failures).
   - `npx tsc --noEmit`: 0 errors.
   - `npm run build`: cleanly compiled all 42 routes with exit code 0.
+
+---
+
+## [2026-10-07] Task 13.3: Server-Rendered Public Catalog (RSC + ISR)
+* **Milestone**: Phase 13 (Architectural Refinements) — Task 13.3
+* **Goal**: Convert public catalog routes from client-side useEffect fetchers into async React Server Components (RSC) with Incremental Static Regeneration (revalidate = 300) and React.cache query deduplication, extracting interactive client islands while ensuring zero regressions across all dependent services.
+* **Implementation Steps Taken**:
+  1. **React.cache() Request Query Deduplication**:
+     - Wrapped server catalog lookups (`getTitleBySlug`, `getChannelBySlug`, `getDistinctGenres`, `getTopTrendingTitles`, `getHeroSlides`) in `lib/services/content.service.ts` with `React.cache()` to deduplicate database queries between `generateMetadata()` in layouts and page rendering within a single request.
+  2. **Modular Client Islands & Theme Shell Integration**:
+     - Created `<PageShell>` client island component in `components/islands/PageShell.tsx` inheriting active theme (`data-theme={theme}`) from `ThemeContext` so Server Components render seamless themed backgrounds and text without SSR context errors.
+     - Extracted `DramaInteractiveActions` (`components/islands/DramaInteractiveActions.tsx`) handling favorites toggling (`useFavorites`), Add to List modal, and Login Required modal (`useAuth`).
+     - Extracted `SynopsisExpandable` (`components/islands/SynopsisExpandable.tsx`) rendering full synopsis in HTML for search engines and crawlers while supporting interactive client-side truncation and expansion.
+     - Extracted `ContinueWatchingIsland` (`components/islands/ContinueWatchingIsland.tsx`) dynamically reading watch history from localStorage/cloud without hydration mismatches.
+     - Extracted `GenreFilterIsland` (`components/islands/GenreFilterIsland.tsx`) providing interactive genre filter chips with URL query navigation.
+     - Extracted `PaginationIsland` (`components/islands/PaginationIsland.tsx`) providing unified pagination controls preserving query parameters (`?page=`, `?genre=`, etc.) and smooth scrolling.
+     - Extracted `WatchPlayerIsland` (`components/watch/WatchPlayerIsland.tsx`) managing video streaming playback, active episode range tabs, and reliable watch progress beacon flushes.
+  3. **Server Component Catalog Route Conversion**:
+     - `app/drama/[slug]/page.tsx`: Converted to Server Component pre-rendering drama details, metadata, synopsis, episodes count, and related titles. Exported `revalidate = 300` and `generateStaticParams()` pre-rendering top published dramas. Preserved canonical slug redirect logic via `permanentRedirect()`.
+     - `app/channel/[slug]/page.tsx`: Converted to Server Component resolving channel details and server-side paginated titles with `searchPublishedTitles`. Exported `revalidate = 300` and embedded `<PaginationIsland>`.
+     - `app/home/page.tsx`: Converted to Server Component pre-rendering Hero slides, Top Trending titles, and New Releases into the initial server document. Exported `revalidate = 300`.
+     - `app/genres/page.tsx`: Converted to Server Component pre-rendering genre taxonomies and filtered catalog items. Exported `revalidate = 300` and embedded `<GenreFilterIsland>` and `<PaginationIsland>`.
+     - `app/trending/page.tsx`: Converted to Server Component pre-rendering ranked trending titles with server-side pagination. Exported `revalidate = 300` and embedded `<PaginationIsland>`.
+     - `app/new-release/page.tsx`: Converted to Server Component pre-rendering new releases with server-side pagination. Exported `revalidate = 300` and embedded `<PaginationIsland>`.
+     - `app/watch/[slug]/page.tsx`: Converted shell to Server Component pre-rendering title and metadata while embedding the interactive player island. Exported `revalidate = 300`.
+  4. **Component Pre-Render Prop Support**:
+     - Updated `components/Hero.tsx`, `components/TopTrending.tsx`, and `components/NewRelease.tsx` to accept optional pre-rendered initial data props (`initialSlides`, `initialTitles`), eliminating initial loading skeletons when rendered from Server Components.
+  5. **Automated Verification Suite**:
+     - Authored `__tests__/catalog/server-rendered-catalog.test.ts` verifying Server Component export contracts, ISR revalidation constants (revalidate = 300), React.cache deduplication, `generateStaticParams`, client island boundaries, and canonical redirect invariants.
+* **Key File Diffs**:
+  - `lib/services/content.service.ts`: Wrapped catalog lookup functions with `React.cache()`.
+  - `components/islands/PageShell.tsx`: Created client theme wrapper.
+  - `components/islands/DramaInteractiveActions.tsx`: Created client island for favorites and list modals.
+  - `components/islands/SynopsisExpandable.tsx`: Created client island for expandable synopsis.
+  - `components/islands/ContinueWatchingIsland.tsx`: Created client island for continue watching carousel.
+  - `components/islands/GenreFilterIsland.tsx`: Created client island for interactive genre filter chips.
+  - `components/islands/PaginationIsland.tsx`: Created client island for unified query pagination.
+  - `components/watch/WatchPlayerIsland.tsx`: Created client island for watch player and progress tracking.
+  - `app/drama/[slug]/page.tsx`: Converted to Server Component with ISR and generateStaticParams.
+  - `app/channel/[slug]/page.tsx`: Converted to Server Component with ISR and server pagination.
+  - `app/home/page.tsx`: Converted to Server Component with ISR pre-rendering catalog feeds.
+  - `app/genres/page.tsx`: Converted to Server Component with ISR and server filtering.
+  - `app/trending/page.tsx`: Converted to Server Component with ISR and server rankings.
+  - `app/new-release/page.tsx`: Converted to Server Component with ISR and server pagination.
+  - `app/watch/[slug]/page.tsx`: Converted shell to Server Component with ISR and player island.
+  - `components/Hero.tsx`, `components/TopTrending.tsx`, `components/NewRelease.tsx`: Added pre-rendered initial data props.
+  - `__tests__/catalog/server-rendered-catalog.test.ts`: Added 16 automated tests.
+  - `ROADMAP.md`: Marked Task 13.3 completed.
+* **Adversarial QA & Bug Fixes (Reviewer Round 1)**:
+  - **Fatal Functional Bug: Watch Episode Grid Inoperable for Real Database Episodes**: In `components/watch/WatchPlayerIsland.tsx`, `isAvailable` and `availableEpisodesCount` previously only inspected `epData?.videoUrl`. Per Task 10.9 database RLS hardening, `getEpisodesByTitleId()` intentionally projects public episode columns without raw `video_url`, delegating stream resolution to `/api/playback/[episodeId]`. Because `videoUrl` was empty, all real database episodes were erroneously flagged as unavailable ("Coming soon" / "Soon") and disabled. Fixed by checking `Boolean((epData?.videoUrl && epData.videoUrl.trim() !== "") || epData?.id)`, ensuring database-persisted episodes are fully clickable and interactive.
+  - **Incomplete Islands Barrel Export**: `components/islands/index.ts` omitted `WatchPlayerIsland`. Added `WatchPlayerIsland` and `WatchPlayerIslandProps` to ensure consistent imports across client islands.
+  - **Query Parameter Array Normalization**: On Next.js 15 Server Component discovery routes (`ChannelPage`, `GenresPage`, `TrendingPage`, `NewReleasePage`), duplicate URL query parameters (e.g. `?page=2&page=3` or `?genre=Romance&genre=Action`) arrive as arrays. Added defensive string-array normalization preventing invalid types from being passed to PostgREST queries.
+  - **Genre List Deduplication**: Guarded `GenresPage` against duplicate `"All"` chips when database contains a genre entry matching `"All"`.
+  - **Automated Test Expansion**: Expanded `__tests__/catalog/server-rendered-catalog.test.ts` from 16 to 22 tests (+6 deep contract tests) covering barrel exports, episode ID availability, and array query parameter handling.
+* **Adversarial QA & Defect Remediation (Reviewer Round 2)**:
+  - **Fatal UI Bug: False-Negative "This episode isn't available yet" Flash on Playback Stream Resolution**: In `components/watch/WatchPlayerIsland.tsx`, `_playbackLoading` was declared with an unused underscore prefix and completely omitted from the rendering branch. Because `videoSrc` is empty until the asynchronous client fetch to `/api/playback/[episodeId]` finishes, the component unconditionally flashed "This episode isn't available yet. We're preparing the media for Episode 1." on every valid database episode. Fixed by initializing `playbackLoading` to `Boolean(currentEpData?.id && !currentEpData?.videoUrl)`, handling the loading state in JSX with an active loading skeleton/spinner (`Loading video stream...`), and only displaying the unavailable fallback when an episode genuinely lacks both media URL and database ID (or on explicit playback error).
+  - **Hydration Mismatch & Layout Shift in Episode Tabs for Episodes > 40**: When navigating to `/watch/[slug]?ep=45` (or any episode in tabs 2+), `activeTab` was hardcoded to `0` upon initial render, pre-rendering episodes 1-40 and hiding the requested episode until `useEffect` ran asynchronously on the client. Fixed by adding `initialEpisode?: number` to `WatchPlayerIslandProps`, passing `initialEpisode` from `WatchPage` in `app/watch/[slug]/page.tsx`, and computing `activeTab` directly from `resolvedInitialEp`, ensuring server HTML pre-renders the correct tab with zero layout shift.
+  - **Canonical Channel Pagination BasePath Drift**: In `app/channel/[slug]/page.tsx`, `PaginationIsland` bound `basePath={`/channel/${slug}`}`, preserving whatever non-canonical or unnormalized parameter arrived. Fixed to bind canonical resolved `basePath={`/channel/${channel.slug}`}`.
+  - **Case-Insensitive Genre Matching in Catalog and Filter Island**: Addressed potential casing discrepancies between incoming URL parameters (e.g. `?genre=romance`) and database values (`"Romance"`) by normalizing `matchedGenre` against `distinctGenres` in `app/genres/page.tsx` and evaluating `active` in `components/islands/GenreFilterIsland.tsx` with case-insensitive equality (`g.toLowerCase() === activeGenre.toLowerCase()`).
+  - **Defensive Slug Filtering in generateStaticParams**: In `app/drama/[slug]/page.tsx`, added defensive checks to filter out any empty or non-string slugs from `getTopTrendingTitles`.
+  - **Automated Test Expansion**: Expanded `__tests__/catalog/server-rendered-catalog.test.ts` from 22 to 26 automated tests (+4 new contract tests) verifying stream loading state without false-negative flashes, `activeTab` derivation for episodes > 40, canonical channel pagination `basePath`, and case-insensitive genre matching.
+* **Adversarial QA & Defect Remediation (Reviewer Round 3)**:
+  - **Fatal UI Bug: Episode Grid Active Tab Stale / Missing upon Player-Triggered Episode Advancement**: When a drama had > 40 episodes (e.g. 80 episodes) and the user advanced across tab boundaries (e.g. Episode 40 -> Episode 41 via "Next Episode" button or auto-next at video completion), `handleSelectEpisode` updated `currentEpisode`, progress, and URL query params, but neglected to update `activeTab`. As a result, the sidebar remained anchored to tab 0 (episodes 1-40), leaving Episode 41 invisible and unhighlighted. Fixed by deriving `maxTab` and synchronizing `setActiveTab(Math.min(maxTab, Math.floor((Math.max(1, ep) - 1) / EPISODES_PER_TAB)))` in `handleSelectEpisode`.
+  - **Fatal Robustness Bug: Out-of-Range Tab Index Causing Blank Episodes Grid on Malformed `?ep=`**: When accessing a watch URL with out-of-bounds episode parameters (e.g. `?ep=99` or `?ep=999` on a 45-episode drama), `activeTab` calculated `Math.floor((999 - 1) / 40) = 24`, which exceeded available tabs. Because no tab matched, `visibleEpisodes` sliced an empty array `[]` and the episodes sidebar rendered completely blank. Fixed by clamping `activeTab` state initialization and `loadResumePoint` to `maxTab = Math.max(0, Math.ceil(totalEps / EPISODES_PER_TAB) - 1)`.
+  - **Misleading "This episode isn't available yet" Box on Playback Network/Session Failure**: When stream resolution (`/api/playback/[episodeId]`) failed due to network timeout or auth expiry (`playbackError` non-null), the component fell through to the unavailable media notice ("We're preparing the media for Episode {ep}..."), confusing transient network failures with missing content. Fixed by adding a dedicated `playbackError` UI state in the player box displaying the actual error and providing an interactive `Retry` button wired to `handleRetryPlayback`.
+  - **Missing Canonical Channel Permanent Redirect & Case-Insensitive Lookup**: Accessing channels with non-canonical casing or formatting (e.g. `/channel/Velvet-Frame`) failed PostgREST equality filters and lacked the canonical redirect enforced on `/drama` and `/watch`. Normalized incoming channel slugs in `lib/services/content.service.ts` with PostgREST `.ilike` fallback, normalized slug handling in `app/channel/[slug]/layout.tsx` and `app/channel/[slug]/page.tsx`, and enforced `if (channel.slug !== slug) permanentRedirect('/channel/' + channel.slug)`.
+  - **generateStaticParams Exception Safeguard**: Wrapped `generateStaticParams` in `app/drama/[slug]/page.tsx` with a `try / catch` guard, guaranteeing builds succeed gracefully by falling back to dynamic ISR if Supabase connection drops during static generation.
+  - **Automated Test Expansion**: Expanded `__tests__/catalog/server-rendered-catalog.test.ts` from 26 to 30 automated tests (+4 new tests) covering `playbackError` retry UI, `activeTab` clamping and synchronization, channel canonical redirect, and `generateStaticParams` exception safety.
+* **Regression Analysis & Verification Record (Round 3)**:
+  - `__tests__/catalog/server-rendered-catalog.test.ts`: 30 / 30 tests pass (100%).
+  - `npm test`: 535 / 535 tests pass across 145 suites with 0 failures (100% pass rate).
+  - `npx tsc --noEmit`: compiles cleanly with 0 type errors.
+  - `npm run build`: cleanly compiled all routes with 62 static/SSG/dynamic pages generated.
+
+
+
+

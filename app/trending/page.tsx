@@ -1,82 +1,44 @@
-"use client";
-
-import { useEffect, useState, Suspense } from "react";
-import { useSearchParams } from "next/navigation";
+import type { Metadata } from "next";
+import { Suspense } from "react";
 import { Flame } from "lucide-react";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
-import TitleCard, { TitleCardSkeleton } from "@/components/TitleCard";
-import Pagination from "@/components/Pagination";
-import { useTheme } from "@/contexts/ThemeContext";
+import TitleCard from "@/components/TitleCard";
+import PageShell from "@/components/PageShell";
+import PaginationIsland from "@/components/islands/PaginationIsland";
 import { formatCompactNumber } from "@/lib/format";
-import {
-  searchPublishedTitles,
-  type PaginatedTitlesResult,
-} from "@/lib/services/content.service";
+import { searchPublishedTitles } from "@/lib/services/content.service";
+
+export const revalidate = 300;
+
+export const metadata: Metadata = {
+  title: "Trending Dramas — DramaShort",
+  description:
+    "Browse the most popular and watched vertical drama series this week on DramaShort.",
+};
 
 const PAGE_SIZE = 24;
 
-function TrendingContent() {
-  const { theme } = useTheme();
-  const searchParams = useSearchParams();
+/**
+ * Server Component pre-rendering ranked trending titles with server-side pagination.
+ */
+export default async function TrendingPage({
+  searchParams,
+}: {
+  searchParams?: Promise<{ [key: string]: string | string[] | undefined }>;
+}) {
+  const sp = searchParams ? await searchParams : {};
+  const rawPage = typeof sp?.page === "string" ? sp.page : Array.isArray(sp?.page) ? sp.page[0] : undefined;
+  const page = Math.max(1, parseInt(rawPage || "1", 10) || 1);
 
-  const initialPage = Math.max(1, parseInt(searchParams.get("page") || "1", 10) || 1);
-  const [page, setPage] = useState(initialPage);
-
-  const [results, setResults] = useState<PaginatedTitlesResult>({
-    items: [],
-    total: 0,
-    page: initialPage,
+  const results = await searchPublishedTitles({
+    sort: "trending",
+    page,
     pageSize: PAGE_SIZE,
-    totalPages: 1,
   });
-  const [isLoading, setIsLoading] = useState(true);
-
-  // Fetch server-side ranked trending titles
-  useEffect(() => {
-    let isMounted = true;
-    setIsLoading(true);
-
-    searchPublishedTitles({
-      sort: "trending",
-      page,
-      pageSize: PAGE_SIZE,
-    })
-      .then((res) => {
-        if (!isMounted) return;
-        setResults(res);
-      })
-      .catch((err) => {
-        console.warn("Failed to load trending titles from DB:", err);
-      })
-      .finally(() => {
-        if (isMounted) setIsLoading(false);
-      });
-
-    return () => {
-      isMounted = false;
-    };
-  }, [page]);
-
-  // Keep URL ?page= parameter in sync
-  useEffect(() => {
-    const params = new URLSearchParams();
-    if (page > 1) params.set("page", String(page));
-
-    const queryString = params.toString();
-    const newUrl = queryString ? `/trending?${queryString}` : "/trending";
-    window.history.replaceState(null, "", newUrl);
-  }, [page]);
-
-  const handlePageChange = (newPage: number) => {
-    setPage(newPage);
-    if (typeof window !== "undefined") {
-      window.scrollTo({ top: 0, behavior: "smooth" });
-    }
-  };
 
   return (
-    <div data-theme={theme} className="min-h-screen bg-bg text-text">
+    <PageShell className="min-h-screen bg-bg text-text">
       <Header />
 
       <main className="max-w-[1200px] mx-auto px-6 pt-10 pb-16">
@@ -85,7 +47,6 @@ function TrendingContent() {
             <Flame size={24} strokeWidth={2.5} className="text-primary fill-primary/20" />
             Trending
           </h1>
-          {/* Static for now — the active period is set from admin settings later */}
           <span className="rounded-pill bg-surface border border-border text-xs font-semibold text-text-muted px-3 py-1.5">
             This Week
           </span>
@@ -94,13 +55,7 @@ function TrendingContent() {
           Ranked by how many users pressed play, most viewed first.
         </p>
 
-        {isLoading ? (
-          <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-6 gap-x-4 gap-y-6">
-            {Array.from({ length: 18 }).map((_, i) => (
-              <TitleCardSkeleton key={i} hasSubtitle />
-            ))}
-          </div>
-        ) : results.items.length === 0 ? (
+        {results.items.length === 0 ? (
           <div className="bg-surface border border-border rounded-xl p-12 text-center my-6 max-w-lg mx-auto shadow-sm">
             <h2 className="font-display font-bold text-lg mb-2">No trending dramas yet</h2>
             <p className="text-sm text-text-muted">
@@ -133,24 +88,18 @@ function TrendingContent() {
               })}
             </div>
 
-            <Pagination
-              page={results.page}
-              totalPages={results.totalPages}
-              onPageChange={handlePageChange}
-            />
+            <Suspense fallback={null}>
+              <PaginationIsland
+                page={results.page}
+                totalPages={results.totalPages}
+                basePath="/trending"
+              />
+            </Suspense>
           </>
         )}
       </main>
 
       <Footer />
-    </div>
-  );
-}
-
-export default function TrendingPage() {
-  return (
-    <Suspense fallback={null}>
-      <TrendingContent />
-    </Suspense>
+    </PageShell>
   );
 }
