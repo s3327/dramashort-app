@@ -89,15 +89,20 @@ export default function DramaPage({
   const [isCreateListOpen, setIsCreateListOpen] = useState(false);
   const [isLoginRequiredOpen, setIsLoginRequiredOpen] = useState(false);
 
-  const handleToggleFavorite = () => {
+  const handleToggleFavorite = async () => {
     if (!drama) return;
     if (!isLoggedIn) {
       setIsLoginRequiredOpen(true);
       return;
     }
     const wasFavorited = favorited;
-    toggleFavorite(drama.slug);
-    if (!wasFavorited) showToast("Added to Favorites");
+    const ok = await toggleFavorite(drama.slug);
+    if (ok) {
+      if (!wasFavorited) showToast("Added to Favorites");
+      else showToast("Removed from Favorites");
+    } else {
+      showToast("Failed to update favorites. Please try again.");
+    }
   };
 
   const handleOpenAddToList = () => {

@@ -1352,3 +1352,55 @@
   - `npm test`: 356 / 356 tests pass across 104 suites (0 failures).
   - `npx tsc --noEmit`: 0 type errors.
   - `npm run build`: cleanly compiles 42 routes with 0 errors.
+---
+
+## [2026-10-06] Task 12.6: Favorites & Custom Lists Consistency
+* **Milestone**: Phase 12 (Functional Bug Fixes & Data Integrity) — Task 12.6
+* **Goal**: Fix client list creation ID races, enable complete guest lists and items migration on login, provide full custom lists management (rename, delete, remove items), implement optimistic update rollbacks on failure, and eliminate redundant sequential guest watch-history flushes with a single guarded bulk upsert.
+* **Implementation Steps Taken**:
+  1. Asynchronous List Creation (`contexts/FavoritesContext.tsx`, `components/CreateListModal.tsx`):
+     - Updated `createList(title)` to return `Promise<string | null>`, awaiting Supabase database insertion and returning the authoritative UUID before callers can add items.
+     - Added `isSubmitting` loading state, spinner, and disabled button behavior to `CreateListModal` to prevent duplicate list submissions.
+     - Enhanced `AddToListModal` with inline "Added ✓" indicators and disabled states for dramas already in the target list.
+  2. Full Cloud Migration of Guest Favorites & Custom Lists (`contexts/FavoritesContext.tsx`):
+     - On user login, automatically bulk-migrates guest favorite slugs via `addUserFavorites()`.
+     - Automatically migrates all guest custom lists along with their nested items using `createCustomList()` and `addItemsToCustomList()`.
+     - Completely removes the guest `localStorage` key upon confirmed cloud persistence.
+  3. Custom Lists CRUD Operations & Management UI (`lib/services/user.service.ts`, `app/account/favorite/page.tsx`):
+     - Implemented `addUserFavorites()`, `addItemsToCustomList()`, `renameCustomList()`, `deleteCustomList()`, and `removeItemFromCustomList()` in the user service.
+     - Built comprehensive management UI inside `/account/favorite` ("My Lists" view):
+       - Inline modal for renaming custom lists with validation and loading indicators.
+       - Confirmation modal for list deletion.
+       - Expandable list accordion showing posters, title links, and individual removal buttons (`X`).
+  4. Optimistic Update Rollbacks on Failure (`contexts/FavoritesContext.tsx`, `app/drama/[slug]/page.tsx`):
+     - `toggleFavorite()` now catches network/database errors, rolls back the local `favoritedSlugs` set immediately, and returns `false`.
+     - Updated `app/drama/[slug]/page.tsx` to handle failures by reverting the heart icon and showing an inline toast ("Failed to update favorites. Please try again.").
+     - `renameList()`, `deleteList()`, and `removeFromList()` roll back state if API mutations fail.
+  5. Single-Entry Bulk Guest Watch-History Sync (`lib/services/user.service.ts`, `contexts/AuthContext.tsx`, `app/watch/[slug]/page.tsx`):
+     - Upgraded `syncGuestWatchHistory()` to perform a single bulk `upsert` of all guest rows instead of looping sequentially.
+     - Guarded sync in `AuthContext` with `hasSyncedGuestRef`, executing strictly once per login session on `event === "SIGNED_IN"`.
+     - Cleaned up redundant `syncGuestWatchHistory` calls from `getSession()`, `signUp()`, OTP verification, and `app/watch/[slug]/page.tsx`.
+  6. Automated Verification Test Suite (`__tests__/favorites/favorites-and-custom-lists.test.ts`):
+     - Authored 15 tests covering list CRUD, bulk item upserts, single-entry watch sync, and architectural invariants.
+* **Key File Diffs**:
+  - Created:
+    - `__tests__/favorites/favorites-and-custom-lists.test.ts`
+  - Modified:
+    - `lib/services/user.service.ts`
+    - `contexts/FavoritesContext.tsx`
+    - `contexts/AuthContext.tsx`
+    - `components/CreateListModal.tsx`
+    - `components/AddToListModal.tsx`
+    - `app/drama/[slug]/page.tsx`
+    - `app/watch/[slug]/page.tsx`
+    - `app/account/favorite/page.tsx`
+    - `ROADMAP.md`
+    - `CHANGELOG-DEV.md`
+* **Regression Analysis & Cross-System Impact**:
+  - Test runner expanded from 356 tests (104 suites) to 371 tests (109 suites) with 100% pass rate.
+  - Zero type errors across all files (`npx tsc --noEmit`).
+  - Next.js production build cleanly compiled all 42 routes in 43s with zero errors.
+* **Verification**:
+  - `npm test`: 371 / 371 tests pass across 109 suites (0 failures).
+  - `npx tsc --noEmit`: 0 type errors.
+  - `npm run build`: cleanly compiles 42 routes with 0 errors.

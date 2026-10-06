@@ -1602,21 +1602,37 @@ These items stay ✅ for history; the gaps are tracked as new tasks.
 ---
 
 ### Task 12.6: Favorites & Custom Lists Consistency
-* **Status**: ⏳ Planned
-* **Problem**:
-  - `createList()` returns a temporary `list-<timestamp>` ID (`contexts/FavoritesContext.tsx` L214–235). Adding a drama before the insert resolves sends that ID to `custom_list_items`, and the write fails silently.
-  - Guest custom lists are not migrated at login; only favorites are (L93–101).
-  - Lists cannot be renamed or deleted, and items cannot be removed.
-  - Optimistic favorite toggles are never rolled back on failure.
-  - Guest watch-history sync runs several times per login (`contexts/AuthContext.tsx` L65 and L78 on every auth event, `app/watch/[slug]/page.tsx` L69–73), with one sequential upsert per row.
-* **Target Files**: `contexts/FavoritesContext.tsx`, `contexts/AuthContext.tsx`, `lib/services/user.service.ts`, `app/account/favorite/page.tsx`, `components/AddToListModal.tsx`, `components/CreateListModal.tsx`
-* **Planned Specifications**:
-  1. `createList()` becomes async and returns the database ID; "Add" stays disabled until it resolves.
-  2. Migrate guest lists and their items in one bulk insert at login.
-  3. Add `renameList`, `deleteList`, and `removeFromList` to the service and the `/account/favorite` UI.
-  4. Roll back optimistic updates on error and show a toast.
-  5. A single guest-sync entry point, guarded by a ref and triggered only on `SIGNED_IN`, using one bulk `upsert([...])`.
-* **Verification**: rapid create-then-add succeeds; guest lists appear after login; a simulated network failure reverts the heart icon.
+* **Status**: ✅ Completed (2026-10-06)
+* **Problem**: `createList()` returned a temporary client ID synchronously; adding items immediately failed on database foreign keys. Guest custom lists and their items were discarded at login instead of migrated. Custom lists could not be renamed, deleted, or have items removed. Optimistic favorite toggles never rolled back on failure. Guest watch-history sync ran up to 5 times per session using sequential row-by-row queries.
+* **Target Files**: `contexts/FavoritesContext.tsx`, `contexts/AuthContext.tsx`, `lib/services/user.service.ts`, `app/account/favorite/page.tsx`, `components/AddToListModal.tsx`, `components/CreateListModal.tsx`, `app/drama/[slug]/page.tsx`, `app/watch/[slug]/page.tsx`, `__tests__/favorites/favorites-and-custom-lists.test.ts` (new)
+* **Delivered Capabilities**:
+  1. Asynchronous List Creation (`contexts/FavoritesContext.tsx`, `components/CreateListModal.tsx`):
+     - `createList()` returns `Promise<string | null>`, resolving to the real database UUID for authenticated users before returning.
+     - `CreateListModal` tracks `isSubmitting`, displays an animated spinner, and disables the submit button to prevent double-clicks.
+     - `AddToListModal` disables buttons and displays "Added" indicators for dramas already in the selected list.
+  2. Full Guest Lists & Favorites Migration at Login (`contexts/FavoritesContext.tsx`):
+     - On user sign-in, automatically bulk-migrates guest favorite slugs via `addUserFavorites()`.
+     - Automatically migrates guest custom lists and all associated items via `createCustomList()` and `addItemsToCustomList()`.
+     - Purges guest `localStorage` cleanly after confirmed cloud migration.
+  3. Custom Lists Management Operations & UI (`lib/services/user.service.ts`, `app/account/favorite/page.tsx`):
+     - Implemented `renameCustomList()`, `deleteCustomList()`, and `removeItemFromCustomList()` in the user service.
+     - Wired full management capabilities into `/account/favorite` ("My Lists" view):
+       - Inline rename modal with title validation and loading state.
+       - Delete confirmation modal with toast feedback.
+       - Expandable list items accordion allowing individual dramas to be removed from lists.
+  4. Optimistic Updates with Rollback on Failure (`contexts/FavoritesContext.tsx`, `app/drama/[slug]/page.tsx`):
+     - `toggleFavorite()` returns `Promise<boolean>`, catching network/database errors and rolling back local `favoritedSlugs` state immediately.
+     - `app/drama/[slug]/page.tsx` displays feedback toast ("Failed to update favorites. Please try again.") and reverts the heart icon on failure.
+     - `renameList`, `deleteList`, and `removeFromList` roll back optimistic state if API writes fail.
+  5. Single-Entry Bulk Guest Watch-History Sync (`lib/services/user.service.ts`, `contexts/AuthContext.tsx`, `app/watch/[slug]/page.tsx`):
+     - Refactored `syncGuestWatchHistory()` to execute a single bulk `upsert` of all guest rows instead of sequential loops.
+     - Guarded sync in `AuthContext` with `hasSyncedGuestRef`, executing strictly once per login session on `event === "SIGNED_IN"`.
+     - Eliminated redundant `syncGuestWatchHistory` calls from `getSession()`, `signUp()`, OTP verification, and `app/watch/[slug]/page.tsx`.
+* **Verification Results**:
+  - `__tests__/favorites/favorites-and-custom-lists.test.ts` (15 tests passing across CRUD operations, bulk upserts, single-entry sync, and code invariants).
+  - `npx tsc --noEmit`: 0 type errors.
+  - Full test runner `npm test`: 371 / 371 tests passing across 109 suites (0 failures).
+  - `npm run build`: cleanly compiles all 42 routes with zero errors.
 
 ---
 

@@ -5,6 +5,7 @@ import {
   useContext,
   useEffect,
   useState,
+  useRef,
   type ReactNode,
 } from "react";
 import type { User, Session } from "@supabase/supabase-js";
@@ -79,6 +80,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [profile, setProfile] = useState<ProfileRow | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const hasSyncedGuestRef = useRef(false);
 
   const fetchProfile = async (userId: string) => {
     const prof = await getUserProfile(userId);
@@ -92,21 +94,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser(session?.user ?? null);
       if (session?.user) {
         fetchProfile(session.user.id);
-        syncGuestWatchHistory(session.user.id);
       }
       setIsLoading(false);
     });
 
-    // 2. Listen for auth changes
+    // 2. Listen for auth changes (single guarded entry point on SIGNED_IN)
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange(async (_event, session) => {
+    } = supabase.auth.onAuthStateChange(async (event, session) => {
       setSession(session);
       setUser(session?.user ?? null);
       if (session?.user) {
         await fetchProfile(session.user.id);
-        syncGuestWatchHistory(session.user.id);
+        if (event === "SIGNED_IN" && !hasSyncedGuestRef.current) {
+          hasSyncedGuestRef.current = true;
+          syncGuestWatchHistory(session.user.id);
+        }
       } else {
+        hasSyncedGuestRef.current = false;
         setProfile(null);
       }
       setIsLoading(false);
@@ -181,7 +186,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setUser(data.session.user);
         if (data.session.user) {
           await fetchProfile(data.session.user.id);
-          syncGuestWatchHistory(data.session.user.id);
         }
         return { error: null, needsEmailVerification: false, session: data.session };
       }
@@ -234,12 +238,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setUser(result.data.session.user);
         if (result.data.session.user) {
           await fetchProfile(result.data.session.user.id);
-          syncGuestWatchHistory(result.data.session.user.id);
         }
       } else if (result.data.user) {
         setUser(result.data.user);
         await fetchProfile(result.data.user.id);
-        syncGuestWatchHistory(result.data.user.id);
       }
 
       return { error: null };

@@ -25,7 +25,6 @@ import {
   getGuestWatchProgress,
   upsertWatchProgress,
   saveGuestWatchProgress,
-  syncGuestWatchHistory,
 } from "@/lib/services/user.service";
 
 const EPISODES_PER_TAB = 40;
@@ -66,13 +65,6 @@ function WatchContent({ slug }: { slug: string }) {
   useEffect(() => {
     currentProgressRef.current.episode = currentEpisode;
   }, [currentEpisode]);
-
-  // Sync any guest watch history if authenticated user exists
-  useEffect(() => {
-    if (user) {
-      syncGuestWatchHistory(user.id);
-    }
-  }, [user]);
 
   // Fetch drama and real episode data from database
   useEffect(() => {

@@ -74,6 +74,22 @@ export async function addUserFavorite(userId: string, titleSlug: string): Promis
   }
 }
 
+export async function addUserFavorites(userId: string, titleSlugs: string[]): Promise<boolean> {
+  if (titleSlugs.length === 0) return true;
+  try {
+    const supabase = createUserClient();
+    const rows = titleSlugs.map((slug) => ({ user_id: userId, title_slug: slug }));
+    const { error } = await supabase
+      .from("favorites")
+      .upsert(rows, { onConflict: "user_id,title_slug" });
+
+    return !error;
+  } catch (err) {
+    console.error("Error bulk adding favorites:", err);
+    return false;
+  }
+}
+
 export async function removeUserFavorite(userId: string, titleSlug: string): Promise<boolean> {
   try {
     const supabase = createUserClient();
@@ -157,6 +173,80 @@ export async function addItemToCustomList(listId: string, titleSlug: string): Pr
     return !error;
   } catch (err) {
     console.error("Error adding item to list:", err);
+    return false;
+  }
+}
+
+export async function addItemsToCustomList(
+  listId: string,
+  titleSlugs: string[]
+): Promise<boolean> {
+  if (titleSlugs.length === 0) return true;
+  try {
+    const supabase = createUserClient();
+    const rows = titleSlugs.map((slug) => ({
+      list_id: listId,
+      title_slug: slug,
+    }));
+    const { error } = await supabase
+      .from("custom_list_items")
+      .upsert(rows, { onConflict: "list_id,title_slug" });
+
+    return !error;
+  } catch (err) {
+    console.error("Error bulk adding items to custom list:", err);
+    return false;
+  }
+}
+
+export async function renameCustomList(
+  listId: string,
+  newTitle: string
+): Promise<boolean> {
+  try {
+    const trimmed = newTitle.trim();
+    if (!trimmed) return false;
+    const supabase = createUserClient();
+    const { error } = await supabase
+      .from("custom_lists")
+      .update({ title: trimmed, updated_at: new Date().toISOString() })
+      .eq("id", listId);
+
+    return !error;
+  } catch (err) {
+    console.error("Error renaming custom list:", err);
+    return false;
+  }
+}
+
+export async function deleteCustomList(listId: string): Promise<boolean> {
+  try {
+    const supabase = createUserClient();
+    await supabase.from("custom_list_items").delete().eq("list_id", listId);
+    const { error } = await supabase.from("custom_lists").delete().eq("id", listId);
+
+    return !error;
+  } catch (err) {
+    console.error("Error deleting custom list:", err);
+    return false;
+  }
+}
+
+export async function removeItemFromCustomList(
+  listId: string,
+  titleSlug: string
+): Promise<boolean> {
+  try {
+    const supabase = createUserClient();
+    const { error } = await supabase
+      .from("custom_list_items")
+      .delete()
+      .eq("list_id", listId)
+      .eq("title_slug", titleSlug);
+
+    return !error;
+  } catch (err) {
+    console.error("Error removing item from custom list:", err);
     return false;
   }
 }
@@ -356,17 +446,25 @@ export async function syncGuestWatchHistory(userId: string): Promise<void> {
   try {
     const guestItems = getGuestWatchHistory();
     if (guestItems.length === 0) return;
-    for (const item of guestItems) {
-      await upsertWatchProgress(
-        userId,
-        item.title_slug,
-        item.episode_number,
-        item.progress,
-        item.position_seconds || 0,
-        item.duration_seconds || 0
-      );
+
+    const supabase = createUserClient();
+    const rows = guestItems.map((item) => ({
+      user_id: userId,
+      title_slug: item.title_slug,
+      episode_number: item.episode_number,
+      progress: Math.min(1.0, Math.max(0.0, item.progress)),
+      position_seconds: Math.max(0, Math.floor(item.position_seconds || 0)),
+      duration_seconds: Math.max(0, Math.floor(item.duration_seconds || 0)),
+      updated_at: new Date().toISOString(),
+    }));
+
+    const { error } = await supabase
+      .from("watch_history")
+      .upsert(rows, { onConflict: "user_id,title_slug" });
+
+    if (!error) {
+      clearGuestWatchHistory();
     }
-    localStorage.removeItem(GUEST_HISTORY_KEY);
   } catch (err) {
     console.error("Error syncing guest watch history:", err);
   }

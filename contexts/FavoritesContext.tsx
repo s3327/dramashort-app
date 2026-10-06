@@ -5,16 +5,23 @@ import {
   useContext,
   useEffect,
   useState,
+  useRef,
+  useCallback,
   type ReactNode,
 } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import {
   getUserFavorites,
   addUserFavorite,
+  addUserFavorites,
   removeUserFavorite,
   getUserCustomLists,
   createCustomList as createCustomListDb,
   addItemToCustomList as addItemToCustomListDb,
+  addItemsToCustomList as addItemsToCustomListDb,
+  renameCustomList as renameCustomListDb,
+  deleteCustomList as deleteCustomListDb,
+  removeItemFromCustomList as removeItemFromCustomListDb,
 } from "@/lib/services/user.service";
 
 export type ListDef = {
@@ -28,13 +35,16 @@ type FavoritesState = {
   lists: ListDef[];
 };
 
-type FavoritesContextValue = {
+export type FavoritesContextValue = {
   favoritedSlugs: Set<string>;
   isFavorited: (slug: string) => boolean;
-  toggleFavorite: (slug: string) => void;
+  toggleFavorite: (slug: string) => Promise<boolean>;
   lists: ListDef[];
-  createList: (title: string) => string;
-  addToList: (listId: string, slug: string) => void;
+  createList: (title: string) => Promise<string | null>;
+  addToList: (listId: string, slug: string) => Promise<boolean>;
+  renameList: (listId: string, newTitle: string) => Promise<boolean>;
+  deleteList: (listId: string) => Promise<boolean>;
+  removeFromList: (listId: string, slug: string) => Promise<boolean>;
   isHydrated: boolean;
 };
 
@@ -61,60 +71,92 @@ const FavoritesContext = createContext<FavoritesContextValue | null>(null);
 export function FavoritesProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
 
-  // 1. Initialize strictly clean state (no hardcoded fake favorites)
+  // 1. Initialize clean state
   const [state, setState] = useState<FavoritesState>({
     favoritedSlugs: new Set<string>(),
     lists: [],
   });
   const [isHydrated, setIsHydrated] = useState(false);
+  const migratedUserIdRef = useRef<string | null>(null);
 
-  // 2. Hydrate favorites on mount or user transition
+  // 2. Hydrate favorites on mount or user transition, migrating guest favorites & custom lists
   useEffect(() => {
     let mounted = true;
 
     if (user) {
-      // Check if guest had any real favorites in localStorage prior to logging in
-      let guestSlugs: string[] = [];
-      try {
-        const stored = window.localStorage.getItem(STORAGE_KEY);
-        if (stored) {
-          const parsed = JSON.parse(stored) as { favoritedSlugs?: string[] };
-          if (Array.isArray(parsed?.favoritedSlugs)) {
-            // Filter out any legacy pre-seeded mock slugs
-            guestSlugs = parsed.favoritedSlugs.filter(
-              (slug) => !LEGACY_MOCK_SLUGS.has(slug)
-            );
+      async function syncAndLoadUserFavorites() {
+        if (!user) return;
+
+        // Perform guest data migration once per user session
+        if (migratedUserIdRef.current !== user.id) {
+          migratedUserIdRef.current = user.id;
+
+          let guestSlugs: string[] = [];
+          let guestLists: ListDef[] = [];
+
+          try {
+            const stored = window.localStorage.getItem(STORAGE_KEY);
+            if (stored) {
+              const parsed = JSON.parse(stored) as {
+                favoritedSlugs?: string[];
+                lists?: ListDef[];
+              };
+              if (Array.isArray(parsed?.favoritedSlugs)) {
+                guestSlugs = parsed.favoritedSlugs.filter(
+                  (slug) => !LEGACY_MOCK_SLUGS.has(slug)
+                );
+              }
+              if (Array.isArray(parsed?.lists)) {
+                guestLists = parsed.lists;
+              }
+            }
+          } catch {
+            // Ignore localStorage read errors
+          }
+
+          // Bulk migrate guest favorites
+          if (guestSlugs.length > 0) {
+            await addUserFavorites(user.id, guestSlugs);
+          }
+
+          // Migrate guest custom lists and their items
+          if (guestLists.length > 0) {
+            for (const glist of guestLists) {
+              const trimmed = glist.title?.trim();
+              if (!trimmed) continue;
+              const dbId = await createCustomListDb(user.id, trimmed);
+              if (dbId && Array.isArray(glist.itemSlugs) && glist.itemSlugs.length > 0) {
+                await addItemsToCustomListDb(dbId, glist.itemSlugs);
+              }
+            }
+          }
+
+          // Clean up guest local storage
+          try {
+            window.localStorage.removeItem(STORAGE_KEY);
+          } catch {
+            // Ignore storage errors
           }
         }
-      } catch {
-        // Ignore localStorage read errors
-      }
 
-      // Automatically migrate guest favorites to user Supabase account
-      if (guestSlugs.length > 0) {
-        guestSlugs.forEach((slug) => addUserFavorite(user.id, slug));
-        try {
-          window.localStorage.removeItem(STORAGE_KEY);
-        } catch {
-          // Ignore removal error
-        }
-      }
+        // Fetch user's confirmed favorites and custom lists from Supabase
+        const [favs, customLists] = await Promise.all([
+          getUserFavorites(user.id),
+          getUserCustomLists(user.id),
+        ]);
 
-      // Fetch user's confirmed favorites and custom lists from Supabase
-      Promise.all([
-        getUserFavorites(user.id),
-        getUserCustomLists(user.id),
-      ]).then(([favs, customLists]) => {
         if (!mounted) return;
-        const mergedSlugs = new Set([...(favs || []), ...guestSlugs]);
         setState({
-          favoritedSlugs: mergedSlugs,
+          favoritedSlugs: new Set(favs || []),
           lists: customLists || [],
         });
         setIsHydrated(true);
-      });
+      }
+
+      syncAndLoadUserFavorites();
     } else {
-      // Guest: Restore only genuinely user-favorited items from localStorage
+      // Guest: Restore only genuinely favorited items and lists from localStorage
+      migratedUserIdRef.current = null;
       try {
         const stored = window.localStorage.getItem(STORAGE_KEY);
         if (stored) {
@@ -124,7 +166,6 @@ export function FavoritesProvider({ children }: { children: ReactNode }) {
           };
 
           if (Array.isArray(parsed?.favoritedSlugs)) {
-            // Check if stored data was just the legacy auto-seed (all 12 mock slugs)
             const isPureLegacySeed =
               parsed.favoritedSlugs.length === 12 &&
               parsed.favoritedSlugs.every((s) => LEGACY_MOCK_SLUGS.has(s));
@@ -138,16 +179,18 @@ export function FavoritesProvider({ children }: { children: ReactNode }) {
                 });
               }
             } else {
+              const cleanedSlugs = parsed.favoritedSlugs.filter(
+                (s) => !LEGACY_MOCK_SLUGS.has(s)
+              );
               if (mounted) {
                 setState({
-                  favoritedSlugs: new Set(parsed.favoritedSlugs),
-                  lists: parsed.lists || [],
+                  favoritedSlugs: new Set(cleanedSlugs),
+                  lists: Array.isArray(parsed.lists) ? parsed.lists : [],
                 });
               }
             }
           }
         } else {
-          // Fresh guest visitor: completely clean state
           if (mounted) {
             setState({
               favoritedSlugs: new Set<string>(),
@@ -167,7 +210,7 @@ export function FavoritesProvider({ children }: { children: ReactNode }) {
     };
   }, [user]);
 
-  // 3. Persist guest favorites to localStorage only after hydration is confirmed
+  // 3. Persist guest favorites & lists to localStorage only after hydration is confirmed
   useEffect(() => {
     if (!user && isHydrated) {
       try {
@@ -188,65 +231,265 @@ export function FavoritesProvider({ children }: { children: ReactNode }) {
     }
   }, [state, user, isHydrated]);
 
-  const isFavorited = (slug: string) => state.favoritedSlugs.has(slug);
+  const isFavorited = useCallback(
+    (slug: string) => state.favoritedSlugs.has(slug),
+    [state.favoritedSlugs]
+  );
 
-  const toggleFavorite = (slug: string) => {
-    const isCurrentlyFavorited = state.favoritedSlugs.has(slug);
+  /**
+   * Toggles a favorite slug with optimistic UI update and rollback on failure.
+   */
+  const toggleFavorite = async (slug: string): Promise<boolean> => {
+    const wasFavorited = state.favoritedSlugs.has(slug);
 
     // Optimistic UI update
     setState((prev) => {
       const next = new Set(prev.favoritedSlugs);
-      if (isCurrentlyFavorited) next.delete(slug);
+      if (wasFavorited) next.delete(slug);
       else next.add(slug);
       return { ...prev, favoritedSlugs: next };
     });
 
-    // Sync to Supabase if logged in
     if (user) {
-      if (isCurrentlyFavorited) {
-        removeUserFavorite(user.id, slug);
-      } else {
-        addUserFavorite(user.id, slug);
+      try {
+        const success = wasFavorited
+          ? await removeUserFavorite(user.id, slug)
+          : await addUserFavorite(user.id, slug);
+
+        if (!success) {
+          // Roll back optimistic state on failure
+          setState((prev) => {
+            const rollback = new Set(prev.favoritedSlugs);
+            if (wasFavorited) rollback.add(slug);
+            else rollback.delete(slug);
+            return { ...prev, favoritedSlugs: rollback };
+          });
+          return false;
+        }
+      } catch (err) {
+        // Roll back optimistic state on exception
+        setState((prev) => {
+          const rollback = new Set(prev.favoritedSlugs);
+          if (wasFavorited) rollback.add(slug);
+          else rollback.delete(slug);
+          return { ...prev, favoritedSlugs: rollback };
+        });
+        return false;
       }
+    }
+
+    return true;
+  };
+
+  /**
+   * Creates a custom list asynchronously.
+   * For logged in users, waits for database insertion and returns the real database UUID.
+   * For guests, generates a local ID and returns it.
+   */
+  const createList = async (title: string): Promise<string | null> => {
+    const trimmed = title.trim();
+    if (!trimmed) return null;
+
+    if (user) {
+      try {
+        const dbId = await createCustomListDb(user.id, trimmed);
+        if (!dbId) return null;
+
+        const newList: ListDef = { id: dbId, title: trimmed, itemSlugs: [] };
+        setState((prev) => ({
+          ...prev,
+          lists: [...prev.lists, newList],
+        }));
+        return dbId;
+      } catch (err) {
+        console.error("Failed to create list in database:", err);
+        return null;
+      }
+    } else {
+      const guestId = `list-${Date.now()}`;
+      const newList: ListDef = { id: guestId, title: trimmed, itemSlugs: [] };
+      setState((prev) => ({
+        ...prev,
+        lists: [...prev.lists, newList],
+      }));
+      return guestId;
     }
   };
 
-  const createList = (title: string): string => {
-    const tempId = `list-${Date.now()}`;
+  /**
+   * Adds a drama slug to a custom list with optimistic update and rollback on failure.
+   */
+  const addToList = async (listId: string, slug: string): Promise<boolean> => {
+    const targetList = state.lists.find((l) => l.id === listId);
+    if (!targetList || targetList.itemSlugs.includes(slug)) {
+      return true;
+    }
 
     // Optimistic update
     setState((prev) => ({
       ...prev,
-      lists: [...prev.lists, { id: tempId, title, itemSlugs: [] }],
+      lists: prev.lists.map((l) =>
+        l.id === listId ? { ...l, itemSlugs: [...l.itemSlugs, slug] } : l
+      ),
     }));
 
     if (user) {
-      createCustomListDb(user.id, title).then((dbId) => {
-        if (dbId) {
+      try {
+        const success = await addItemToCustomListDb(listId, slug);
+        if (!success) {
+          // Roll back item addition
           setState((prev) => ({
             ...prev,
-            lists: prev.lists.map((l) => (l.id === tempId ? { ...l, id: dbId } : l)),
+            lists: prev.lists.map((l) =>
+              l.id === listId
+                ? { ...l, itemSlugs: l.itemSlugs.filter((s) => s !== slug) }
+                : l
+            ),
           }));
+          return false;
         }
-      });
+      } catch {
+        setState((prev) => ({
+          ...prev,
+          lists: prev.lists.map((l) =>
+            l.id === listId
+              ? { ...l, itemSlugs: l.itemSlugs.filter((s) => s !== slug) }
+              : l
+          ),
+        }));
+        return false;
+      }
     }
 
-    return tempId;
+    return true;
   };
 
-  const addToList = (listId: string, slug: string) => {
+  /**
+   * Renames a custom list with optimistic update and rollback on failure.
+   */
+  const renameList = async (listId: string, newTitle: string): Promise<boolean> => {
+    const trimmed = newTitle.trim();
+    if (!trimmed) return false;
+
+    const previousList = state.lists.find((l) => l.id === listId);
+    if (!previousList) return false;
+    const oldTitle = previousList.title;
+
+    // Optimistic update
     setState((prev) => ({
       ...prev,
       lists: prev.lists.map((l) =>
-        l.id === listId && !l.itemSlugs.includes(slug)
-          ? { ...l, itemSlugs: [...l.itemSlugs, slug] }
+        l.id === listId ? { ...l, title: trimmed } : l
+      ),
+    }));
+
+    if (user) {
+      try {
+        const success = await renameCustomListDb(listId, trimmed);
+        if (!success) {
+          // Roll back title
+          setState((prev) => ({
+            ...prev,
+            lists: prev.lists.map((l) =>
+              l.id === listId ? { ...l, title: oldTitle } : l
+            ),
+          }));
+          return false;
+        }
+      } catch {
+        setState((prev) => ({
+          ...prev,
+          lists: prev.lists.map((l) =>
+            l.id === listId ? { ...l, title: oldTitle } : l
+          ),
+        }));
+        return false;
+      }
+    }
+
+    return true;
+  };
+
+  /**
+   * Deletes a custom list with optimistic update and rollback on failure.
+   */
+  const deleteList = async (listId: string): Promise<boolean> => {
+    const previousList = state.lists.find((l) => l.id === listId);
+    if (!previousList) return false;
+
+    // Optimistic removal
+    setState((prev) => ({
+      ...prev,
+      lists: prev.lists.filter((l) => l.id !== listId),
+    }));
+
+    if (user) {
+      try {
+        const success = await deleteCustomListDb(listId);
+        if (!success) {
+          // Roll back deleted list
+          setState((prev) => ({
+            ...prev,
+            lists: [...prev.lists, previousList],
+          }));
+          return false;
+        }
+      } catch {
+        setState((prev) => ({
+          ...prev,
+          lists: [...prev.lists, previousList],
+        }));
+        return false;
+      }
+    }
+
+    return true;
+  };
+
+  /**
+   * Removes an item from a custom list with optimistic update and rollback on failure.
+   */
+  const removeFromList = async (listId: string, slug: string): Promise<boolean> => {
+    const targetList = state.lists.find((l) => l.id === listId);
+    if (!targetList || !targetList.itemSlugs.includes(slug)) {
+      return true;
+    }
+
+    // Optimistic removal
+    setState((prev) => ({
+      ...prev,
+      lists: prev.lists.map((l) =>
+        l.id === listId
+          ? { ...l, itemSlugs: l.itemSlugs.filter((s) => s !== slug) }
           : l
       ),
     }));
 
     if (user) {
-      addItemToCustomListDb(listId, slug);
+      try {
+        const success = await removeItemFromCustomListDb(listId, slug);
+        if (!success) {
+          // Roll back item removal
+          setState((prev) => ({
+            ...prev,
+            lists: prev.lists.map((l) =>
+              l.id === listId ? { ...l, itemSlugs: [...l.itemSlugs, slug] } : l
+            ),
+          }));
+          return false;
+        }
+      } catch {
+        setState((prev) => ({
+          ...prev,
+          lists: prev.lists.map((l) =>
+            l.id === listId ? { ...l, itemSlugs: [...l.itemSlugs, slug] } : l
+          ),
+        }));
+        return false;
+      }
     }
+
+    return true;
   };
 
   return (
@@ -258,6 +501,9 @@ export function FavoritesProvider({ children }: { children: ReactNode }) {
         lists: state.lists,
         createList,
         addToList,
+        renameList,
+        deleteList,
+        removeFromList,
         isHydrated,
       }}
     >
