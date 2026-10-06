@@ -27,6 +27,7 @@ describe("Content Service Unit Tests", () => {
       genre: "Romance",
       tags: ["CEO", "Secret Identity", "Marriage"],
       total_episodes: 50,
+      episodes_available: 45,
       rating: 4.8,
       views_count: 1250000,
       release_year: 2026,
@@ -44,6 +45,7 @@ describe("Content Service Unit Tests", () => {
     assert.equal(drama.genre, "Romance");
     assert.deepEqual(drama.tags, ["CEO", "Secret Identity", "Marriage"]);
     assert.equal(drama.totalEpisodes, 50);
+    assert.equal(drama.episodesAvailable, 45);
     assert.equal(drama.rating, 4.8);
     assert.equal(drama.views, 1250000);
     assert.equal(drama.year, 2026);

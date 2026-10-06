@@ -15,6 +15,7 @@ export interface Title {
   genre: string;
   tags: string[];
   totalEpisodes: number;
+  episodesAvailable?: number;
   rating?: number;
   views: number;
   createdAt: string;

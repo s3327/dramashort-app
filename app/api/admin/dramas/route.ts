@@ -10,27 +10,15 @@ import {
   type DramaStatus,
 } from "@/lib/validation/drama";
 import { resolveChannelByName } from "@/lib/admin/resolve-channel";
+import { generateUniqueDramaSlug, getChannelCode } from "@/lib/slug";
 import type { Database } from "@/types/supabase-content";
 
 type TitleInsert = Database["public"]["Tables"]["titles"]["Insert"];
 
 const DEFAULT_CHANNEL_NAME = "DramaShort Originals";
-const DEFAULT_CHANNEL_CODE = "DSO";
+const DEFAULT_CHANNEL_CODE = "ds";
 const DEFAULT_POSTER_URL =
   "https://images.unsplash.com/photo-1518791841217-8f162f1e1131?w=800&auto=format&fit=crop&q=80";
-
-/**
- * Helper to slugify a drama title.
- */
-function slugifyTitle(title: string): string {
-  const base = title
-    .toLowerCase()
-    .trim()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/(^-|-$)/g, "");
-  const suffix = Math.floor(1000 + Math.random() * 9000);
-  return `${base || "drama"}-${suffix}`;
-}
 
 /**
  * GET /api/admin/dramas
@@ -59,7 +47,7 @@ export async function GET(request: NextRequest) {
 
     let query = adminClient
       .from("titles")
-      .select("*", { count: "exact" });
+      .select("*, channels(name, slug, code)", { count: "exact" });
 
     if (q) {
       query = query.ilike("title", `%${escapeLikePattern(q)}%`);
@@ -144,15 +132,18 @@ export async function POST(request: NextRequest) {
 
     const requestedChannel = input.channelName ?? DEFAULT_CHANNEL_NAME;
     const channel = await resolveChannelByName(adminClient, requestedChannel);
+    const channelCode = channel?.code ?? getChannelCode(requestedChannel);
+
+    const slug = await generateUniqueDramaSlug(adminClient, input.title!, channelCode);
 
     const newRow: TitleInsert = {
       title: input.title!,
-      slug: slugifyTitle(input.title!),
+      slug,
       synopsis: input.synopsis || "No synopsis available.",
       genre: input.genre ?? "Romance",
       tags: input.tags && input.tags.length > 0 ? input.tags : null,
       channel_name: channel?.name ?? requestedChannel,
-      channel_code: channel?.code ?? DEFAULT_CHANNEL_CODE,
+      channel_code: channelCode,
       channel_id: channel?.id ?? null,
       poster_url: input.posterUrl ?? DEFAULT_POSTER_URL,
       status: input.status ?? "Draft",
@@ -163,7 +154,7 @@ export async function POST(request: NextRequest) {
     const { data: insertedRow, error: insertError } = await adminClient
       .from("titles")
       .insert(newRow)
-      .select()
+      .select("*, channels(name, slug, code)")
       .single();
 
     if (insertError || !insertedRow) {

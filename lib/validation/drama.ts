@@ -15,6 +15,7 @@ export type DramaStatus = (typeof DRAMA_STATUSES)[number];
 
 export const DRAMA_LIMITS = {
   titleMax: 200,
+  slugMax: 250,
   synopsisMax: 5000,
   genreMax: 50,
   channelMax: 100,
@@ -27,6 +28,7 @@ export const DRAMA_LIMITS = {
 
 export interface DramaFields {
   title?: string;
+  slug?: string;
   synopsis?: string;
   genre?: string;
   tags?: string[];
@@ -34,6 +36,7 @@ export interface DramaFields {
   status?: DramaStatus;
   totalEpisodes?: number;
   posterUrl?: string;
+  bannerUrl?: string;
 }
 
 export interface FieldError {
@@ -102,6 +105,80 @@ function firstDefined(body: Record<string, unknown>, keys: string[]): unknown {
   return undefined;
 }
 
+export const KNOWN_ACRONYMS = new Set([
+  "CEO",
+  "VIP",
+  "MD",
+  "FL",
+  "ML",
+  "POV",
+  "HE",
+  "BE",
+  "OE",
+  "MC",
+  "NPC",
+  "ID",
+  "DJ",
+  "TV",
+  "PR",
+  "HR",
+  "IQ",
+  "EQ",
+  "KOL",
+  "BL",
+  "GL",
+  "VR",
+  "AR",
+  "AI",
+  "DNA",
+  "FBI",
+  "CIA",
+  "UFO",
+  "US",
+  "UK",
+  "NYC",
+  "LA",
+  "HQ",
+  "BFF",
+]);
+
+/**
+ * Formats a tag string in Title Case while preserving uppercase acronyms (e.g. CEO, VIP).
+ * Handles hyphens, slashes, and standard as well as smart/curly apostrophes (e.g. CEO's, CEO’s, FL/ML).
+ */
+export function formatTagCase(tag: string): string {
+  return tag
+    .trim()
+    .split(/\s+/)
+    .map((word) => {
+      if (!word) return "";
+      return word
+        .split(/([-\/])/)
+        .map((part) => {
+          if (!part || part === "-" || part === "/") return part;
+          const apostropheMatch = part.match(/['’]/);
+          if (apostropheMatch && apostropheMatch.index !== undefined) {
+            const apostropheIdx = apostropheMatch.index;
+            const stem = part.slice(0, apostropheIdx);
+            const suffix = part.slice(apostropheIdx);
+            const stemUpper = stem.toUpperCase();
+            if (KNOWN_ACRONYMS.has(stemUpper)) {
+              return stemUpper + suffix.toLowerCase();
+            }
+            return stem.charAt(0).toUpperCase() + stem.slice(1).toLowerCase() + suffix.toLowerCase();
+          }
+
+          const upper = part.toUpperCase();
+          if (KNOWN_ACRONYMS.has(upper)) {
+            return upper;
+          }
+          return part.charAt(0).toUpperCase() + part.slice(1).toLowerCase();
+        })
+        .join("");
+    })
+    .join(" ");
+}
+
 function normalizeTags(raw: unknown, errors: FieldError[]): string[] | undefined {
   let list: unknown[];
   if (typeof raw === "string") {
@@ -120,12 +197,13 @@ function normalizeTags(raw: unknown, errors: FieldError[]): string[] | undefined
       errors.push({ field: "tags", message: "Every tag must be a string." });
       return undefined;
     }
-    const tag = item.trim();
-    if (!tag) continue;
-    if (tag.length > DRAMA_LIMITS.tagMax) {
+    const rawTag = item.trim();
+    if (!rawTag) continue;
+    if (rawTag.length > DRAMA_LIMITS.tagMax) {
       errors.push({ field: "tags", message: `Each tag must be at most ${DRAMA_LIMITS.tagMax} characters.` });
       return undefined;
     }
+    const tag = formatTagCase(rawTag);
     const key = tag.toLowerCase();
     if (!seen.has(key)) {
       seen.add(key);
@@ -225,6 +303,10 @@ export function validateDramaPayload(input: unknown, mode: "create" | "update"):
     value.tags = normalizeTags(body.tags, errors);
   }
 
+  if (body.slug !== undefined) {
+    value.slug = readText(body.slug, "slug", DRAMA_LIMITS.slugMax, errors, { allowEmpty: false });
+  }
+
   const poster = firstDefined(body, ["poster_url", "poster"]);
   if (poster !== undefined) {
     if (typeof poster !== "string" || !poster.trim()) {
@@ -238,6 +320,22 @@ export function validateDramaPayload(input: unknown, mode: "create" | "update"):
       });
     } else {
       value.posterUrl = poster.trim();
+    }
+  }
+
+  const banner = firstDefined(body, ["banner_url", "banner"]);
+  if (banner !== undefined) {
+    if (typeof banner !== "string" || !banner.trim()) {
+      errors.push({ field: "banner", message: "banner must be a non-empty URL string." });
+    } else if (banner.trim().length > DRAMA_LIMITS.urlMax) {
+      errors.push({ field: "banner", message: `banner URL must be at most ${DRAMA_LIMITS.urlMax} characters.` });
+    } else if (!isAllowedImageUrl(banner.trim())) {
+      errors.push({
+        field: "banner",
+        message: "banner must be an https URL on an allowed image host (see lib/config/image-hosts.mjs).",
+      });
+    } else {
+      value.bannerUrl = banner.trim();
     }
   }
 

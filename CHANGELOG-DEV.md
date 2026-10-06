@@ -1404,3 +1404,101 @@
   - `npm test`: 371 / 371 tests pass across 109 suites (0 failures).
   - `npx tsc --noEmit`: 0 type errors.
   - `npm run build`: cleanly compiles 42 routes with 0 errors.
+---
+
+## [2026-10-06] Task 12.7: Content Data Integrity Rules
+* **Milestone**: Phase 12 (Functional Bug Fixes & Data Integrity) — Task 12.7
+* **Goal**: Enforce platform content data integrity rules: poster and banner host allow-list validation, automatic `episodes_available` database trigger tracking, foreign key joined channel data reads with synchronized channel names/codes, deterministic collision-retryable drama slugs (`<title>-<channel_code>`), strictly immutable published slugs, tag normalization with Title Case and acronym preservation, PostgREST filter value escaping for `.or()` queries, and admin UI indicators.
+* **Implementation Steps Taken**:
+  1. Content Database Migration (`supabase/content/supabase/migrations/20261006150000_content_data_integrity.sql`):
+     - Added `episodes_available INT NOT NULL DEFAULT 0` column to `public.titles`.
+     - Created `sync_title_episodes_available()` trigger function on `public.episodes` firing `AFTER INSERT OR UPDATE OR DELETE` to automatically keep `episodes_available` in sync with actual episode count, with initial backfill query.
+     - Created `sync_channel_to_titles()` trigger function on `public.channels` firing `AFTER UPDATE OF name, code` to update `channel_name` and `channel_code` on `titles` automatically whenever channels are edited or renamed.
+     - Created `sync_title_channel_from_fk()` trigger function on `public.titles` firing `BEFORE INSERT OR UPDATE OF channel_id` to auto-populate `channel_name` and `channel_code` from the channels table.
+     - Created `enforce_title_slug_immutability()` trigger function on `public.titles` firing `BEFORE UPDATE OF slug` raising an exception if `OLD.status = 'Published'`.
+     - Granted SELECT on `episodes_available` to `anon` and `authenticated` roles.
+  2. Domain and Database Type Definitions (`types/supabase-content.ts`, `types/content.ts`):
+     - Updated `Title` domain entity to include optional `episodesAvailable?: number`.
+     - Added `episodes_available` to `titles` table in `types/supabase-content.ts` (Row, Insert, Update).
+  3. Image Allow-List & Tag Normalization (`lib/validation/drama.ts`):
+     - Added `bannerUrl?: string` and `slug?: string` to `DramaFields`.
+     - Implemented banner host validation using `isAllowedImageUrl` against `imageRemotePatterns`.
+     - Created `KNOWN_ACRONYMS` and `formatTagCase(tag)` to format tag names into consistent Title Case while preserving uppercase acronyms (e.g. CEO, VIP, MD, DNA, etc.) and possessives (e.g. CEO's).
+     - Updated `normalizeTags()` to apply `formatTagCase` and deduplicate case-insensitively.
+  4. Deterministic Slug Policy & Collision Retries (`lib/slug.ts`, `app/api/admin/dramas/route.ts`):
+     - Implemented `getDramaSlugCandidate(title, channelCode, attempt)` and `generateUniqueDramaSlug(client, title, channelCode, excludeDramaId)` providing deterministic `<title>-<channel_code>` slugs with collision retry (`-2`, `-3`).
+     - Replaced legacy random 4-digit `slugifyTitle()` in `app/api/admin/dramas/route.ts` with `generateUniqueDramaSlug()`.
+  5. Published Slug Immutability (`app/api/admin/dramas/[id]/route.ts`):
+     - Verified current drama status when `slug` is submitted in update payload.
+     - Rejected slug modifications on published dramas with HTTP 400 `VALIDATION_ERROR` (`"Slug cannot be modified once a drama has been published."`).
+     - Handled database trigger exception mapping safely.
+  6. PostgREST Value Escaping & Joined Channel Mapping (`lib/services/content.service.ts`):
+     - Exported `escapePostgrestValue(value)` escaping double quotes, backslashes, and stripping newlines.
+     - Used `escapePostgrestValue` in `getRelatedTitlesFromDb()` for `genre` and `channel` before passing into `.or()` filter.
+     - In `mapTitleRowToTitle()`, mapped `episodes_available` to `episodesAvailable` and channel through `(row as any).channels?.name || row.channel_name`.
+     - Expanded `UpdateDramaPayload` and `CreateDramaPayload` types with `slug`, `banner`, `banner_url`, `episodesAvailable`, and `episodes_available`.
+  7. Admin UI Catalog & Edit Updates (`app/admin/titles/page.tsx`, `app/admin/titles/[id]/edit/page.tsx`):
+     - Displayed available vs total episodes (`{episodesAvailable} / {totalEpisodes}`) in catalog table and card views.
+     - Added available catalog episode count under the Total Episodes input on the drama edit page.
+     - Added a "Locked" badge next to the slug in Catalog Info for published dramas.
+  8. Automated Verification Test Suite (`__tests__/content/content-data-integrity.test.ts`):
+     - Authored 33 comprehensive tests across deterministic unique slug generation, numeric collision retry, published slug immutability, tag normalization with Title Case and acronym preservation, PostgREST filter value escaping, and database migration triggers.
+* **Key File Diffs**:
+  - Created:
+    - `supabase/content/supabase/migrations/20261006150000_content_data_integrity.sql`
+    - `__tests__/content/content-data-integrity.test.ts`
+  - Modified:
+    - `types/supabase-content.ts`
+    - `types/content.ts`
+    - `lib/slug.ts`
+    - `lib/validation/drama.ts`
+    - `app/api/admin/dramas/route.ts`
+    - `app/api/admin/dramas/[id]/route.ts`
+    - `lib/services/content.service.ts`
+    - `app/admin/titles/page.tsx`
+    - `app/admin/titles/[id]/edit/page.tsx`
+    - `__tests__/services/content.service.test.ts`
+    - `ROADMAP.md`
+    - `CHANGELOG-DEV.md`
+* **Regression Analysis & Cross-System Impact**:
+  - Test runner expanded from 371 tests (109 suites) to 404 tests (117 suites) with 100% pass rate.
+  - Zero type errors across all files (`npx tsc --noEmit`).
+  - Next.js production build cleanly compiled all 42 routes with zero errors.
+* **Verification**:
+  - `npm test`: 404 / 404 tests pass across 117 suites (0 failures).
+  - `npx tsc --noEmit`: 0 type errors.
+  - `npm run build`: cleanly compiles 42 routes with 0 errors.
+
+---
+
+## [2026-10-06] Task 12.7 Review & Deep Hardening: Content Data Integrity Rules
+* **Milestone**: Phase 12 — Task 12.7 Integrity Review & Edge Case Hardening
+* **Goal**: Conduct rigorous adversarial code audit of Task 12.7 implementation, fix edge cases, ensure full query FK join coverage, and harden validation/slug logic.
+* **Implementation Steps Taken**:
+  1. Resolved Missing FK Join Projections (`lib/services/content.service.ts`, `app/api/admin/dramas/route.ts`, `app/api/admin/dramas/[id]/route.ts`):
+     - Identified that although `mapTitleRowToTitle` inspected `(row as any).channels?.name`, database queries were only issuing `.select("*")`, which PostgREST executes without expanding foreign table relations.
+     - Updated all catalog reads (`searchPublishedTitles`, `getTitleBySlug`, `getTitlesBySlugs`, `getRelatedTitlesFromDb`, `getAdminDramas`, `GET /api/admin/dramas`, `GET /api/admin/dramas/[id]`, and route mutation returning selects) to project `*, channels(name, slug, code)`.
+     - Hardened `mapTitleRowToTitle` to handle both object and single-element array shapes for `channels`.
+  2. Guarded PostgREST Filter Value Escaping (`lib/services/content.service.ts`):
+     - Updated `escapePostgrestValue` to safely handle `null`, `undefined`, and non-string inputs returning empty string, preventing runtime `TypeError: Cannot read properties of undefined (reading 'replace')`.
+     - In `getRelatedTitlesFromDb`, dynamically assembled `.or()` filter clauses only for non-empty genre and channel parameters, avoiding invalid empty string matches.
+  3. Hardened Slug Candidate & Unique Generation (`lib/slug.ts`, `app/api/admin/dramas/route.ts`):
+     - Guarded `createDramaSlug` against empty or non-alphanumeric titles by defaulting empty base slugs to `"drama"` (preventing invalid leading hyphen slugs like `"-ds"`).
+     - Guarded `getChannelCode` against falsy or whitespace channel inputs by defaulting to `"ds"`.
+     - In `app/api/admin/dramas/route.ts`, updated `DEFAULT_CHANNEL_CODE` from legacy `"DSO"` to seed-standardized `"ds"`, and resolved code via `getChannelCode(requestedChannel)`.
+     - Enforced deterministic `<title>-<channel_code>` slug generation in `POST /api/admin/dramas`.
+     - In `generateUniqueDramaSlug`, added early abort when database query errors occur, eliminating 100 repeated failing requests on network or database faults.
+  4. Enhanced Taxonomy & Trope Casing (`lib/validation/drama.ts`):
+     - Enhanced `formatTagCase` to recognize Unicode smart/curly apostrophes (`’`, `\u2019`) preserving uppercase acronyms (e.g. `CEO’s`).
+     - Enhanced `formatTagCase` to parse forward-slash delimiters (`/`), properly formatting multi-acronym tropes (e.g. `FL/ML`, `HE/BE`, `BL/GL`).
+  5. Mapped Unique Constraint Violations in Admin Route (`app/api/admin/dramas/[id]/route.ts`):
+     - Added PostgreSQL error code `23505` (`titles_slug_key` duplicate key) mapping in `PATCH /api/admin/dramas/[id]`, returning HTTP 400 `VALIDATION_ERROR` with `{ field: "slug", message: "A drama with this slug already exists." }`.
+  6. Expanded Automated Test Suite (`__tests__/content/content-data-integrity.test.ts`):
+     - Added 7 new unit and integration tests covering empty title slug fallback, missing channel code fallback, DB error aborts in slug generation, smart quote tag casing, slash-separated acronym tropes, non-string postgrest escaping, array-shaped channel joins, and duplicate key constraint mapping.
+* **Verification Results**:
+  - `__tests__/content/content-data-integrity.test.ts`: 40 / 40 tests passing across 8 test suites.
+  - Full test runner `npm test`: 411 / 411 tests passing across 117 suites with 0 failures.
+  - `npx tsc --noEmit`: 0 type errors.
+  - Next.js production build (`npm run build`): cleanly compiled all 42 routes with 0 errors.
+
+

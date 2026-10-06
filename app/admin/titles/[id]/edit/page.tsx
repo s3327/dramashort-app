@@ -372,6 +372,11 @@ export default function AdminTitleEditPage({
                   disabled={isSubmitting}
                   className="w-full rounded-md border border-border bg-bg px-3.5 py-2.5 text-sm text-text focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-colors disabled:opacity-60"
                 />
+                {drama.episodesAvailable !== undefined && (
+                  <p className="text-xs text-text-muted mt-1">
+                    Available in catalog: {drama.episodesAvailable} / {form.totalEpisodes}
+                  </p>
+                )}
               </div>
             </div>
 
@@ -460,8 +465,24 @@ export default function AdminTitleEditPage({
               </div>
               <div className="flex items-center justify-between text-xs py-1 border-b border-border/50">
                 <span className="text-text-muted">Slug</span>
-                <span className="font-mono font-medium truncate max-w-[160px]" title={drama.slug}>
-                  {drama.slug}
+                <div className="flex items-center gap-1.5 max-w-[170px]">
+                  <span className="font-mono font-medium truncate" title={drama.slug}>
+                    {drama.slug}
+                  </span>
+                  {drama.status === "Published" && (
+                    <span
+                      className="px-1.5 py-0.5 rounded text-[10px] bg-surface-raised border border-border text-text-muted shrink-0"
+                      title="Published drama slugs are immutable"
+                    >
+                      Locked
+                    </span>
+                  )}
+                </div>
+              </div>
+              <div className="flex items-center justify-between text-xs py-1 border-b border-border/50">
+                <span className="text-text-muted">Episodes Available</span>
+                <span className="font-medium">
+                  {drama.episodesAvailable ?? 0} / {drama.totalEpisodes}
                 </span>
               </div>
               <div className="flex items-center justify-between text-xs py-1 border-b border-border/50">

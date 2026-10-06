@@ -491,7 +491,9 @@ function AdminTitlesContent() {
                       </Link>
                     </td>
                     <td className="px-3 py-3 text-text-muted">{t.year}</td>
-                    <td className="px-3 py-3 text-text-muted">{t.totalEpisodes}</td>
+                    <td className="px-3 py-3 text-text-muted">
+                      {t.episodesAvailable !== undefined ? `${t.episodesAvailable} / ${t.totalEpisodes}` : t.totalEpisodes}
+                    </td>
                     <td className="px-3 py-3 text-text-muted">{t.channel}</td>
                     <td className="px-3 py-3">
                       <span
@@ -552,7 +554,7 @@ function AdminTitlesContent() {
                     {t.title}
                   </Link>
                   <p className="mt-1 text-xs text-text-muted">
-                    {t.year} · {t.totalEpisodes} eps
+                    {t.year} · {t.episodesAvailable !== undefined ? `${t.episodesAvailable}/${t.totalEpisodes}` : t.totalEpisodes} eps
                   </p>
                   <span
                     className={`mt-2 inline-flex rounded-full border px-2 py-0.5 text-[10px] font-semibold ${STATUS_STYLES[t.status]}`}

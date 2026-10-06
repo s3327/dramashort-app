@@ -29,16 +29,25 @@ export type EpisodeRow = Database["public"]["Tables"]["episodes"]["Row"];
  * Maintains complete backwards compatibility with all existing components.
  */
 export function mapTitleRowToTitle(row: TitleRow): Title {
+  const joinedChannel = Array.isArray((row as any).channels)
+    ? (row as any).channels[0]
+    : (row as any).channels;
+  const channelName = joinedChannel?.name || row.channel_name;
+
   return {
     id: row.id,
     slug: row.slug,
     title: row.title,
     poster: row.poster_url,
     synopsis: row.synopsis,
-    channel: row.channel_name,
+    channel: channelName,
     genre: row.genre,
     tags: row.tags || [],
     totalEpisodes: row.total_episodes,
+    episodesAvailable:
+      row.episodes_available !== undefined && row.episodes_available !== null
+        ? Number(row.episodes_available)
+        : undefined,
     rating: row.rating ? Number(row.rating) : undefined,
     views: row.views_count ?? 0,
     createdAt: row.created_at || new Date().toISOString(),
@@ -119,7 +128,7 @@ export async function searchPublishedTitles(
   try {
     let query = contentClient
       .from("titles")
-      .select("*", { count: "exact" })
+      .select("*, channels(name, slug, code)", { count: "exact" })
       .eq("status", "Published");
 
     // Search query (matches title or synopsis)
@@ -407,7 +416,7 @@ export async function getTitleBySlug(slug: string): Promise<Title | null> {
     // 1. Try exact slug match
     let { data, error } = await contentClient
       .from("titles")
-      .select("*")
+      .select("*, channels(name, slug, code)")
       .eq("slug", slug)
       .maybeSingle();
 
@@ -415,7 +424,7 @@ export async function getTitleBySlug(slug: string): Promise<Title | null> {
     if (!data && !error) {
       const { data: prefixMatch } = await contentClient
         .from("titles")
-        .select("*")
+        .select("*, channels(name, slug, code)")
         .ilike("slug", `${slug}-%`)
         .limit(1)
         .maybeSingle();
@@ -439,7 +448,7 @@ export async function getTitlesBySlugs(slugs: string[]): Promise<Title[]> {
   try {
     const { data, error } = await contentClient
       .from("titles")
-      .select("*")
+      .select("*, channels(name, slug, code)")
       .in("slug", slugs);
 
     const foundMap = new Map<string, Title>();
@@ -601,30 +610,58 @@ export async function getHeroSlides(): Promise<HeroSlide[]> {
 }
 
 /**
+ * Escapes values used in PostgREST filter expressions (such as `.or()`),
+ * escaping backslashes and double quotes, and stripping newlines.
+ * Returns empty string for falsy/non-string values to prevent runtime errors.
+ */
+export function escapePostgrestValue(value?: string | null): string {
+  if (!value || typeof value !== "string") {
+    return "";
+  }
+  return value
+    .replace(/\r?\n|\r/g, " ")
+    .replace(/\\/g, "\\\\")
+    .replace(/"/g, '\\"');
+}
+
+/**
  * Deterministic related titles lookup from the database.
  */
 export async function getRelatedTitlesFromDb(
-  drama: { slug: string; genre: string; tags: string[]; channel: string },
+  drama: { slug: string; genre?: string; tags?: string[]; channel?: string },
   count = 8
 ): Promise<Title[]> {
   try {
-    // 1. Fetch titles with matching genre or channel
-    const { data, error } = await contentClient
-      .from("titles")
-      .select("*")
-      .eq("status", "Published")
-      .neq("slug", drama.slug)
-      .or(`genre.eq."${drama.genre}",channel_name.eq."${drama.channel}"`)
-      .limit(count);
+    const escapedGenre = escapePostgrestValue(drama.genre);
+    const escapedChannel = escapePostgrestValue(drama.channel);
 
-    if (!error && data && data.length > 0) {
-      return data.map(mapTitleRowToTitle);
+    const orFilters: string[] = [];
+    if (escapedGenre) {
+      orFilters.push(`genre.eq."${escapedGenre}"`);
+    }
+    if (escapedChannel) {
+      orFilters.push(`channel_name.eq."${escapedChannel}"`);
+    }
+
+    // 1. Fetch titles with matching genre or channel
+    if (orFilters.length > 0) {
+      const { data, error } = await contentClient
+        .from("titles")
+        .select("*, channels(name, slug, code)")
+        .eq("status", "Published")
+        .neq("slug", drama.slug)
+        .or(orFilters.join(","))
+        .limit(count);
+
+      if (!error && data && data.length > 0) {
+        return data.map(mapTitleRowToTitle);
+      }
     }
 
     // 2. Fallback to latest published titles if no genre/channel matches
     const { data: latest } = await contentClient
       .from("titles")
-      .select("*")
+      .select("*, channels(name, slug, code)")
       .eq("status", "Published")
       .neq("slug", drama.slug)
       .limit(count);
@@ -784,7 +821,7 @@ export async function getAdminDramas(
       const adminClient = getContentAdminClient();
       let query = adminClient
         .from("titles")
-        .select("*", { count: "exact" });
+        .select("*, channels(name, slug, code)", { count: "exact" });
 
       if (options?.q?.trim()) {
         query = query.ilike("title", `%${options.q.trim()}%`);
@@ -819,7 +856,7 @@ export async function getAdminDramas(
     } else {
       let query = contentClient
         .from("titles")
-        .select("*", { count: "exact" });
+        .select("*, channels(name, slug, code)", { count: "exact" });
 
       if (options?.q?.trim()) {
         query = query.ilike("title", `%${options.q.trim()}%`);
@@ -867,6 +904,7 @@ export async function getAdminDramas(
 
 export interface UpdateDramaPayload {
   title?: string;
+  slug?: string;
   synopsis?: string;
   genre?: string;
   tags?: string[] | string;
@@ -877,8 +915,12 @@ export interface UpdateDramaPayload {
   status?: TitleStatus;
   totalEpisodes?: number;
   total_episodes?: number;
+  episodesAvailable?: number;
+  episodes_available?: number;
   poster?: string;
   poster_url?: string;
+  banner?: string;
+  banner_url?: string;
 }
 
 /**
@@ -925,6 +967,7 @@ export const updateTitle = updateDrama;
 
 export interface CreateDramaPayload {
   title: string;
+  slug?: string;
   synopsis?: string;
   genre?: string;
   tags?: string[] | string;
@@ -932,8 +975,12 @@ export interface CreateDramaPayload {
   channel_name?: string;
   totalEpisodes?: number;
   total_episodes?: number;
+  episodesAvailable?: number;
+  episodes_available?: number;
   poster?: string;
   poster_url?: string;
+  banner?: string;
+  banner_url?: string;
   status?: TitleStatus;
 }
 

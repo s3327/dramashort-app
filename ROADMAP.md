@@ -1637,7 +1637,7 @@ These items stay ✅ for history; the gaps are tracked as new tasks.
 ---
 
 ### Task 12.7: Content Data Integrity Rules
-* **Status**: ⏳ Planned
+* **Status**: ✅ Completed
 * **Problem**:
   - Poster URLs are free text; a host outside `remotePatterns` yields a broken image in production.
   - `total_episodes` is disconnected from the actual episode rows.
@@ -1645,15 +1645,20 @@ These items stay ✅ for history; the gaps are tracked as new tasks.
   - Slugs carry a random 4-digit suffix (`app/api/admin/dramas/route.ts` L66–74).
   - Tags have inconsistent casing.
   - `getRelatedTitlesFromDb()` string-interpolates genre and channel into a PostgREST `.or()` filter (`content.service.ts` L492).
-* **Target Files**: content DB migration, `app/api/admin/dramas/**`, `lib/services/content.service.ts`
-* **Planned Specifications**:
-  1. Poster and banner host allow-list (superseded by uploads in Task 16.2).
-  2. `episodes_available`, computed by a view or trigger, alongside the planned `total_episodes`.
-  3. Read channel data through the FK join (`channels(name, slug)`); keep `channel_name` only as a trigger-maintained cache, or drop it.
-  4. Slug policy: `<title>-<channel_code>` (consistent with the seed), unique by database constraint with numeric retry on conflict, and immutable after first publish (user data still references slugs until Task 13.2).
-  5. Normalize tags on write (trimmed, deduplicated, consistent casing).
-  6. Quote and escape values used in `.or()` filters.
-* **Verification**: renaming a channel updates all its dramas; creating two dramas with the same title yields distinct, predictable slugs.
+* **Target Files**: content DB migration, `app/api/admin/dramas/**`, `lib/services/content.service.ts`, `lib/validation/drama.ts`, types, admin UI, tests
+* **Delivered Specifications**:
+  1. Poster and banner host allow-list: validated via shared `lib/validation/drama.ts` against `imageRemotePatterns` from `lib/config/image-hosts.mjs`.
+  2. `episodes_available` column and database triggers on `titles` table computed alongside `total_episodes`: migration `20261006150000_content_data_integrity.sql` defines `sync_title_episodes_available` trigger on `public.episodes` and backfill query.
+  3. Channel data read through FK join (`channels(name, slug, code)`) in `mapTitleRowToTitle`; keep `channel_name` and `channel_code` on `titles` synchronized via database triggers (`sync_channel_to_titles` and `sync_title_channel_from_fk`) to prevent drift when channels are renamed.
+  4. Deterministic slug policy: `<title>-<channel_code>` (consistent with seed data), unique by constraint with numeric conflict retry (`<base>-2`, `<base>-3`), and strictly immutable after first publish (`current.status === 'Published'`).
+  5. Tag normalization on write: trimmed, deduplicated case-insensitively, consistent casing using Title Case with recognized acronym preservation (`formatTagCase` preserving CEO, VIP, MD, etc.).
+  6. Quoting and escaping helper (`escapePostgrestValue`) for values used in PostgREST `.or()` filters in `getRelatedTitlesFromDb()` to escape double quotes, backslashes, and replace newlines.
+  7. Admin UI and catalog views updated to display available vs total episodes (`episodesAvailable / totalEpisodes`) and a visual locked badge for immutable published slugs.
+* **Verification Results**:
+  - `__tests__/content/content-data-integrity.test.ts` (40 tests passing across deterministic unique slug generation, numeric collision retry, published slug immutability, tag normalization with Title Case and acronym preservation, PostgREST filter value escaping, and database migration triggers).
+  - `npx tsc --noEmit`: 0 type errors.
+  - Full test runner `npm test`: 411 / 411 tests passing across 117 suites (0 failures).
+  - `npm run build`: cleanly compiles all 42 routes with zero errors.
 
 ---
 

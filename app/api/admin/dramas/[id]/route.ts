@@ -31,7 +31,7 @@ export async function GET(
     const adminClient = getContentAdminClient();
     const { data: row, error } = await adminClient
       .from("titles")
-      .select("*")
+      .select("*, channels(name, slug, code)")
       .eq("id", id)
       .maybeSingle();
 
@@ -90,8 +90,44 @@ export async function PATCH(
   if (input.tags !== undefined) updateData.tags = input.tags;
   if (input.posterUrl !== undefined) updateData.poster_url = input.posterUrl;
 
+  if (
+    input.channelName === undefined &&
+    input.slug === undefined &&
+    Object.keys(updateData).length === 0
+  ) {
+    return apiError("VALIDATION_ERROR", "No updatable fields provided.", 400);
+  }
+
   try {
     const adminClient = getContentAdminClient();
+
+    if (input.slug !== undefined) {
+      const { data: currentDrama, error: fetchError } = await adminClient
+        .from("titles")
+        .select("*")
+        .eq("id", id)
+        .maybeSingle();
+
+      if (fetchError) {
+        console.error("[PATCH /api/admin/dramas/:id] Supabase error:", fetchError);
+        return apiError("DATABASE_ERROR", "Failed to load drama.", 500);
+      }
+      if (!currentDrama) {
+        return apiError("NOT_FOUND", "Drama not found.", 404);
+      }
+
+      if (input.slug !== currentDrama.slug) {
+        if (currentDrama.status === "Published") {
+          return apiError(
+            "VALIDATION_ERROR",
+            "Slug cannot be modified once a drama has been published.",
+            400,
+            [{ field: "slug", message: "Slug is immutable once a drama has been published." }]
+          );
+        }
+        updateData.slug = input.slug;
+      }
+    }
 
     if (input.channelName !== undefined) {
       const channel = await resolveChannelByName(adminClient, input.channelName);
@@ -111,11 +147,34 @@ export async function PATCH(
       .from("titles")
       .update(updateData)
       .eq("id", id)
-      .select()
+      .select("*, channels(name, slug, code)")
       .maybeSingle();
 
     if (updateError) {
       console.error("[PATCH /api/admin/dramas/:id] Supabase update error:", updateError);
+      if (
+        updateError.message?.includes("Slug cannot be modified once a drama has been published") ||
+        (updateError as any).code === "P0001"
+      ) {
+        return apiError(
+          "VALIDATION_ERROR",
+          "Slug cannot be modified once a drama has been published.",
+          400,
+          [{ field: "slug", message: "Slug is immutable once a drama has been published." }]
+        );
+      }
+      if (
+        (updateError as any).code === "23505" ||
+        updateError.message?.includes("titles_slug_key") ||
+        updateError.message?.includes("duplicate key")
+      ) {
+        return apiError(
+          "VALIDATION_ERROR",
+          "A drama with this slug already exists.",
+          400,
+          [{ field: "slug", message: "Slug must be unique across all dramas." }]
+        );
+      }
       return apiError("DATABASE_ERROR", "Failed to save drama changes.", 500);
     }
     if (!updatedRow) {

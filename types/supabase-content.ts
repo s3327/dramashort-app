@@ -158,6 +158,7 @@ export type Database = {
           tags: string[] | null
           title: string
           total_episodes: number
+          episodes_available: number
           updated_at: string | null
           views_count: number | null
         }
@@ -177,6 +178,7 @@ export type Database = {
           tags?: string[] | null
           title: string
           total_episodes?: number
+          episodes_available?: number
           updated_at?: string | null
           views_count?: number | null
         }
@@ -196,6 +198,7 @@ export type Database = {
           tags?: string[] | null
           title?: string
           total_episodes?: number
+          episodes_available?: number
           updated_at?: string | null
           views_count?: number | null
         }
