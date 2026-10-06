@@ -5,17 +5,21 @@ import type { Database } from "@/types/supabase-user";
 
 import { isPlaceholderUrl, isPlaceholderKey } from "@/lib/config/env-validator.mjs";
 
-function getUserServerCredentials() {
-  const isProduction = process.env.NODE_ENV === "production";
-  const url = process.env.NEXT_PUBLIC_USER_SUPABASE_URL;
-  const anonKey = process.env.NEXT_PUBLIC_USER_SUPABASE_ANON_KEY;
+export function getUserServerCredentials(customEnv?: Record<string, string | undefined>) {
+  const env = customEnv || process.env;
+  const isProduction = env.NODE_ENV === "production";
+  const url = env.NEXT_PUBLIC_USER_SUPABASE_URL || env.NEXT_PUBLIC_SUPABASE_URL;
+  const anonKey = env.NEXT_PUBLIC_USER_SUPABASE_ANON_KEY || env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
   if (isProduction) {
+    const urlVar = env.NEXT_PUBLIC_USER_SUPABASE_URL ? "NEXT_PUBLIC_USER_SUPABASE_URL" : "NEXT_PUBLIC_SUPABASE_URL";
+    const keyVar = env.NEXT_PUBLIC_USER_SUPABASE_ANON_KEY ? "NEXT_PUBLIC_USER_SUPABASE_ANON_KEY" : "NEXT_PUBLIC_SUPABASE_ANON_KEY";
+
     if (!url || isPlaceholderUrl(url)) {
-      throw new Error(`Invalid or missing NEXT_PUBLIC_USER_SUPABASE_URL in production: "${url}"`);
+      throw new Error(`Invalid or missing ${urlVar} in production: "${url}"`);
     }
     if (!anonKey || isPlaceholderKey(anonKey)) {
-      throw new Error("Invalid or placeholder NEXT_PUBLIC_USER_SUPABASE_ANON_KEY in production.");
+      throw new Error(`Invalid or placeholder ${keyVar} in production.`);
     }
   }
 
@@ -24,8 +28,6 @@ function getUserServerCredentials() {
     anonKey: anonKey || "dev-anon-key",
   };
 }
-
-const { url: userUrl, anonKey: userAnonKey } = getUserServerCredentials();
 
 type UserServerClientFactory = () => Promise<any> | any;
 let testClientFactory: UserServerClientFactory | null = null;
@@ -46,16 +48,17 @@ export function setTestUserServiceRoleClientFactory(factory: UserServerClientFac
 }
 
 /**
- * Server-side Supabase client for the User Database (Project 2).
+ * Server-side Supabase client for User Data & Auth.
  * Reads and sets cookies for session management in Server Components and Route Handlers.
  */
-export async function createUserServerClient() {
+export async function createUserServerClient(customEnv?: Record<string, string | undefined>) {
   if (testClientFactory) {
     return testClientFactory();
   }
+  const { url, anonKey } = getUserServerCredentials(customEnv);
   const cookieStore = await cookies();
 
-  return createServerClient<Database>(userUrl, userAnonKey, {
+  return createServerClient<Database>(url, anonKey, {
     cookies: {
       getAll() {
         return cookieStore.getAll();
@@ -75,21 +78,24 @@ export async function createUserServerClient() {
 }
 
 /**
- * Privileged service-role client for the User Database (Project 2).
+ * Privileged service-role client for User Database operations.
  * Strictly used for server-side administrative actions like auth.admin.deleteUser.
  */
-export function createUserServiceRoleClient() {
+export function createUserServiceRoleClient(customEnv?: Record<string, string | undefined>) {
   if (testServiceRoleClientFactory) {
     return testServiceRoleClientFactory();
   }
-  const serviceRoleKey = process.env.USER_SUPABASE_SERVICE_ROLE_KEY;
+  const env = customEnv || process.env;
+  const { url } = getUserServerCredentials(env);
+  const serviceRoleKey = env.USER_SUPABASE_SERVICE_ROLE_KEY || env.SUPABASE_SERVICE_ROLE_KEY;
+
   if (!serviceRoleKey) {
-    throw new Error("Missing USER_SUPABASE_SERVICE_ROLE_KEY environment variable");
+    throw new Error("Missing USER_SUPABASE_SERVICE_ROLE_KEY (or SUPABASE_SERVICE_ROLE_KEY) environment variable");
   }
-  if (process.env.NODE_ENV === "production" && isPlaceholderKey(serviceRoleKey)) {
+  if (env.NODE_ENV === "production" && isPlaceholderKey(serviceRoleKey)) {
     throw new Error("Placeholder USER_SUPABASE_SERVICE_ROLE_KEY detected in production.");
   }
-  return createClient<Database>(userUrl, serviceRoleKey, {
+  return createClient<Database>(url, serviceRoleKey, {
     auth: {
       autoRefreshToken: false,
       persistSession: false,

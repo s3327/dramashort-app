@@ -1,3 +1,5 @@
+import type { Database as ContentDatabase } from "./supabase-content";
+
 export type Json =
   | string
   | number
@@ -19,18 +21,21 @@ export type Database = {
           added_at: string | null
           id: string
           list_id: string
+          title_id?: string | null
           title_slug: string
         }
         Insert: {
           added_at?: string | null
           id?: string
           list_id: string
+          title_id?: string | null
           title_slug: string
         }
         Update: {
           added_at?: string | null
           id?: string
           list_id?: string
+          title_id?: string | null
           title_slug?: string
         }
         Relationships: [
@@ -39,6 +44,13 @@ export type Database = {
             columns: ["list_id"]
             isOneToOne: false
             referencedRelation: "custom_lists"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fk_custom_list_items_title_id"
+            columns: ["title_id"]
+            isOneToOne: false
+            referencedRelation: "titles"
             referencedColumns: ["id"]
           },
         ]
@@ -71,22 +83,33 @@ export type Database = {
         Row: {
           created_at: string | null
           id: string
+          title_id?: string | null
           title_slug: string
           user_id: string
         }
         Insert: {
           created_at?: string | null
           id?: string
+          title_id?: string | null
           title_slug: string
           user_id: string
         }
         Update: {
           created_at?: string | null
           id?: string
+          title_id?: string | null
           title_slug?: string
           user_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "fk_favorites_title_id"
+            columns: ["title_id"]
+            isOneToOne: false
+            referencedRelation: "titles"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       profiles: {
         Row: {
@@ -122,6 +145,7 @@ export type Database = {
           id: string
           position_seconds: number
           progress: number
+          title_id?: string | null
           title_slug: string
           updated_at: string | null
           user_id: string
@@ -132,6 +156,7 @@ export type Database = {
           id?: string
           position_seconds?: number
           progress?: number
+          title_id?: string | null
           title_slug: string
           updated_at?: string | null
           user_id: string
@@ -142,11 +167,20 @@ export type Database = {
           id?: string
           position_seconds?: number
           progress?: number
+          title_id?: string | null
           title_slug?: string
           updated_at?: string | null
           user_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "fk_watch_history_title_id"
+            columns: ["title_id"]
+            isOneToOne: false
+            referencedRelation: "titles"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       support_tickets: {
         Row: {
@@ -206,6 +240,7 @@ export type Database = {
       [_ in never]: never
     }
   }
+  content: ContentDatabase["public"]
 }
 
 type DatabaseWithoutInternals = Omit<Database, "__InternalSupabase">

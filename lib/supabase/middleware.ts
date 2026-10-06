@@ -7,15 +7,17 @@ import { isPlaceholderUrl, isPlaceholderKey } from "@/lib/config/env-validator.m
 
 function getMiddlewareCredentials() {
   const isProduction = process.env.NODE_ENV === "production";
-  const url = process.env.NEXT_PUBLIC_USER_SUPABASE_URL;
-  const anonKey = process.env.NEXT_PUBLIC_USER_SUPABASE_ANON_KEY;
+  const url = process.env.NEXT_PUBLIC_USER_SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const anonKey = process.env.NEXT_PUBLIC_USER_SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
   if (isProduction) {
+    const urlVar = process.env.NEXT_PUBLIC_USER_SUPABASE_URL ? "NEXT_PUBLIC_USER_SUPABASE_URL" : "NEXT_PUBLIC_SUPABASE_URL";
+    const keyVar = process.env.NEXT_PUBLIC_USER_SUPABASE_ANON_KEY ? "NEXT_PUBLIC_USER_SUPABASE_ANON_KEY" : "NEXT_PUBLIC_SUPABASE_ANON_KEY";
     if (!url || isPlaceholderUrl(url)) {
-      throw new Error(`Invalid or missing NEXT_PUBLIC_USER_SUPABASE_URL in production: "${url}"`);
+      throw new Error(`Invalid or missing ${urlVar} in production: "${url}"`);
     }
     if (!anonKey || isPlaceholderKey(anonKey)) {
-      throw new Error("Invalid or placeholder NEXT_PUBLIC_USER_SUPABASE_ANON_KEY in production.");
+      throw new Error(`Invalid or placeholder ${keyVar} in production.`);
     }
   }
 

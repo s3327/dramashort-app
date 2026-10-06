@@ -46,7 +46,7 @@
 | **Phase 10** | 🔴 Critical | Security Hardening & Access Control (admin role escalation, RLS & grants, admin API auth, subdomain guard, open redirect, episode media lockdown, CI gate) | ✅ Completed (10.1–10.9 ✅) | Closes privilege escalation and data exposure; gate for all further work |
 | **Phase 11** | 🔴 Critical | Complete Stubbed User Flows (email verification, password recovery, account deletion, support pipeline, real 404s) | 🚧 In progress (11.1 ✅) | Every visible action performs a real operation |
 | **Phase 12** | 🟠 High | Functional Bug Fixes & Data Integrity (12.1–12.8 ✅) | ✅ Completed | Full catalog visible, admin drafts, progress semantics, zero mocks, session, lists, integrity, player robustness |
-| **Phase 13** | 🟠 High | Backend Architecture Consolidation (database topology ADR-0003, server-rendered catalog, service split, observability) | 🚧 In progress (13.1 ✅) | Decision gate for Phase 8; faster pages; operability |
+| **Phase 13** | 🟠 High | Backend Architecture Consolidation (database topology ADR-0003, server-rendered catalog, service split, observability) | 🚧 In progress (13.1–13.2 ✅) | Decision gate for Phase 8; faster pages; operability |
 | **Phase 14** | 🟠 High | Mobile-First Vertical Watch Experience & UI Polish | ⏳ Planned | Core 9:16 viewing experience on phones |
 | **Phase 15** | 🟠 High | Product Analytics, Engagement Tracking & Real Trending | ⏳ Planned | Real views, trending and dashboard; data to tune the paywall |
 | **Phase 16** | 🟠 High | Admin Content Operations Console (episodes, uploads, scheduling, taxonomy, users, audit log) | ⏳ Planned | Catalog operable end-to-end without SQL |
@@ -1715,19 +1715,23 @@ These items stay ✅ for history; the gaps are tracked as new tasks.
 ---
 
 ### Task 13.2: Execute the Topology Decision
-* **Status**: ⏳ Planned (Targeting Option A Merge per ADR-0003)
+* **Status**: ✅ Completed (Option A Consolidated)
 * **Depends on**: 13.1 (ADR-0003 Accepted)
-* **Planned Specifications**:
+* **Delivered Specifications**:
   1. **Option A Execution Path (Accepted per ADR-0003)**:
-     - Create the `content` schema in the User project (`supabase/user/supabase/migrations/`) and migrate catalog data (`pg_dump --data-only`, then import).
-     - Expose the `content` schema in PostgREST API settings (`db-schemas = "public, content"`) and regenerate types into a single `types/supabase.ts`.
-     - Collapse the clients in `lib/supabase/*` to one URL and key.
-     - Move user-data references (`favorites`, `watch_history`, `custom_list_items`) to `title_id UUID REFERENCES content.titles(id) ON DELETE CASCADE`; slugs remain for URLs only.
-     - Configure video delivery signed tokens (Bunny Stream / Cloudflare Stream HMAC tokens) via `/api/playback/[episodeId]`.
-     - Update `FUTURE_PLAN.md` §5.2 to reflect single consolidated database topology.
-     - Read-only cutover window (~10 mins); decommission legacy Content DB project after 30-day grace period.
+     - Authored unified migration `supabase/user/supabase/migrations/20261007120000_consolidate_content_schema.sql` creating the `content` schema in the primary project with `channels`, `titles`, `episodes`, and `episode_media`.
+     - Preserved all indexes, foreign keys, and integrity triggers (`episodes_available`, channel name synchronization, and published slug immutability).
+     - Configured Row Level Security (RLS) on all `content` tables ensuring public read of published titles/episodes while locking down `episode_media` strictly to `service_role`.
+     - Added native foreign key constraints `title_id UUID REFERENCES content.titles(id) ON DELETE CASCADE` to user engagement tables (`public.favorites`, `public.watch_history`, `public.custom_list_items`) with automatic backfill from `title_slug`, orphan pruning, unique constraints, and B-tree indexes.
+     - Authored comprehensive Headless Reusability Architecture Plan in `docs/architecture/reusable-content-api.md` enabling external sites, mobile apps, and mini-programs to securely query the `content` schema without accessing user records.
+     - Updated `lib/supabase/*` (`content.ts`, `user-client.ts`, `user-server.ts`, `middleware.ts`) to seamlessly support unified single-project operation while maintaining backward-compatible dual-project fallback.
+     - Created automated cutover and data transfer script `scripts/migrate-content-to-unified.ts` supporting dry-runs, batching, and conflict handling.
   2. **Alternative B (Rejected)**: Preserved in ADR-0003 for historical trade-off context.
-* **Verification**: deleting a drama leaves no orphaned favorites or history rows; renaming a slug keeps every user's favorites intact; unified types compile cleanly.
+* **Verification**:
+  - `__tests__/database/topology-consolidation.test.ts` passes 32 automated contract and unit tests.
+  - `npx tsc --noEmit` passed with 0 errors.
+  - `npm test` passed with 0 failures across all 505 tests.
+  - `npm run build` compiled all routes cleanly.
 
 ---
 

@@ -171,7 +171,7 @@ To determine the optimal architecture, the engineering team evaluated the decisi
 1. **Current and Projected Business Reality (Headless Reusability)**:
    - *Question*: Is DramaShort's Content DB currently consumed by, or contracted to be shared with, any external third-party consumer or separate platform?
    - *Finding*: No. DramaShort is an integrated vertical short drama application. There are zero external consumer applications, syndication partners, or microservices consuming the Content DB today or planned within the next 12 months. Designing for physical database separation optimizes for an imaginary requirement while imposing daily engineering tax.
-   - *Mitigation in Option A*: If third-party API access is needed in the future, Supabase allows role-based API keys restricted strictly to the `content` schema, or Supabase Edge Functions / Next.js API routes can act as a headless gateway.
+   - *Mitigation in Option A*: If third-party API access is needed in the future, Supabase allows role-based API keys restricted strictly to the `content` schema, or Supabase Edge Functions / Next.js API routes can act as a headless gateway (see detailed architecture in [Headless Reusability Architecture Guide](../architecture/reusable-content-api.md)).
 
 2. **Phase 8 Monetization Architecture & Time-to-Market**:
    - Phase 8 introduces the core business model of the company (coin economy, VIP tiers, locked episodes).
