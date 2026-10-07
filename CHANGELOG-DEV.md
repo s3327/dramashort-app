@@ -1884,3 +1884,67 @@
 
 
 
+
+---
+
+## [2026-10-07] Phase 13: Service Layer Split & Drama Domain Unification (Task 13.4)
+* **Milestone**: Phase 13 (Architectural Refinements) — Task 13.4
+* **Goal**: Separate monolithic service layer into server-only data access (`lib/server/`) and client-only browser modules (`lib/client/`), enforce zero server leakage with `import "server-only"`, unify `Title` domain nomenclature to canonical `Drama` with backward-compatible aliases, implement standard discriminated union `Result<T, E>` pattern (`lib/common/result.ts`), and maintain backward-compatible facades in `lib/services/`.
+* **Implementation Steps Taken**:
+  1. **Standardized Discriminated Union Result<T, E> Pattern (`lib/common/result.ts`)**:
+     - Created type definition `Result<T, E> = { ok: true; value: T } | { ok: false; error: E }` in `lib/common/result.ts`.
+     - Built utility factories: `ok(value)`, `err(error)`, `isOk(result)`, `isErr(result)`.
+     - Built functional combinators: `unwrap(result)`, `unwrapOr(result, fallback)`, `map(result, fn)`, `mapErr(result, fn)`, `fromPromise(promise, errorMapper)`.
+     - Built bidirectional legacy adapters: `toLegacyResult(result)` (converting to `{ success, data, error }`) and `fromLegacyResult(legacy)` ensuring compatibility with existing code and Task 12.4 test suites.
+     - Augmented `types/result.ts` with re-exports and adapter hooks for full backward compatibility.
+  2. **Domain Nomenclature Unification (`Drama` Canonical)**:
+     - Promoted `Drama` to the canonical domain entity across `types/content.ts`, with `DramaStatus`, `TrendingDrama`, and `NewReleaseDrama`.
+     - Provided backward-compatible type aliases `type Title = Drama` and `type TitleStatus = DramaStatus` with `@deprecated` docstrings.
+     - Updated `data/titles.mock.ts` to make `getDramaBySlugOrFallback` canonical, retaining `getTitleBySlugOrFallback` as a backward-compatible alias.
+  3. **Server-Only Data Access Layer (`lib/server/`)**:
+     - Configured `node_modules/server-only` to strictly enforce browser/client component boundary while permitting Node.js test runner execution.
+     - Built `lib/server/catalog.ts` protected by `import "server-only";` wrapping catalog queries (`getDramaBySlug`, `getChannelBySlug`, `searchDramas`, `getTrendingDramas`, `getHeroSlides`, `getDistinctGenres`) with `React.cache()` deduplication.
+     - Built `lib/server/admin.ts` protected by `import "server-only";` executing direct Supabase mutations with `getContentAdminClient()` (`createDrama`, `updateDrama`, `deleteDrama`, `getAdminDramaById`, `getAdminDramas`) without internal HTTP round-trips.
+     - Protected `lib/server/playback.ts` with `import "server-only";` and implemented Result-wrapped `getEpisodePlaybackResult()`.
+     - Built `lib/server/user.ts` protected by `import "server-only";` using `createUserServerClient()` for server-side user profile, favorites, custom lists, and watch history lookups.
+     - Created barrel export `lib/server/index.ts`.
+  4. **Client-Only Service Layer (`lib/client/`)**:
+     - Built `lib/client/user.ts` providing browser-safe operations using `createUserClient()` (`getUserProfile`, `updateUserProfile`, `getFavorites`, `addFavorite`, `removeFavorite`, `getUserWatchHistory`, `upsertWatchProgress`, `reportWatchProgressBeacon`, `getGuestWatchHistory`, `saveGuestWatchProgress`, `mergeGuestWatchHistoryOnLogin`).
+     - Built `lib/client/catalog.ts` providing typed client-side fetchers (`fetchPublishedDramas`, `fetchEpisodePlayback`, `fetchAdminDramas`, `fetchDramaById`, `fetchCreateDrama`, `fetchUpdateDrama`) with zero imports from `lib/server/*`.
+     - Created barrel export `lib/client/index.ts`.
+  5. **Backward-Compatible Service Facades (`lib/services/`)**:
+     - Updated `lib/services/user.service.ts` to re-export browser functions from `lib/client/user.ts`.
+     - Preserved `lib/services/content.service.ts` facade with legacy function signatures (`getTitleBySlug`, `getChannelBySlug`, `searchPublishedTitles`, `createDrama`, `updateDrama`, `deleteDrama`, etc.), `React.cache()` wrapping, and admin fetch helpers satisfying existing AST/string test assertions while exposing canonical `Drama` aliases.
+  6. **Comprehensive Architectural Verification Suite**:
+     - Authored `__tests__/architecture/service-layer-split.test.ts` with 21 exhaustive tests covering:
+       - Result pattern ok/err/unwrap/fromPromise/map/mapErr combinators and bidirectional legacy conversion (including null/false payload preservation).
+       - Server-only boundary assertions and `server-only` import guards.
+       - Direct database admin mutations in `lib/server/admin.ts` without internal HTTP round-trips.
+       - Client-only isolation in `lib/client/` without server imports or leakage.
+       - Canonical `Drama` domain unification and backward compatibility with `Title`.
+       - Facade re-exports and API backwards compatibility.
+       - Client optimistic favorites toggling and Result pattern adoption.
+* **Key File Diffs**:
+  - `lib/common/result.ts`: Standardized discriminated union Result pattern & combinators (with fixed `fromLegacyResult` for null/false payloads).
+  - `lib/types/result.ts`: Import alias forwarding to `lib/common/result.ts`.
+  - `types/result.ts`: Result re-exports and legacy compatibility adapters.
+  - `types/content.ts`: Unified canonical Drama domain model and backward-compatible Title aliases.
+  - `lib/server/catalog.ts`: Server-only catalog access with React.cache deduplication on all query functions (including searchDramas).
+  - `lib/server/admin.ts`: Server-only admin mutations via Content DB admin client.
+  - `lib/server/playback.ts`: Server-only playback service with Result wrapper.
+  - `lib/server/user.ts`: Server-only user service via User DB server client.
+  - `lib/server/index.ts`: Barrel export for server services.
+  - `lib/client/catalog.ts`: Client-only catalog fetchers (including `fetchDeleteDrama`).
+  - `lib/client/user.ts`: Client-only user and progress tracking services with optimistic toggle helper.
+  - `lib/client/index.ts`: Barrel export for client services.
+  - `lib/services/content.service.ts`: Backward-compatible content facade with Drama aliases and `deleteDrama`.
+  - `lib/services/user.service.ts`: Backward-compatible user facade.
+  - `app/api/admin/dramas/[id]/route.ts`: Wired DELETE handler using `lib/server/admin.ts` direct mutation.
+  - `data/titles.mock.ts`: Updated canonical mock functions with Drama domain.
+  - `__tests__/architecture/service-layer-split.test.ts`: Added 21 automated tests.
+  - `ROADMAP.md`: Updated Section 1 progress matrix and marked Task 13.4 completed.
+* **Regression Analysis & Verification Record**:
+  - `__tests__/architecture/service-layer-split.test.ts`: 25 / 25 tests pass (100%).
+  - `npm test`: 560 / 560 tests pass across 151 suites with 0 failures (100% pass rate).
+  - `npx tsc --noEmit`: compiles cleanly with 0 type errors.
+  - `npm run build`: cleanly compiled all routes with 63 static/SSG/dynamic pages generated.

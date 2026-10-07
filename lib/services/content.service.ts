@@ -5,6 +5,7 @@ import type {
   Title,
   TitleStatus,
   Drama,
+  DramaStatus,
   Channel,
   Episode,
   HeroSlide,
@@ -15,7 +16,7 @@ import { type Result, ok, err } from "@/types/result";
 import { getApiErrorMessage, readJsonSafely } from "@/lib/api/error-message";
 import { adminFetch } from "@/lib/api/admin-fetch";
 
-export type { Title, TitleStatus, Drama, Channel, Episode, HeroSlide, PlaybackSource };
+export type { Title, TitleStatus, Drama, DramaStatus, Channel, Episode, HeroSlide, PlaybackSource };
 export type { Result };
 
 export type TitleRow = Database["public"]["Tables"]["titles"]["Row"];
@@ -56,6 +57,9 @@ export function mapTitleRowToTitle(row: TitleRow): Title {
     year: row.release_year ?? 2026,
   };
 }
+
+/** Domain entity alias for mapTitleRowToTitle */
+export const mapDramaRowToDrama = mapTitleRowToTitle;
 
 export function mapChannelRowToChannel(row: ChannelRow): Channel {
   return {
@@ -443,6 +447,9 @@ export const getTitleBySlug = cache(async function getTitleBySlug(slug: string):
   }
 });
 
+/** Domain alias for getTitleBySlug */
+export const getDramaBySlug = getTitleBySlug;
+
 /**
  * Fetches multiple titles matching a list of slugs from Supabase.
  */
@@ -484,6 +491,9 @@ export async function getTitlesBySlugs(slugs: string[]): Promise<Title[]> {
   }
 }
 
+/** Domain alias for getTitlesBySlugs */
+export const getDramasBySlugs = getTitlesBySlugs;
+
 /**
  * Fetches episodes for a specific title ID ordered by episode_number ascending.
  * Uses explicit non-sensitive public columns (excluding raw video_url).
@@ -503,6 +513,9 @@ export async function getEpisodesByTitleId(titleId: string): Promise<Episode[]> 
     return [];
   }
 }
+
+/** Domain alias for getEpisodesByTitleId */
+export const getEpisodesByDramaId = getEpisodesByTitleId;
 
 
 
@@ -549,12 +562,18 @@ export const getTopTrendingTitles = cache(async function getTopTrendingTitles(li
   return getPublishedTitles({ sort: "trending", limit });
 });
 
+/** Domain alias for getTopTrendingTitles */
+export const getTopTrendingDramas = getTopTrendingTitles;
+
 /**
  * New Releases for Home & New Release page.
  */
 export async function getNewReleaseTitles(limit = 12): Promise<Title[]> {
   return getPublishedTitles({ sort: "newest", limit });
 }
+
+/** Domain alias for getNewReleaseTitles */
+export const getNewReleaseDramas = getNewReleaseTitles;
 
 /**
  * Fetches all available channels.
@@ -687,6 +706,9 @@ export async function getRelatedTitlesFromDb(
     return [];
   }
 }
+
+/** Domain alias for getRelatedTitlesFromDb */
+export const getRelatedDramasFromDb = getRelatedTitlesFromDb;
 
 /**
  * Fetches a single drama by ID for administrative editing.
@@ -1037,6 +1059,43 @@ export async function createDrama(
   }
 }
 
-/** Domain entity alias for createDrama */
+/**
+ * @deprecated Use createDrama instead. Forwarded for 100% backward compatibility.
+ */
 export const createTitle = createDrama;
+
+/**
+ * Deletes a Drama in the catalog via the administrative API.
+ */
+export async function deleteDrama(
+  id: string
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const res = await adminFetch(`/api/admin/dramas/${encodeURIComponent(id)}`, {
+      method: "DELETE",
+    });
+
+    if (!res.ok) {
+      return {
+        success: false,
+        error: `Delete failed with HTTP ${res.status}`,
+      };
+    }
+
+    return { success: true };
+  } catch (err: unknown) {
+    const msg =
+      err instanceof Error ? err.message : "Network error while deleting drama";
+    return {
+      success: false,
+      error: msg,
+    };
+  }
+}
+
+/**
+ * @deprecated Use deleteDrama instead. Forwarded for 100% backward compatibility.
+ */
+export const deleteTitle = deleteDrama;
+
 

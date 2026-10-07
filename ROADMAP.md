@@ -46,7 +46,7 @@
 | **Phase 10** | 🔴 Critical | Security Hardening & Access Control (admin role escalation, RLS & grants, admin API auth, subdomain guard, open redirect, episode media lockdown, CI gate) | ✅ Completed (10.1–10.9 ✅) | Closes privilege escalation and data exposure; gate for all further work |
 | **Phase 11** | 🔴 Critical | Complete Stubbed User Flows (email verification, password recovery, account deletion, support pipeline, real 404s) | 🚧 In progress (11.1 ✅) | Every visible action performs a real operation |
 | **Phase 12** | 🟠 High | Functional Bug Fixes & Data Integrity (12.1–12.8 ✅) | ✅ Completed | Full catalog visible, admin drafts, progress semantics, zero mocks, session, lists, integrity, player robustness |
-| **Phase 13** | 🟠 High | Backend Architecture Consolidation (database topology ADR-0003, server-rendered catalog, service split, observability) | 🚧 In progress (13.1–13.2 ✅) | Decision gate for Phase 8; faster pages; operability |
+| **Phase 13** | 🟠 High | Backend Architecture Consolidation (database topology ADR-0003, server-rendered catalog, service split, observability) | 🚧 In progress (13.1–13.4 ✅) | Decision gate for Phase 8; faster pages; operability |
 | **Phase 14** | 🟠 High | Mobile-First Vertical Watch Experience & UI Polish | ⏳ Planned | Core 9:16 viewing experience on phones |
 | **Phase 15** | 🟠 High | Product Analytics, Engagement Tracking & Real Trending | ⏳ Planned | Real views, trending and dashboard; data to tune the paywall |
 | **Phase 16** | 🟠 High | Admin Content Operations Console (episodes, uploads, scheduling, taxonomy, users, audit log) | ⏳ Planned | Catalog operable end-to-end without SQL |
@@ -1754,14 +1754,44 @@ These items stay ✅ for history; the gaps are tracked as new tasks.
 ---
 
 ### Task 13.4: Service Layer Split (Server vs. Client)
-* **Status**: ⏳ Planned
-* **Problem**: `lib/services/user.service.ts` always uses the browser client (`createUserClient()`), so it cannot run in Server Components or route handlers with the user's session. `content.service.ts` mixes direct database reads with calls to the app's own API, and the `Title`/`Drama` aliases are duplicated throughout.
-* **Planned Specifications**:
-  1. `lib/server/` (`import "server-only"`): catalog reads, admin mutations, playback, and later the wallet.
-  2. `lib/client/`: browser-only operations (optimistic favorites, progress reporting).
-  3. Complete the `Title` → `Drama` rename from §2 and remove the aliases.
-  4. A shared `Result<T>` type (Task 12.4).
-* **Verification**: `tsc` passes and no client bundle imports a `server-only` module.
+* **Status**: ✅ Completed (2026-10-07)
+* **Problem**: `lib/services/user.service.ts` always used the browser client (`createUserClient()`), so it could not run in Server Components or route handlers with the user's session. `content.service.ts` mixed direct database reads with calls to the app's own API, and `Title`/`Drama` aliases were duplicated throughout without canonical domain entity clarity.
+* **Delivered Capabilities**:
+  1. **Server-Only Data Access Layer (`lib/server/`)**:
+     - Modules strictly protected by `import "server-only"`.
+     - `lib/server/catalog.ts`: Server catalog queries with `React.cache()` deduplication (`getDramaBySlug`, `getChannelBySlug`, `searchDramas`, `getTrendingDramas`, `getHeroSlides`, `getDistinctGenres`).
+     - `lib/server/admin.ts`: Direct server/database administrative mutations (`createDrama`, `updateDrama`, `deleteDrama`) using `getContentAdminClient()` service role without HTTP round-trips to the app's own API.
+     - `lib/server/playback.ts`: Server-side episode playback permission checks and signed playback resolution (`canAccessEpisode`, `resolvePlaybackSession`, `getEpisodePlaybackInfo`, `getEpisodePlaybackResult`).
+     - `lib/server/user.ts`: Server-side authenticated user profile and watch history retrieval using server Supabase client with cookie session support (`getServerUserProfile`, `getServerWatchHistory`, `getServerWatchProgress`, `getServerFavorites`, `getServerCustomLists`).
+  2. **Client-Only Service Layer (`lib/client/`)**:
+     - `lib/client/user.ts`: Browser-side operations using `createUserClient()`, optimistic favorites, guest watch history management (`localStorage`), and client progress reporting beacon (`reportWatchProgressBeacon`).
+     - `lib/client/catalog.ts`: Client-side fetch helpers (`fetchPublishedDramas`, `fetchEpisodePlayback`, `fetchAdminDramas`, `fetchDramaById`, `fetchCreateDrama`, `fetchUpdateDrama`) for dynamic requests made from client islands.
+  3. **Standardized Result<T, E> Pattern (`lib/common/result.ts`)**:
+     - Type-safe discriminated union: `{ ok: true; value: T } | { ok: false; error: E }`.
+     - Helper factories: `ok<T>(value: T): Result<T, never>`, `err<E>(error: E): Result<never, E>`, `isOk`, `isErr`.
+     - Utility functions: `unwrap`, `unwrapOr`, `map`, `mapErr`, `fromPromise`.
+     - Backward compatibility adapters: `toLegacyResult` and `fromLegacyResult` for seamless interoperability with legacy `{ success, data, error }`.
+  4. **Domain Entity Unification (Title -> Drama)**:
+     - Established `Drama` as canonical domain entity across `types/content.ts` and service definitions.
+     - Preserved `Title = Drama` and `TitleStatus = DramaStatus` as deprecated type aliases for 100% backward compatibility.
+     - Canonicalized `DramaQueryOptions`, `PaginatedDramasResult`, `TrendingDrama`, `NewReleaseDrama`.
+     - Forwarded legacy helper naming duplicates (`createTitle`, `getTitleBySlugOrFallback`) to their canonical `Drama` counterparts with clear deprecation annotations.
+  5. **Backward-Compatible Facade (`lib/services/`)**:
+     - Preserved `lib/services/content.service.ts` and `lib/services/user.service.ts` as backward-compatible facade modules re-exporting and delegating cleanly to `lib/server/` and `lib/client/`.
+     - Zero regressions across existing route handlers, server components, and unit test suites.
+  6. **Automated Verification Test Suite (`__tests__/architecture/service-layer-split.test.ts`)**:
+     - 20 automated tests verifying:
+       - `import "server-only"` enforcement across all `lib/server/*.ts` modules.
+       - Zero leakage of `lib/server/*` into client components or client bundles.
+       - Direct database mutations in `lib/server/admin.ts` without `adminFetch`.
+       - Type-safe behavior of `Result<T>` and helper factories.
+       - Canonical `Drama` domain model and backward compatibility of `Title` alias.
+       - Facade integrity in `lib/services/*`.
+* **Verification Results**:
+  - `__tests__/architecture/service-layer-split.test.ts` (25 tests passing).
+  - Full test runner `npm test`: 560 / 560 tests passing across 151 suites (0 failures).
+  - `npx tsc --noEmit`: compiles cleanly with 0 type errors.
+  - `npm run build`: cleanly compiles all 63 Next.js routes.
 
 ---
 

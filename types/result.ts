@@ -34,3 +34,14 @@ export function isOk<T, E>(result: Result<T, E>): result is { success: true; dat
 export function isErr<T, E>(result: Result<T, E>): result is { success: false; data?: null; error: E } {
   return result.success === false;
 }
+
+// Re-export standardized Result utilities from lib/common/result
+export {
+  type Result as StandardResult,
+  ok as standardOk,
+  err as standardErr,
+  isOk as isStandardOk,
+  isErr as isStandardErr,
+  toLegacyResult,
+  fromLegacyResult,
+} from "@/lib/common/result";

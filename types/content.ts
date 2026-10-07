@@ -3,9 +3,17 @@
  * Decoupled from test fixtures and mock data.
  */
 
-export type TitleStatus = "Published" | "Draft" | "Scheduled" | "Archived";
+export type DramaStatus = "Published" | "Draft" | "Scheduled" | "Archived";
 
-export interface Title {
+/**
+ * @deprecated Use DramaStatus instead. Maintained for 100% backward compatibility.
+ */
+export type TitleStatus = DramaStatus;
+
+/**
+ * Canonical domain entity representing a short-form drama series (Task 13.4).
+ */
+export interface Drama {
   id: string;
   slug: string;
   title: string;
@@ -19,12 +27,14 @@ export interface Title {
   rating?: number;
   views: number;
   createdAt: string;
-  status: TitleStatus;
+  status: DramaStatus;
   year: number;
 }
 
-/** Domain alias for Title */
-export type Drama = Title;
+/**
+ * @deprecated Use Drama instead. Maintained for 100% backward compatibility.
+ */
+export type Title = Drama;
 
 export interface Channel {
   id?: string;
@@ -53,7 +63,7 @@ export interface HeroSlide {
   href: string;
 }
 
-export interface TrendingTitle {
+export interface TrendingDrama {
   id: string;
   rank: number;
   title: string;
@@ -61,12 +71,22 @@ export interface TrendingTitle {
   href: string;
 }
 
-export interface NewReleaseTitle {
+/**
+ * @deprecated Use TrendingDrama instead. Maintained for 100% backward compatibility.
+ */
+export type TrendingTitle = TrendingDrama;
+
+export interface NewReleaseDrama {
   id: string;
   title: string;
   poster: string;
   href: string;
 }
+
+/**
+ * @deprecated Use NewReleaseDrama instead. Maintained for 100% backward compatibility.
+ */
+export type NewReleaseTitle = NewReleaseDrama;
 
 export interface PlaybackSource {
   url: string;

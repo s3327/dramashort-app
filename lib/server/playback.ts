@@ -1,6 +1,8 @@
+import "server-only";
 import { getContentAdminClient } from "@/lib/supabase/content";
 import { getUserRole } from "@/lib/auth/roles";
 import type { User } from "@supabase/supabase-js";
+import { type Result, ok, err } from "@/lib/common/result";
 
 export interface EpisodePlaybackInfo {
   episodeId: string;
@@ -177,4 +179,25 @@ export async function getEpisodePlaybackInfo(
     durationSeconds: primaryMedia?.duration_seconds || episodeRow.duration_seconds || 0,
     aspectRatio: primaryMedia?.aspect_ratio || "9:16",
   };
+}
+
+/**
+ * Entitlement check and signed stream resolution returning a standardized Result (Task 13.4).
+ */
+export async function getEpisodePlaybackResult(
+  episodeId: string,
+  user: User | null
+): Promise<Result<ResolvedPlayback, string>> {
+  const info = await getEpisodePlaybackInfo(episodeId);
+  if (!info) {
+    return err("Episode not found");
+  }
+
+  const access = await canAccessEpisode(user, info);
+  if (!access.allowed) {
+    return err(access.message || "Access denied");
+  }
+
+  const session = resolvePlaybackSession(info);
+  return ok(session);
 }

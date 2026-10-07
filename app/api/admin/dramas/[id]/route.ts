@@ -5,6 +5,7 @@ import { mapTitleRowToTitle } from "@/lib/services/content.service";
 import { apiError, apiSuccess } from "@/lib/api/responses";
 import { isUuid, validateDramaPayload } from "@/lib/validation/drama";
 import { resolveChannelByName } from "@/lib/admin/resolve-channel";
+import { deleteDrama as deleteDramaDirect } from "@/lib/server/admin";
 import type { Database } from "@/types/supabase-content";
 
 type TitleUpdate = Database["public"]["Tables"]["titles"]["Update"];
@@ -187,3 +188,30 @@ export async function PATCH(
     return apiError("DATABASE_ERROR", "Failed to save drama changes.", 500);
   }
 }
+
+/**
+ * DELETE /api/admin/dramas/[id]
+ * Deletes one drama by UUID from the Content DB using lib/server/admin direct mutation. Admin only.
+ */
+export async function DELETE(
+  _request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const auth = await requireAdmin();
+  if (!auth.authorized) {
+    return auth.response;
+  }
+
+  const { id } = await params;
+  if (!isUuid(id)) {
+    return apiError("INVALID_ID", "Drama id must be a UUID.", 400);
+  }
+
+  const res = await deleteDramaDirect(id);
+  if (!res.ok) {
+    return apiError("DATABASE_ERROR", res.error, 500);
+  }
+
+  return apiSuccess({ deleted: true });
+}
+

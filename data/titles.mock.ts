@@ -575,16 +575,15 @@ export function hashSlug(slug: string): number {
   return hash;
 }
 
-export function getTitleBySlug(slug: string): Title | undefined {
+export function getDramaBySlug(slug: string): Drama | undefined {
   return titles.find((t) => t.slug === slug);
 }
 
-// Every slug in the app resolves to something here, even ones outside the
-// curated list above — we haven't confirmed what metadata DramaBoss will
-// actually provide yet, so an uncurated slug falls back to a generic (but
-// plausible) placeholder rather than a broken page.
-export function getTitleBySlugOrFallback(slug: string): Title {
-  const found = getTitleBySlug(slug);
+/**
+ * Canonical drama lookup with placeholder fallback for mock tests.
+ */
+export function getDramaBySlugOrFallback(slug: string): Drama {
+  const found = getDramaBySlug(slug);
   if (found) return found;
 
   const hash = hashSlug(slug);
@@ -606,3 +605,14 @@ export function getTitleBySlugOrFallback(slug: string): Title {
     year: 2026,
   };
 }
+
+/**
+ * @deprecated Use getDramaBySlugOrFallback instead. Forwarded for 100% backward compatibility.
+ */
+export const getTitleBySlugOrFallback = getDramaBySlugOrFallback;
+
+/**
+ * Canonical drama dataset alias matching titles for domain unification.
+ */
+export const dramas: Drama[] = titles;
+
