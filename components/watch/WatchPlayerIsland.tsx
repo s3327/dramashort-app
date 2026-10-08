@@ -20,6 +20,10 @@ import {
   toggleFullscreen,
   addFullscreenChangeListener,
 } from "@/lib/player/fullscreen-capabilities";
+import {
+  preloadEpisodePlayback,
+  getPreloadedEpisodePlayback,
+} from "@/lib/player/episode-preloader";
 
 const EPISODES_PER_TAB = 40;
 
@@ -59,7 +63,45 @@ export default function WatchPlayerIsland({
     const computedTab = Math.floor((Math.max(1, resolvedInitialEp) - 1) / EPISODES_PER_TAB);
     return Math.min(maxTab, computedTab);
   });
-  const [autoPlayNext, setAutoPlayNext] = useState(false);
+  const [autoPlayNext, setAutoPlayNext] = useState<boolean>(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const saved = localStorage.getItem("dramashort_player_autonext");
+        if (saved !== null) return saved === "true";
+      } catch {}
+    }
+    return true; // Auto-next enabled by default (Task 14.4)
+  });
+  const [isMutedState, setIsMutedState] = useState<boolean>(() => {
+    if (typeof sessionStorage !== "undefined") {
+      return sessionStorage.getItem("dramashort_session_unmuted") !== "true";
+    }
+    return true;
+  });
+  const [showUnmutePillState, setShowUnmutePillState] = useState<boolean>(() => {
+    if (typeof sessionStorage !== "undefined") {
+      return sessionStorage.getItem("dramashort_session_unmuted") !== "true";
+    }
+    return true;
+  });
+
+  const handleToggleMute = useCallback(() => {
+    const vid = document.querySelector("video");
+    setIsMutedState((prev) => {
+      const nextMuted = !prev;
+      if (vid) {
+        vid.muted = nextMuted;
+      }
+      if (!nextMuted) {
+        setShowUnmutePillState(false);
+        try {
+          sessionStorage.setItem("dramashort_session_unmuted", "true");
+        } catch {}
+      }
+      return nextMuted;
+    });
+  }, []);
+
   const lastRecordedSecondRef = useRef<number>(-1);
   const [isPlayingState, setIsPlayingState] = useState(false);
   const [currentTimeState, setCurrentTimeState] = useState(0);
@@ -239,8 +281,16 @@ export default function WatchPlayerIsland({
         lastRecordedSecondRef.current = positionSec;
         recordProgress(currentEpisode, progressRatio, positionSec, durationSec);
       }
+
+      // Task 14.4: Preload next episode at 80% progress threshold
+      if (progressRatio >= 0.8 && currentEpisode < totalEps) {
+        const nextEp = dbEpisodes.find((e) => e.episodeNumber === currentEpisode + 1);
+        if (nextEp?.id) {
+          preloadEpisodePlayback(nextEp.id).catch(() => {});
+        }
+      }
     },
-    [currentEpisode, recordProgress]
+    [currentEpisode, totalEps, dbEpisodes, recordProgress]
   );
 
   const handlePause = useCallback(
@@ -275,7 +325,12 @@ export default function WatchPlayerIsland({
       durationSeconds: dur,
     };
     recordProgress(currentEpisode, 1.0, dur, dur);
-  }, [currentEpisode, recordProgress]);
+
+    // Auto-advance to next episode (Task 14.4)
+    if (autoPlayNext && currentEpisode < totalEps) {
+      handleSelectEpisode(currentEpisode + 1);
+    }
+  }, [currentEpisode, totalEps, autoPlayNext, recordProgress, handleSelectEpisode]);
 
   const handleTogglePlay = useCallback(() => {
     const vid = document.querySelector("video");
@@ -364,6 +419,17 @@ export default function WatchPlayerIsland({
       setPlaybackError(null);
       setPlaybackLoading(false);
       return;
+    }
+
+    // Synchronous check of preloaded cache (Task 14.4)
+    if (retryNonce === 0) {
+      const preloaded = getPreloadedEpisodePlayback(currentEpData.id);
+      if (preloaded) {
+        setPlaybackSource(preloaded);
+        setPlaybackError(null);
+        setPlaybackLoading(false);
+        return;
+      }
     }
 
     let isMounted = true;
@@ -514,6 +580,9 @@ export default function WatchPlayerIsland({
                 }}
                 onToggleFullscreen={handleToggleFullscreen}
                 isFullscreen={isFullscreenState}
+                isMuted={isMutedState}
+                onToggleMute={handleToggleMute}
+                showUnmutePill={showUnmutePillState}
               />
             </div>
           </div>

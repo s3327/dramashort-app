@@ -2188,3 +2188,38 @@
   - `npx tsc --noEmit`: compiles cleanly with 0 type errors.
   - Full test runner `npm test`: 672 / 672 tests pass across 182 suites with 0 failures (100% pass rate).
   - Next.js production build (`npm run build`): cleanly compiles all 64 routes with zero errors.
+---
+
+## [2026-10-08] Phase 14: Task 14.4 — Autoplay, Preloading & Episode Transitions
+* **Status**: Complete & Verified
+* **Scope**: Implement guaranteed muted autoplay on cold entry across mobile browsers and in-app webviews, display a prominent "Tap to unmute" pill with session persistence (`sessionStorage`), build an intelligent next-episode preloader module (`lib/player/episode-preloader.ts`) warming up playback metadata, HLS manifests, and first segments at 80% progress, enable auto-next by default (`autoPlayNext: true`), and ensure deep links (`?ep=X`) start playing immediately without loading stalls or unhandled rejections.
+* **Implementation Steps Taken**:
+  1. **Next-Episode Preloader Module (`lib/player/episode-preloader.ts`)**:
+     - Built `lib/player/episode-preloader.ts` providing in-memory caching (`preloadedPlaybackCache`) and request deduplication (`inFlightPlaybackPreloads`).
+     - Implemented `preloadEpisodePlayback`: calls `/api/playback/[id]` and warms up media assets.
+     - Implemented `preloadHlsManifestAndFirstSegment`: downloads the HLS manifest text into browser cache, parses variant playlists, and prefetches the first media segment (`.ts`/`.m4s`).
+     - Implemented `preloadMediaRange`: fetches initial byte range (`bytes=0-524287`) for MP4 streams.
+     - Implemented `getPreloadedEpisodePlayback`: provides synchronous, zero-latency cache retrieval upon episode transition.
+     - Exported preloader functions in `components/player/index.ts`.
+  2. **Resilient Autoplay & Unmute State (`components/VideoPlayer.tsx`, `components/player/usePlayerControls.ts`)**:
+     - Set default `autoPlay = true` in `VideoPlayerProps`.
+     - Checked `sessionStorage.getItem("dramashort_session_unmuted")`. If not yet unmuted by user gesture, started playback muted (`muted = true`) to prevent browser autoplay blocking.
+     - Added defensive catch handler to `video.play()`: if unmuted autoplay is rejected by browser policy (`NotAllowedError`), immediately sets `video.muted = true`, reveals the "Tap to unmute" pill, and re-triggers `video.play()`.
+     - Rendered high-contrast "Tap to unmute" pill with `<VolumeX size={16} />` icon.
+     - Wrapped `toggleFullscreen` in `useCallback` to maintain clean React hook dependencies.
+     - Preserved all 35 static string contract invariants required by `player-streaming-robustness.test.ts`.
+  3. **Mobile Watch Overlay & Watch Island Wiring (`components/player/WatchOverlay.tsx`, `components/watch/WatchPlayerIsland.tsx`, `components/player/PlayerTypes.ts`)**:
+     - Extended `WatchOverlayProps` with `isMuted?: boolean`, `onToggleMute?: () => void`, and `showUnmutePill?: boolean`.
+     - Rendered "Tap to unmute" pill in `WatchOverlay.tsx` with accessible button, pulse animation, and touch handling.
+     - Initialized `autoPlayNext` to `true` by default in `WatchPlayerIsland.tsx` (with `localStorage` persistence).
+     - Connected 80% progress threshold in `handleTimeUpdate`: triggers `preloadEpisodePlayback` for `currentEpisode + 1`.
+     - Checked `getPreloadedEpisodePlayback` synchronously in playback loading effect, bypassing the loading spinner on swiping.
+     - Updated `handleVideoEnded` to auto-advance to `currentEpisode + 1` when `autoPlayNext` is active.
+  4. **Automated Verification Test Suite (`__tests__/player/autoplay-preloading-transitions.test.ts`)**:
+     - Authored 17 unit and contract tests verifying preloader caching, in-flight deduplication, HLS and MP4 warmup, muted autoplay on entry, resilient play rejection fallback, 80% progress trigger, synchronous cache hit, default auto-next, and deep link playback contracts.
+* **Regression Analysis & Verification Record**:
+  - `__tests__/player/autoplay-preloading-transitions.test.ts`: 17 / 17 tests pass (100%).
+  - Targeted player regression suites (146 tests total across 7 suites): 146 / 146 tests pass (100%).
+  - `npx tsc --noEmit`: compiles cleanly with 0 type errors.
+  - Full test runner `npm test`: 689 / 689 tests pass across 189 suites with 0 failures (100% pass rate).
+  - Next.js production build (`npm run build`): cleanly compiles all 64 routes with zero errors.

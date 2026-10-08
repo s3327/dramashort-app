@@ -54,4 +54,7 @@ export interface WatchOverlayProps {
   swipeHint?: "next" | "prev" | null;
   onToggleFullscreen?: () => void;
   isFullscreen?: boolean;
+  isMuted?: boolean;
+  onToggleMute?: () => void;
+  showUnmutePill?: boolean;
 }

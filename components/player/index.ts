@@ -7,3 +7,10 @@ export { useSwipeNavigation } from "./useSwipeNavigation";
 export { usePlayerGestures } from "./usePlayerGestures";
 export { useProgressReporter } from "./useProgressReporter";
 export * from "./PlayerTypes";
+export {
+  preloadEpisodePlayback,
+  getPreloadedEpisodePlayback,
+  preloadHlsManifestAndFirstSegment,
+  preloadMediaRange,
+  clearPreloadCache,
+} from "@/lib/player/episode-preloader";

@@ -92,7 +92,7 @@ export default function VideoPlayer({
   totalEpisodes,
   initialProgressSeconds = 0,
   initialProgressRatio,
-  autoPlay = false,
+  autoPlay = true,
   aspectRatio,
   isMobileFullViewport = false,
   onTimeUpdate,
@@ -124,6 +124,7 @@ export default function VideoPlayer({
   const [playbackRate, setPlaybackRate] = useState(1);
   const [isBuffering, setIsBuffering] = useState(false);
   const [hasError, setHasError] = useState<string | null>(null);
+  const [showUnmutePill, setShowUnmutePill] = useState<boolean>(false);
 
   // UI & control states
   const [controlsVisible, setControlsVisible] = useState(true);
@@ -163,21 +164,42 @@ export default function VideoPlayer({
   const [isSpeedBoosted, setIsSpeedBoosted] = useState<boolean>(false);
   const previousSpeedRef = useRef<number>(1);
 
-  // Restore volume preference from localStorage
+  // Restore volume preference from localStorage & session unmute status
   useEffect(() => {
     try {
+      const sessionUnmuted = typeof sessionStorage !== "undefined" && sessionStorage.getItem("dramashort_session_unmuted") === "true";
       const savedVolume = localStorage.getItem("dramashort_player_volume");
       const savedMuted = localStorage.getItem("dramashort_player_muted");
       const savedAspect = localStorage.getItem("dramashort_player_aspect") as AspectRatioMode | null;
       if (savedVolume !== null) setVolume(parseFloat(savedVolume));
-      if (savedMuted !== null) setIsMuted(savedMuted === "true");
       if (savedAspect && ["fit", "9:16", "16:9"].includes(savedAspect)) {
         setAspectMode(savedAspect);
+      }
+      if (sessionUnmuted) {
+        if (savedMuted !== null) setIsMuted(savedMuted === "true");
+        else setIsMuted(false);
+      } else {
+        // Unmuted session not yet established: start muted to guarantee browser autoplay
+        setIsMuted(true);
+        setShowUnmutePill(true);
       }
     } catch {
       // ignore in incognito/SSR
     }
   }, []);
+
+  const handleTapToUnmute = useCallback(() => {
+    setIsMuted(false);
+    setShowUnmutePill(false);
+    if (videoRef.current) {
+      videoRef.current.muted = false;
+      videoRef.current.volume = volume > 0 ? volume : 1;
+    }
+    try {
+      sessionStorage.setItem("dramashort_session_unmuted", "true");
+      localStorage.setItem("dramashort_player_muted", "false");
+    } catch {}
+  }, [volume]);
 
   // Update volume on video element
   useEffect(() => {
@@ -255,7 +277,16 @@ export default function VideoPlayer({
             video.currentTime = initialProgressSeconds;
           }
           if (autoPlay || reloadIndex > 0) {
-            video.play().catch(() => setIsPlaying(false));
+            video.play().catch(() => {
+              if (!video.muted) {
+                video.muted = true;
+                setIsMuted(true);
+                setShowUnmutePill(true);
+                video.play().catch(() => setIsPlaying(false));
+              } else {
+                setIsPlaying(false);
+              }
+            });
           }
         });
 
@@ -329,7 +360,16 @@ export default function VideoPlayer({
           video.currentTime = initialProgressSeconds;
         }
         if (autoPlay || reloadIndex > 0) {
-          video.play().catch(() => setIsPlaying(false));
+          video.play().catch(() => {
+            if (!video.muted) {
+              video.muted = true;
+              setIsMuted(true);
+              setShowUnmutePill(true);
+              video.play().catch(() => setIsPlaying(false));
+            } else {
+              setIsPlaying(false);
+            }
+          });
         }
       } else {
         setHasError("Your browser does not support HLS video streaming");
@@ -342,7 +382,16 @@ export default function VideoPlayer({
         video.currentTime = initialProgressSeconds;
       }
       if (autoPlay || reloadIndex > 0) {
-        video.play().catch(() => setIsPlaying(false));
+        video.play().catch(() => {
+          if (!video.muted) {
+            video.muted = true;
+            setIsMuted(true);
+            setShowUnmutePill(true);
+            video.play().catch(() => setIsPlaying(false));
+          } else {
+            setIsPlaying(false);
+          }
+        });
       }
     }
 
@@ -558,7 +607,7 @@ export default function VideoPlayer({
   };
 
   // Fullscreen (Desktop, iOS Safari webkitEnterFullscreen, Telegram WebApp)
-  const toggleFullscreen = async () => {
+  const toggleFullscreen = useCallback(async () => {
     const container = containerRef.current;
     const video = videoRef.current;
     if (!container && !video) return;
@@ -571,7 +620,7 @@ export default function VideoPlayer({
     }
 
     await toggleFullscreenAdapter(container, video, { aspectMode });
-  };
+  }, [aspectMode]);
 
   // Picture in Picture
   const togglePiP = async () => {
@@ -1158,6 +1207,21 @@ export default function VideoPlayer({
             aria-label="Dismiss resume notification"
           >
             <X size={13} />
+          </button>
+        </div>
+      )}
+
+      {/* Tap to Unmute Floating Pill Indicator (Task 14.4) */}
+      {showUnmutePill && isMuted && isPlaying && (
+        <div className="absolute top-4 inset-x-0 z-30 flex justify-center pointer-events-auto animate-in fade-in slide-in-from-top-2">
+          <button
+            type="button"
+            onClick={handleTapToUnmute}
+            className="flex items-center gap-2 px-4 py-2 rounded-full bg-black/85 backdrop-blur-md border border-white/20 text-white shadow-2xl hover:bg-black/95 active:scale-95 transition-all text-xs sm:text-sm font-semibold tracking-wide group"
+            aria-label="Tap to unmute audio"
+          >
+            <VolumeX size={16} className="text-primary group-hover:scale-110 transition-transform animate-pulse" />
+            <span>Tap to unmute</span>
           </button>
         </div>
       )}

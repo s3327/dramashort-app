@@ -18,6 +18,7 @@ import {
   FastForward,
   Maximize,
   Minimize,
+  VolumeX,
 } from "lucide-react";
 import { useFavorites } from "@/contexts/FavoritesContext";
 import type { WatchOverlayProps } from "./PlayerTypes";
@@ -50,10 +51,27 @@ export default function WatchOverlay({
   swipeHint,
   onToggleFullscreen,
   isFullscreen = false,
+  isMuted = false,
+  onToggleMute,
+  showUnmutePill,
 }: WatchOverlayProps) {
   const { isFavorited, toggleFavorite } = useFavorites();
   const favorited = isFavorited(drama.slug);
   const [shareToast, setShareToast] = useState<string | null>(null);
+
+  const handleToggleMute = useCallback(() => {
+    if (onToggleMute) {
+      onToggleMute();
+    } else if (typeof document !== "undefined") {
+      const vid = document.querySelector("video");
+      if (vid) {
+        vid.muted = !vid.muted;
+      }
+    }
+    try {
+      sessionStorage.setItem("dramashort_session_unmuted", "true");
+    } catch {}
+  }, [onToggleMute]);
 
   const handleToggleFullscreen = useCallback(() => {
     if (onToggleFullscreen) {
@@ -229,6 +247,21 @@ export default function WatchOverlay({
             <FastForward size={14} className="animate-pulse" />
             <span>2× Speed</span>
           </div>
+        </div>
+      )}
+
+      {/* Tap to Unmute Pill (Task 14.4) */}
+      {(showUnmutePill ?? isMuted) && isMuted && isPlaying && (
+        <div className="absolute top-20 inset-x-0 flex justify-center pointer-events-auto z-40 animate-in fade-in zoom-in-95 duration-200">
+          <button
+            type="button"
+            onClick={handleToggleMute}
+            className="flex items-center gap-2 px-4 py-2 rounded-full bg-black/80 backdrop-blur-md border border-white/20 text-white shadow-2xl hover:bg-black/95 active:scale-95 transition-all text-xs sm:text-sm font-semibold tracking-wide"
+            aria-label="Tap to unmute audio"
+          >
+            <VolumeX size={16} className="text-primary animate-pulse" />
+            <span>Tap to unmute</span>
+          </button>
         </div>
       )}
 

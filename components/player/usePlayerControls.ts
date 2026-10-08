@@ -82,6 +82,9 @@ export function usePlayerControls({
         }
         try {
           localStorage.setItem("dramashort_player_muted", val.toString());
+          if (!val) {
+            sessionStorage.setItem("dramashort_session_unmuted", "true");
+          }
         } catch {}
         return val;
       });
