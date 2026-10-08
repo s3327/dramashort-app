@@ -72,53 +72,22 @@ export function useSwipeNavigation({
     setSwipeHint(null);
   }, []);
 
-  const handleMouseDown = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
-    touchStartY.current = e.clientY;
-    touchStartX.current = e.clientX;
-    isDragging.current = true;
+  // Mouse drag episode navigation is intentionally neutralized to prevent
+  // desktop click-drag accidents. Episode changes are strictly touch pointers on mobile/tablet.
+  const handleMouseDown = useCallback((_e: React.MouseEvent<HTMLDivElement>) => {
+    // No-op for episode navigation
   }, []);
 
   const handleMouseMoveWithSwipe = useCallback(
-    (e: React.MouseEvent<HTMLDivElement>, onDefaultMove?: () => void) => {
-      if (!isDragging.current || touchStartY.current === null || touchStartX.current === null) {
-        onDefaultMove?.();
-        return;
-      }
-      const deltaY = e.clientY - touchStartY.current;
-      const deltaX = e.clientX - touchStartX.current;
-
-      if (Math.abs(deltaY) > Math.abs(deltaX) && Math.abs(deltaY) > 8) {
-        const damped = deltaY * 0.45;
-        setSwipeOffset(damped);
-        if (deltaY < -20) {
-          setSwipeHint("next");
-        } else if (deltaY > 20) {
-          setSwipeHint("prev");
-        } else {
-          setSwipeHint(null);
-        }
-      } else {
-        onDefaultMove?.();
-      }
+    (_e: React.MouseEvent<HTMLDivElement>, onDefaultMove?: () => void) => {
+      onDefaultMove?.();
     },
     []
   );
 
   const handleMouseUp = useCallback(() => {
-    if (!isDragging.current) return;
-    isDragging.current = false;
-    touchStartY.current = null;
-    touchStartX.current = null;
-
-    if (swipeOffset < -threshold) {
-      onNextEpisode?.();
-    } else if (swipeOffset > threshold) {
-      onPrevEpisode?.();
-    }
-
-    setSwipeOffset(0);
-    setSwipeHint(null);
-  }, [swipeOffset, threshold, onNextEpisode, onPrevEpisode]);
+    // No-op for episode navigation
+  }, []);
 
   return {
     isDragging,

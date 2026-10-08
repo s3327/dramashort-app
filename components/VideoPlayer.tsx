@@ -24,6 +24,7 @@ import {
   Settings,
   ChevronUp,
   ChevronDown,
+  FastForward,
   X,
 } from "lucide-react";
 import {
@@ -146,6 +147,17 @@ export default function VideoPlayer({
   const isDragging = useRef<boolean>(false);
   const [swipeOffset, setSwipeOffset] = useState<number>(0);
   const [swipeHint, setSwipeHint] = useState<"next" | "prev" | null>(null);
+
+  // Double-tap & single-tap detection
+  const lastTapRef = useRef<{ time: number; x: number; y: number } | null>(null);
+  const pendingTapTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const [seekRipple, setSeekRipple] = useState<{ direction: "left" | "right"; visible: boolean } | null>(null);
+  const rippleTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Long-press 2× speed boost state
+  const longPressTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const [isSpeedBoosted, setIsSpeedBoosted] = useState<boolean>(false);
+  const previousSpeedRef = useRef<number>(1);
 
   // Restore volume preference from localStorage
   useEffect(() => {
@@ -377,6 +389,18 @@ export default function VideoPlayer({
         clearTimeout(retryTimeoutRef.current);
         retryTimeoutRef.current = null;
       }
+      if (longPressTimerRef.current) {
+        clearTimeout(longPressTimerRef.current);
+        longPressTimerRef.current = null;
+      }
+      if (pendingTapTimeoutRef.current) {
+        clearTimeout(pendingTapTimeoutRef.current);
+        pendingTapTimeoutRef.current = null;
+      }
+      if (rippleTimeoutRef.current) {
+        clearTimeout(rippleTimeoutRef.current);
+        rippleTimeoutRef.current = null;
+      }
       if (video) {
         video.pause();
       }
@@ -592,9 +616,24 @@ export default function VideoPlayer({
     ) {
       return;
     }
+    if (e.touches.length !== 1) return;
     touchStartY.current = e.touches[0].clientY;
     touchStartX.current = e.touches[0].clientX;
     isDragging.current = true;
+
+    // Start 400ms long-press timer for 2× speed boost
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+    longPressTimerRef.current = setTimeout(() => {
+      const video = videoRef.current;
+      if (video && isPlaying) {
+        previousSpeedRef.current = video.playbackRate;
+        video.playbackRate = 2.0;
+        setIsSpeedBoosted(true);
+      }
+    }, 400);
   };
 
   const handleTouchMove = (e: React.TouchEvent<HTMLDivElement>) => {
@@ -603,6 +642,14 @@ export default function VideoPlayer({
     const currentX = e.touches[0].clientX;
     const deltaY = currentY - touchStartY.current;
     const deltaX = currentX - touchStartX.current;
+
+    // If movement exceeds 8px, cancel long-press (it's a swipe, not a hold)
+    if (Math.abs(deltaY) > 8 || Math.abs(deltaX) > 8) {
+      if (longPressTimerRef.current) {
+        clearTimeout(longPressTimerRef.current);
+        longPressTimerRef.current = null;
+      }
+    }
 
     // Only engage if movement is primarily vertical
     if (Math.abs(deltaY) > Math.abs(deltaX) && Math.abs(deltaY) > 8) {
@@ -618,12 +665,30 @@ export default function VideoPlayer({
     }
   };
 
-  const handleTouchEnd = () => {
-    if (!isDragging.current) return;
-    isDragging.current = false;
-    touchStartY.current = null;
-    touchStartX.current = null;
+  const handleTouchEnd = (e?: React.TouchEvent<HTMLDivElement>) => {
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
 
+    // If speed was boosted via long press, restore previous speed and dismiss
+    if (isSpeedBoosted) {
+      const video = videoRef.current;
+      if (video) {
+        video.playbackRate = previousSpeedRef.current || playbackRate;
+      }
+      setIsSpeedBoosted(false);
+      isDragging.current = false;
+      touchStartY.current = null;
+      touchStartX.current = null;
+      setSwipeOffset(0);
+      setSwipeHint(null);
+      return;
+    }
+
+    if (!isDragging.current) return;
+
+    const wasSwiping = Math.abs(swipeOffset) > 10;
     if (swipeOffset < -45) {
       // Swiped UP -> Next Episode
       goToNextEpisode();
@@ -632,11 +697,75 @@ export default function VideoPlayer({
       goToPrevEpisode();
     }
 
+    isDragging.current = false;
+    touchStartY.current = null;
+    touchStartX.current = null;
     setSwipeOffset(0);
     setSwipeHint(null);
+
+    // Double-tap & single-tap detection
+    if (!wasSwiping && e && e.changedTouches && e.changedTouches.length === 1) {
+      if (e.cancelable) {
+        e.preventDefault();
+      }
+      const touch = e.changedTouches[0];
+      const rect = e.currentTarget.getBoundingClientRect();
+      const clientX = touch.clientX - rect.left;
+      const width = rect.width;
+      const now = Date.now();
+
+      const lastTap = lastTapRef.current;
+      if (
+        lastTap &&
+        now - lastTap.time < 300 &&
+        Math.abs(touch.clientX - lastTap.x) < 40 &&
+        Math.abs(touch.clientY - lastTap.y) < 40
+      ) {
+        // Double-tap detected: cancel pending single tap
+        if (pendingTapTimeoutRef.current) {
+          clearTimeout(pendingTapTimeoutRef.current);
+          pendingTapTimeoutRef.current = null;
+        }
+        lastTapRef.current = null;
+
+        const ratio = clientX / width;
+        if (ratio < 0.35) {
+          seekRelative(-10);
+          setSeekRipple({ direction: "left", visible: true });
+        } else if (ratio > 0.65) {
+          seekRelative(10);
+          setSeekRipple({ direction: "right", visible: true });
+        } else {
+          togglePlay();
+        }
+
+        if (rippleTimeoutRef.current) clearTimeout(rippleTimeoutRef.current);
+        rippleTimeoutRef.current = setTimeout(() => {
+          setSeekRipple(null);
+        }, 650);
+      } else {
+        lastTapRef.current = { time: now, x: touch.clientX, y: touch.clientY };
+        if (pendingTapTimeoutRef.current) clearTimeout(pendingTapTimeoutRef.current);
+        pendingTapTimeoutRef.current = setTimeout(() => {
+          pendingTapTimeoutRef.current = null;
+          togglePlay();
+        }, 260);
+      }
+    }
   };
 
   const handleTouchCancel = () => {
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+    if (isSpeedBoosted) {
+      const video = videoRef.current;
+      if (video) {
+        video.playbackRate = previousSpeedRef.current || playbackRate;
+      }
+      setIsSpeedBoosted(false);
+    }
     if (!isDragging.current) return;
     isDragging.current = false;
     touchStartY.current = null;
@@ -645,57 +774,18 @@ export default function VideoPlayer({
     setSwipeHint(null);
   };
 
-  const handleMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
-    const target = e.target as HTMLElement;
-    if (
-      target.closest("button") ||
-      target.closest("input") ||
-      target.closest(".group\\/scrub")
-    ) {
-      return;
-    }
-    touchStartY.current = e.clientY;
-    touchStartX.current = e.clientX;
-    isDragging.current = true;
+  // Mouse drag episode navigation is neutralized to prevent desktop drag accidents.
+  // Desktop navigation is strictly handled via buttons, keyboard shortcuts, and sidebar tiles.
+  const handleMouseDown = (_e: React.MouseEvent<HTMLDivElement>) => {
+    // No-op for episode navigation
   };
 
-  const handleMouseMoveWithSwipe = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (!isDragging.current || touchStartY.current === null || touchStartX.current === null) {
-      handleMouseMove();
-      return;
-    }
-    const deltaY = e.clientY - touchStartY.current;
-    const deltaX = e.clientX - touchStartX.current;
-
-    if (Math.abs(deltaY) > Math.abs(deltaX) && Math.abs(deltaY) > 8) {
-      const damped = deltaY * 0.45;
-      setSwipeOffset(damped);
-      if (deltaY < -20) {
-        setSwipeHint("next");
-      } else if (deltaY > 20) {
-        setSwipeHint("prev");
-      } else {
-        setSwipeHint(null);
-      }
-    } else {
-      handleMouseMove();
-    }
+  const handleMouseMoveWithSwipe = (_e: React.MouseEvent<HTMLDivElement>) => {
+    handleMouseMove();
   };
 
   const handleMouseUp = () => {
-    if (!isDragging.current) return;
-    isDragging.current = false;
-    touchStartY.current = null;
-    touchStartX.current = null;
-
-    if (swipeOffset < -45) {
-      goToNextEpisode();
-    } else if (swipeOffset > 45) {
-      goToPrevEpisode();
-    }
-
-    setSwipeOffset(0);
-    setSwipeHint(null);
+    // No-op for episode navigation
   };
 
   // Keyboard controls
@@ -967,7 +1057,7 @@ export default function VideoPlayer({
       onTouchMove={handleTouchMove}
       onTouchEnd={handleTouchEnd}
       onTouchCancel={handleTouchCancel}
-      className={`relative group select-none overflow-hidden ${isMobileFullViewport ? "rounded-none md:rounded-xl" : "rounded-xl"} bg-black shadow-2xl transition-all ${aspectContainerClasses} flex items-center justify-center`}
+      className={`relative group select-none overflow-hidden touch-none overscroll-contain ${isMobileFullViewport ? "rounded-none md:rounded-xl" : "rounded-xl"} bg-black shadow-2xl transition-all ${aspectContainerClasses} flex items-center justify-center`}
     >
       {/* Ambient background blur for 9:16 mode on widescreen displays */}
       {aspectMode === "9:16" && poster && (
@@ -1093,6 +1183,39 @@ export default function VideoPlayer({
                 </span>
               </>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Double Tap Seek Feedback Ripple */}
+      {seekRipple && (
+        <div
+          className={`absolute inset-y-0 ${
+            seekRipple.direction === "left" ? "left-6" : "right-6"
+          } flex items-center justify-center pointer-events-none z-30 animate-in fade-in zoom-in-95 duration-200`}
+        >
+          <div className="flex flex-col items-center justify-center w-20 h-20 rounded-full bg-black/80 border border-white/20 text-white backdrop-blur-md shadow-2xl">
+            {seekRipple.direction === "left" ? (
+              <>
+                <RotateCcw size={22} className="text-primary mb-1 animate-pulse" />
+                <span className="text-xs font-bold tracking-wider">&lt;&lt; 10s</span>
+              </>
+            ) : (
+              <>
+                <RotateCw size={22} className="text-primary mb-1 animate-pulse" />
+                <span className="text-xs font-bold tracking-wider">10s &gt;&gt;</span>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Long-Press 2× Speed Floating Badge */}
+      {isSpeedBoosted && (
+        <div className="absolute top-14 inset-x-0 flex justify-center pointer-events-none z-30 animate-in fade-in slide-in-from-top-2">
+          <div className="flex items-center gap-1.5 px-4 py-1.5 rounded-full bg-primary text-black text-xs font-bold shadow-2xl backdrop-blur-md">
+            <FastForward size={14} className="animate-pulse" />
+            <span>2× Speed</span>
           </div>
         </div>
       )}

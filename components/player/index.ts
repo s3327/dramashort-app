@@ -4,5 +4,6 @@ export { WatchOverlay } from "./WatchOverlay";
 export { useHlsSource } from "./useHlsSource";
 export { usePlayerControls } from "./usePlayerControls";
 export { useSwipeNavigation } from "./useSwipeNavigation";
+export { usePlayerGestures } from "./usePlayerGestures";
 export { useProgressReporter } from "./useProgressReporter";
 export * from "./PlayerTypes";

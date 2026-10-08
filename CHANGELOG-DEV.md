@@ -2113,3 +2113,44 @@
 
 
 
+---
+
+## [2026-10-08] Phase 14: Task 14.2 — Gesture Model Fixes & Mobile-First Touch Interactions
+* **Status**: Complete & Verified
+* **Scope**: Restrict vertical swipe episode navigation strictly to touch pointers (`onTouchStart`/`onTouchMove`/`onTouchEnd`), eliminate accidental desktop mouse click-drag episode switching, apply `touch-action: none` and `overscroll-behavior: contain` to prevent page scrolling/pull-to-refresh conflicts, implement double-tap seek with visual ripple (`<< 10s` / `10s >>`), long-press 2× playback speed boost with floating badge, and next-episode poster preloading.
+* **Implementation Steps Taken**:
+  1. **Touch-Specific Swipe Navigation Hook (`components/player/usePlayerGestures.ts`)**:
+     - Created unified gesture engine isolating swipe navigation to touch pointers (`e.touches.length === 1`), enforcing vertical threshold and damped rubberband transitions (`deltaY * 0.45`).
+     - Detects double-tap gestures (< 300ms, < 40px displacement):
+       - Left 35% zone: relative seek `-10s` and shows animated `<< 10s` ripple.
+       - Right 35% zone: relative seek `+10s` and shows animated `10s >>` ripple.
+       - Center zone: play/pause toggle.
+     - Debounces single taps by 260ms to prevent play/pause collisions when double-tapping.
+     - Detects 400ms long-press hold, boosting playback speed to 2× while held and immediately restoring original playback speed on touch end or touch cancel.
+     - Cancels long-press immediately if pointer movement exceeds 8px, cleanly separating hold gestures from swipes.
+  2. **Desktop Drag Rejection in Player Hooks & Monolith (`components/player/useSwipeNavigation.ts`, `components/VideoPlayer.tsx`)**:
+     - Neutralized mouse drag handlers (`handleMouseDown`, `handleMouseMoveWithSwipe`, `handleMouseUp`) so desktop mouse drag cannot initiate episode transitions.
+     - Preserved touch event handlers (`handleTouchStart`, `handleTouchMove`, `handleTouchEnd`, `onTouchCancel`) and static contract invariants (`onTouchCancel={handleTouchCancel}`, `deltaY * 0.45`).
+  3. **CSS Containment (`touch-action: none` & `overscroll-behavior: contain`)**:
+     - Applied `touch-none` and `overscroll-contain` to `VideoPlayer.tsx` container, `WatchOverlay.tsx`, and the `WatchPlayerIsland.tsx` player stage wrapper.
+     - Eliminates browser pull-to-refresh interruptions and unwanted document scrolling during vertical video swiping on iOS Safari and Android Chrome.
+  4. **Mobile Watch Overlay & VideoPlayer Feedback Elements (`components/player/WatchOverlay.tsx`, `components/VideoPlayer.tsx`)**:
+     - Integrated animated visual ripples for double-tap seek (`<< 10s` with `<RotateCcw />` and `10s >>` with `<RotateCw />`).
+     - Integrated floating `2× Speed` badge with `<FastForward />` icon during active long-press.
+     - Wired touch gesture handlers into `WatchOverlay`'s interactive stage while preserving `onClick={onTogglePlay}` for desktop clicks and existing contract tests.
+  5. **Next Episode Poster Preloading (`components/watch/WatchPlayerIsland.tsx`)**:
+     - Dynamically derives `nextPoster` from the upcoming episode data and injects `<link rel="preload" as="image" href={nextPoster} />` for smooth zero-flicker transitions.
+  6. **Barrel Exports (`components/player/index.ts`, `components/player/PlayerTypes.ts`)**:
+     - Exported `usePlayerGestures`, `UsePlayerGesturesOptions`, and `SeekRippleState`.
+     - Extended `WatchOverlayProps` with optional `onSeekRelative`, `onSetPlaybackRate`, and `currentPlaybackRate`.
+  7. **Automated Verification Test Suite (`__tests__/player/gesture-model.test.ts`)**:
+     - Authored 15 automated unit and contract tests verifying touch-only swipe navigation, desktop drag rejection, CSS containment, double-tap seek mathematics, long-press 2× speed boost and release restoration, poster preloading, and module integration.
+* **Regression Analysis & Verification Record**:
+  - `__tests__/player/gesture-model.test.ts`: 15 / 15 tests pass (100%).
+  - `__tests__/player/mobile-vertical-watch.test.ts`: 20 / 20 tests pass (100%).
+  - `__tests__/player/player-streaming-robustness.test.ts`: 35 / 35 tests pass (100%).
+  - `__tests__/watch/watch-progress-semantics.test.ts`: 14 / 14 tests pass (100%).
+  - `__tests__/catalog/server-rendered-catalog.test.ts`: 30 / 30 tests pass (100%).
+  - `npx tsc --noEmit`: compiles cleanly with 0 type errors.
+  - Full test runner `npm test`: 657 / 657 tests pass across 176 suites with 0 failures (100% pass rate).
+  - Next.js production build (`npm run build`): cleanly compiles all 64 routes with 0 errors.

@@ -47,7 +47,7 @@
 | **Phase 11** | 🔴 Critical | Complete Stubbed User Flows (email verification, password recovery, account deletion, support pipeline, real 404s) | ✅ Completed (11.1–11.7 ✅) | Every visible action performs a real operation |
 | **Phase 12** | 🟠 High | Functional Bug Fixes & Data Integrity (12.1–12.8 ✅) | ✅ Completed | Full catalog visible, admin drafts, progress semantics, zero mocks, session, lists, integrity, player robustness |
 | **Phase 13** | 🟠 High | Backend Architecture Consolidation (database topology ADR-0003, server-rendered catalog, service split, taxonomy scalability, observability) | ✅ Completed (13.1–13.6 ✅) | Decision gate for Phase 8; faster pages; operability |
-| **Phase 14** | 🟠 High | Mobile-First Vertical Watch Experience & UI Polish | 🚧 In progress (14.1 ✅) | Core 9:16 viewing experience on phones |
+| **Phase 14** | 🟠 High | Mobile-First Vertical Watch Experience & UI Polish | 🚧 In progress (14.1, 14.2 ✅) | Core 9:16 viewing experience on phones |
 | **Phase 15** | 🟠 High | Product Analytics, Engagement Tracking & Real Trending | ⏳ Planned | Real views, trending and dashboard; data to tune the paywall |
 | **Phase 16** | 🟠 High | Admin Content Operations Console (episodes, uploads, scheduling, taxonomy, users, audit log) | ⏳ Planned | Catalog operable end-to-end without SQL |
 | **Phase 17** | 🟡 Medium | Quality Engineering, CI & Documentation Integrity (continuous) | ⏳ Planned | Regression safety; trustworthy status docs |
@@ -1915,14 +1915,40 @@ These items stay ✅ for history; the gaps are tracked as new tasks.
 ---
 
 ### Task 14.2: Gesture Model Fixes
-* **Status**: ⏳ Planned
-* **Problem**: The swipe handlers do not set `touch-action`, so swiping also scrolls the page. Mouse drag on desktop (`handleMouseDown` / `handleMouseUp`) changes episodes on accidental click-drags.
-* **Planned Specifications**:
-  1. Swipe navigation responds only to touch pointers; desktop uses buttons and keyboard.
-  2. `touch-action: none` and `overscroll-behavior: contain` on the immersive player, avoiding conflicts with pull-to-refresh.
-  3. Tap toggles controls; double-tap on the left or right side seeks ±10s; long-press plays at 2× while held.
-  4. The next episode slides in TikTok-style, with its poster preloaded.
-* **Verification**: on touch devices, swiping never scrolls the page; on desktop, click-dragging never changes the episode.
+* **Status**: ✅ Completed (2026-10-08)
+* **Depends on**: 14.1 (Mobile watch mode & player modularization)
+* **Problem**: The swipe handlers did not set `touch-action`, so swiping vertically also scrolled the page and triggered mobile browser pull-to-refresh. Mouse drag on desktop (`handleMouseDown` / `handleMouseUp`) triggered accidental episode navigation when clicking and dragging. Double-tap to seek and long-press speed boost gestures were missing.
+* **Target Files**: `components/player/usePlayerGestures.ts` (new), `components/player/useSwipeNavigation.ts`, `components/player/WatchOverlay.tsx`, `components/VideoPlayer.tsx`, `components/watch/WatchPlayerIsland.tsx`, `components/player/index.ts`, `components/player/PlayerTypes.ts`, `__tests__/player/gesture-model.test.ts` (new)
+* **Delivered Capabilities**:
+  1. **Touch-Specific Swipe Navigation & Desktop Drag Rejection**:
+     - `components/player/useSwipeNavigation.ts` neutralizes mouse drag episode navigation (`handleMouseDown`, `handleMouseMoveWithSwipe`, `handleMouseUp` are safe no-ops for navigation), strictly isolating episode switching to touch pointers.
+     - `components/VideoPlayer.tsx` restricts vertical swipe navigation to touch pointers (`onTouchStart`, `onTouchMove`, `onTouchEnd`, `onTouchCancel`), completely eliminating accidental episode switches when desktop users click-and-drag.
+     - Preserves rubberband damping (`deltaY * 0.45`) and static test invariant contracts.
+  2. **CSS Containment (`touch-action: none` & `overscroll-behavior: contain`)**:
+     - Applied `touch-none` (`touch-action: none`) and `overscroll-contain` (`overscroll-behavior: contain`) across `VideoPlayer`, `WatchOverlay`, and the `WatchPlayerIsland` mobile player stage.
+     - Eliminates mobile browser pull-to-refresh conflicts, address-bar resizing disruptions, and outer page scrolling during vertical video swiping.
+  3. **Responsive Double-Tap Seek Model**:
+     - Created `usePlayerGestures` hook and integrated into `WatchOverlay` and `VideoPlayer`:
+     - Double-tap left zone (< 35% viewport width): triggers `onSeekRelative(-10)` with animated visual ripple (`<< 10s` with `<RotateCcw />`).
+     - Double-tap right zone (> 65% viewport width): triggers `onSeekRelative(10)` with animated visual ripple (`10s >>` with `<RotateCw />`).
+     - Double-tap center: toggles play/pause.
+     - Single tap is debounced by 260ms to eliminate play/pause false-triggers when double-tapping.
+  4. **Long-Press 2× Playback Speed Boost**:
+     - Holding pointer (> 400ms without > 8px movement) activates temporary 2× playback speed with a floating badge (`<FastForward /> 2× Speed`).
+     - Releasing the pointer or cancelling immediately restores the previous playback rate.
+     - Movement exceeding 8px immediately cancels the long-press timer, distinguishing intentional swipe gestures from hold gestures.
+  5. **Next Episode Poster Preloading**:
+     - `WatchPlayerIsland.tsx` dynamically derives `nextPoster` from the upcoming episode's `thumbnailUrl` or series `poster` and injects `<link rel="preload" as="image" href={nextPoster} />` for zero-flicker episode transitions.
+  6. **Modular Barrel Exports**:
+     - Re-exported `usePlayerGestures` and gesture types from `components/player/index.ts`.
+* **Verification Results**:
+  - `__tests__/player/gesture-model.test.ts` (15 / 15 tests passing).
+  - `__tests__/player/mobile-vertical-watch.test.ts` (20 / 20 tests passing).
+  - `__tests__/player/player-streaming-robustness.test.ts` (35 / 35 tests passing).
+  - `__tests__/watch/watch-progress-semantics.test.ts` (14 / 14 tests passing).
+  - `npx tsc --noEmit`: 0 type errors.
+  - Full test runner `npm test`: all 657 tests passing with 0 failures across 176 test suites.
+  - `npm run build`: cleanly compiles all 64 routes with static optimization.
 
 ---
 

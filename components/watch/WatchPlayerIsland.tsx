@@ -402,8 +402,16 @@ export default function WatchPlayerIsland({
     activeTab * EPISODES_PER_TAB + EPISODES_PER_TAB
   );
 
+  const nextEpData = dbEpisodes.find((e) => e.episodeNumber === currentEpisode + 1);
+  const nextPoster = nextEpData?.thumbnailUrl || (currentEpisode < totalEps ? drama.poster : undefined);
+
   return (
     <div className="flex flex-col lg:flex-row gap-6 items-start w-full h-[100dvh] md:h-auto">
+      {/* Next Episode Poster Preloading Hint */}
+      {nextPoster && (
+        <link rel="preload" as="image" href={nextPoster} key={`preload-poster-${currentEpisode + 1}`} />
+      )}
+
       {/* Main Video Streaming Player */}
       <div className="flex-1 w-full min-w-0 h-[100dvh] md:h-auto relative flex flex-col justify-center">
         {playbackError && (
@@ -415,7 +423,7 @@ export default function WatchPlayerIsland({
           </div>
         )}
         {videoSrc ? (
-          <div className="relative w-full h-full md:h-auto flex items-center justify-center">
+          <div className="relative w-full h-full md:h-auto flex items-center justify-center touch-none overscroll-contain">
             <VideoPlayer
               key={`${drama.slug}-${currentEpisode}`}
               src={videoSrc}
@@ -468,6 +476,18 @@ export default function WatchPlayerIsland({
                   const vid = document.querySelector("video");
                   if (vid && Number.isFinite(vid.duration)) {
                     vid.currentTime = ratio * vid.duration;
+                  }
+                }}
+                onSeekRelative={(seconds) => {
+                  const vid = document.querySelector("video");
+                  if (vid && Number.isFinite(vid.duration)) {
+                    vid.currentTime = Math.max(0, Math.min(vid.currentTime + seconds, vid.duration));
+                  }
+                }}
+                onSetPlaybackRate={(rate) => {
+                  const vid = document.querySelector("video");
+                  if (vid) {
+                    vid.playbackRate = rate;
                   }
                 }}
               />

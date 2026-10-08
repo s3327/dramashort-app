@@ -13,9 +13,13 @@ import {
   Loader2,
   ChevronUp,
   ChevronDown,
+  RotateCcw,
+  RotateCw,
+  FastForward,
 } from "lucide-react";
 import { useFavorites } from "@/contexts/FavoritesContext";
 import type { WatchOverlayProps } from "./PlayerTypes";
+import { usePlayerGestures } from "./usePlayerGestures";
 
 function formatTime(seconds: number): string {
   if (isNaN(seconds) || seconds < 0) return "00:00";
@@ -34,12 +38,55 @@ export default function WatchOverlay({
   duration,
   onTogglePlay,
   onOpenEpisodes,
+  onNextEpisode,
+  onPrevEpisode,
   onSeek,
+  onSeekRelative,
+  onSetPlaybackRate,
+  currentPlaybackRate = 1,
   swipeHint,
 }: WatchOverlayProps) {
   const { isFavorited, toggleFavorite } = useFavorites();
   const favorited = isFavorited(drama.slug);
   const [shareToast, setShareToast] = useState<string | null>(null);
+
+  const handleSeekRelative = useCallback(
+    (seconds: number) => {
+      if (onSeekRelative) {
+        onSeekRelative(seconds);
+      } else if (onSeek && duration > 0) {
+        const targetTime = Math.max(0, Math.min(currentTime + seconds, duration));
+        onSeek(targetTime / duration);
+      } else if (typeof document !== "undefined") {
+        const vid = document.querySelector("video");
+        if (vid && Number.isFinite(vid.duration)) {
+          vid.currentTime = Math.max(0, Math.min(vid.currentTime + seconds, vid.duration));
+        }
+      }
+    },
+    [onSeekRelative, onSeek, currentTime, duration]
+  );
+
+  const handleSetPlaybackRate = useCallback(
+    (rate: number) => {
+      if (onSetPlaybackRate) {
+        onSetPlaybackRate(rate);
+      } else if (typeof document !== "undefined") {
+        const vid = document.querySelector("video");
+        if (vid) vid.playbackRate = rate;
+      }
+    },
+    [onSetPlaybackRate]
+  );
+
+  const gestures = usePlayerGestures({
+    onTogglePlay,
+    onSeekRelative: handleSeekRelative,
+    onSetPlaybackRate: handleSetPlaybackRate,
+    currentPlaybackRate,
+    onNextEpisode,
+    onPrevEpisode,
+  });
 
   const handleShare = useCallback(async () => {
     const url = typeof window !== "undefined" ? window.location.href : "";
@@ -70,8 +117,10 @@ export default function WatchOverlay({
 
   const progressRatio = duration > 0 ? Math.min(1, currentTime / duration) : 0;
 
+  const activeSwipeHint = swipeHint || gestures.swipeHint;
+
   return (
-    <div className="absolute inset-0 pointer-events-none flex flex-col justify-between z-20">
+    <div className="absolute inset-0 pointer-events-none flex flex-col justify-between z-20 touch-none overscroll-contain">
       {/* Top Header Bar */}
       <div className="pointer-events-auto flex items-center justify-between gap-3 px-4 pt-[max(0.75rem,env(safe-area-inset-top))] pb-3 bg-gradient-to-b from-black/80 via-black/40 to-transparent">
         <Link
@@ -109,9 +158,9 @@ export default function WatchOverlay({
       )}
 
       {/* Vertical Swipe Gesture Hint Badge */}
-      {swipeHint && (
+      {activeSwipeHint && (
         <div className="self-center flex items-center gap-2 rounded-full bg-black/80 border border-white/20 px-4 py-2 text-xs font-semibold text-white backdrop-blur-md shadow-2xl animate-pulse">
-          {swipeHint === "next" ? (
+          {activeSwipeHint === "next" ? (
             <>
               <ChevronUp size={16} className="text-primary" />
               <span>Next Episode</span>
@@ -125,10 +174,47 @@ export default function WatchOverlay({
         </div>
       )}
 
-      {/* Center Tap Area (Tap toggles play/pause) */}
+      {/* Double Tap Seek Feedback Ripple */}
+      {gestures.seekRipple && (
+        <div
+          className={`absolute inset-y-0 ${
+            gestures.seekRipple.direction === "left" ? "left-6" : "right-6"
+          } flex items-center justify-center pointer-events-none z-30 animate-in fade-in zoom-in-95 duration-200`}
+        >
+          <div className="flex flex-col items-center justify-center w-20 h-20 rounded-full bg-black/80 border border-white/20 text-white backdrop-blur-md shadow-2xl">
+            {gestures.seekRipple.direction === "left" ? (
+              <>
+                <RotateCcw size={22} className="text-primary mb-1 animate-pulse" />
+                <span className="text-xs font-bold tracking-wider">&lt;&lt; 10s</span>
+              </>
+            ) : (
+              <>
+                <RotateCw size={22} className="text-primary mb-1 animate-pulse" />
+                <span className="text-xs font-bold tracking-wider">10s &gt;&gt;</span>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Long-Press 2× Speed Badge */}
+      {gestures.isSpeedBoosted && (
+        <div className="absolute top-16 inset-x-0 flex justify-center pointer-events-none z-30 animate-in fade-in slide-in-from-top-2">
+          <div className="flex items-center gap-1.5 px-4 py-1.5 rounded-full bg-primary text-black text-xs font-bold shadow-2xl backdrop-blur-md">
+            <FastForward size={14} className="animate-pulse" />
+            <span>2× Speed</span>
+          </div>
+        </div>
+      )}
+
+      {/* Center Tap Area (Tap toggles play/pause, double-tap seeks, long-press speeds up, swipe navigates) */}
       <div
-        className="pointer-events-auto flex-1 flex items-center justify-center cursor-pointer"
+        className="pointer-events-auto flex-1 flex items-center justify-center cursor-pointer select-none touch-none"
         onClick={onTogglePlay}
+        onTouchStart={gestures.handleTouchStart}
+        onTouchMove={gestures.handleTouchMove}
+        onTouchEnd={gestures.handleTouchEnd}
+        onTouchCancel={gestures.handleTouchCancel}
       >
         {isBuffering ? (
           <div className="p-4 rounded-full bg-black/60 backdrop-blur-md text-white animate-spin">

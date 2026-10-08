@@ -48,5 +48,8 @@ export interface WatchOverlayProps {
   onNextEpisode?: () => void;
   onPrevEpisode?: () => void;
   onSeek?: (ratio: number) => void;
+  onSeekRelative?: (seconds: number) => void;
+  onSetPlaybackRate?: (rate: number) => void;
+  currentPlaybackRate?: number;
   swipeHint?: "next" | "prev" | null;
 }
