@@ -1203,7 +1203,7 @@ export default function VideoPlayer({
               }
               setResumeNotification(null);
             }}
-            className="text-white/60 hover:text-white ml-0.5"
+            className="text-white/60 hover:text-white ml-0.5 focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none rounded"
             aria-label="Dismiss resume notification"
           >
             <X size={13} />
@@ -1217,7 +1217,7 @@ export default function VideoPlayer({
           <button
             type="button"
             onClick={handleTapToUnmute}
-            className="flex items-center gap-2 px-4 py-2 rounded-full bg-black/85 backdrop-blur-md border border-white/20 text-white shadow-2xl hover:bg-black/95 active:scale-95 transition-all text-xs sm:text-sm font-semibold tracking-wide group"
+            className="flex items-center gap-2 px-4 py-2 rounded-full bg-black/85 backdrop-blur-md border border-white/20 text-white shadow-2xl hover:bg-black/95 active:scale-95 transition-all text-xs sm:text-sm font-semibold tracking-wide group focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none"
             aria-label="Tap to unmute audio"
           >
             <VolumeX size={16} className="text-primary group-hover:scale-110 transition-transform animate-pulse" />
@@ -1309,7 +1309,7 @@ export default function VideoPlayer({
           <button
             type="button"
             aria-label="Play Episode"
-            className="flex h-16 w-16 items-center justify-center rounded-full bg-primary/95 text-white shadow-xl hover:scale-110 active:scale-95 transition-all duration-200"
+            className="flex h-16 w-16 items-center justify-center rounded-full bg-primary/95 text-white shadow-xl hover:scale-110 active:scale-95 transition-all duration-200 focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none"
           >
             <Play size={28} className="ml-1 fill-current" />
           </button>
@@ -1325,7 +1325,7 @@ export default function VideoPlayer({
           <button
             type="button"
             onClick={handleRetryPlayback}
-            className="px-4 py-2 rounded-md bg-btn-primary hover:bg-btn-primary-hover text-btn-primary-text text-sm font-semibold transition-colors"
+            className="px-4 py-2 rounded-md bg-btn-primary hover:bg-btn-primary-hover text-btn-primary-text text-sm font-semibold transition-colors focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none"
           >
             Retry Playback
           </button>
@@ -1348,14 +1348,14 @@ export default function VideoPlayer({
             <button
               type="button"
               onClick={cancelNextCountdown}
-              className="px-4 py-2 rounded-md bg-white/10 hover:bg-white/20 text-white text-sm font-semibold transition-colors"
+              className="px-4 py-2 rounded-md bg-white/10 hover:bg-white/20 text-white text-sm font-semibold transition-colors focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none"
             >
               Cancel
             </button>
             <button
               type="button"
               onClick={goToNextEpisode}
-              className="px-5 py-2 rounded-md bg-btn-primary hover:bg-btn-primary-hover text-btn-primary-text text-sm font-semibold flex items-center gap-2 transition-colors"
+              className="px-5 py-2 rounded-md bg-btn-primary hover:bg-btn-primary-hover text-btn-primary-text text-sm font-semibold flex items-center gap-2 transition-colors focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none"
             >
               <Play size={15} className="fill-current" />
               Play Now
@@ -1392,7 +1392,7 @@ export default function VideoPlayer({
                 aspectMode === "fit" ? "9:16" : aspectMode === "9:16" ? "16:9" : "fit";
               handleAspectChange(next);
             }}
-            className="flex items-center gap-1 px-2.5 py-1 rounded-md bg-white/15 hover:bg-white/25 text-xs font-medium backdrop-blur-md transition-colors"
+            className="flex items-center gap-1 px-2.5 py-1 rounded-md bg-white/15 hover:bg-white/25 text-xs font-medium backdrop-blur-md transition-colors focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none"
           >
             {aspectMode === "9:16" ? (
               <>
@@ -1416,7 +1416,7 @@ export default function VideoPlayer({
             type="button"
             title="Auto-play Next Episode"
             onClick={() => setAutoPlayNext((v) => !v)}
-            className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${
+            className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none ${
               autoPlayNext
                 ? "bg-primary text-white"
                 : "bg-white/15 hover:bg-white/25 text-white/80"
@@ -1436,6 +1436,21 @@ export default function VideoPlayer({
         {/* Scrub Bar Container */}
         <div
           ref={scrubBarRef}
+          role="slider"
+          aria-label="Seek time slider"
+          aria-valuemin={0}
+          aria-valuemax={duration}
+          aria-valuenow={currentTime}
+          tabIndex={0}
+          onKeyDown={(e) => {
+            if (e.key === "ArrowLeft") {
+              e.preventDefault();
+              seekRelative(-5);
+            } else if (e.key === "ArrowRight") {
+              e.preventDefault();
+              seekRelative(5);
+            }
+          }}
           onMouseMove={handleScrubMove}
           onMouseEnter={() => setIsScrubbing(true)}
           onMouseLeave={() => {
@@ -1443,7 +1458,7 @@ export default function VideoPlayer({
             setHoverTime(null);
           }}
           onClick={handleScrubClick}
-          className="relative h-2 hover:h-3 group/scrub bg-white/25 hover:bg-white/35 rounded-full cursor-pointer transition-all duration-150 flex items-center"
+          className="relative h-2 hover:h-3 group/scrub bg-white/25 hover:bg-white/35 rounded-full cursor-pointer transition-all duration-150 flex items-center focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none"
         >
           {/* Hover Timestamp Preview Badge */}
           {hoverTime !== null && (
@@ -1480,7 +1495,7 @@ export default function VideoPlayer({
               type="button"
               aria-label={isPlaying ? "Pause" : "Play"}
               onClick={togglePlay}
-              className="p-1.5 sm:p-2 rounded-md hover:bg-white/15 text-white transition-colors"
+              className="p-1.5 sm:p-2 rounded-md hover:bg-white/15 text-white transition-colors focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none"
             >
               {isPlaying ? (
                 <Pause size={19} className="fill-current" />
@@ -1496,7 +1511,7 @@ export default function VideoPlayer({
               title="Previous Episode (P)"
               disabled={currentEpisode <= 1 || !onPrevEpisode}
               onClick={goToPrevEpisode}
-              className="p-1.5 sm:p-2 rounded-md hover:bg-white/15 text-white disabled:opacity-30 disabled:pointer-events-none transition-colors"
+              className="p-1.5 sm:p-2 rounded-md hover:bg-white/15 text-white disabled:opacity-30 disabled:pointer-events-none transition-colors focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none"
             >
               <SkipBack size={17} />
             </button>
@@ -1508,7 +1523,7 @@ export default function VideoPlayer({
               title="Next Episode (N)"
               disabled={currentEpisode >= totalEpisodes || !onNextEpisode}
               onClick={goToNextEpisode}
-              className="p-1.5 sm:p-2 rounded-md hover:bg-white/15 text-white disabled:opacity-30 disabled:pointer-events-none transition-colors"
+              className="p-1.5 sm:p-2 rounded-md hover:bg-white/15 text-white disabled:opacity-30 disabled:pointer-events-none transition-colors focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none"
             >
               <SkipForward size={17} />
             </button>
@@ -1519,7 +1534,7 @@ export default function VideoPlayer({
               aria-label="Seek backward 10 seconds"
               title="Rewind 10s (Left Arrow)"
               onClick={() => seekRelative(-10)}
-              className="p-1.5 sm:p-2 rounded-md hover:bg-white/15 text-white transition-colors"
+              className="p-1.5 sm:p-2 rounded-md hover:bg-white/15 text-white transition-colors focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none"
             >
               <RotateCcw size={17} />
             </button>
@@ -1530,7 +1545,7 @@ export default function VideoPlayer({
               aria-label="Seek forward 10 seconds"
               title="Forward 10s (Right Arrow)"
               onClick={() => seekRelative(10)}
-              className="p-1.5 sm:p-2 rounded-md hover:bg-white/15 text-white transition-colors"
+              className="p-1.5 sm:p-2 rounded-md hover:bg-white/15 text-white transition-colors focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none"
             >
               <RotateCw size={17} />
             </button>
@@ -1541,7 +1556,7 @@ export default function VideoPlayer({
                 type="button"
                 aria-label={isMuted ? "Unmute" : "Mute"}
                 onClick={toggleMute}
-                className="p-1.5 sm:p-2 rounded-md hover:bg-white/15 text-white transition-colors"
+                className="p-1.5 sm:p-2 rounded-md hover:bg-white/15 text-white transition-colors focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none"
               >
                 {isMuted || volume === 0 ? (
                   <VolumeX size={18} />
@@ -1559,7 +1574,7 @@ export default function VideoPlayer({
                 value={isMuted ? 0 : volume}
                 onChange={handleVolumeChange}
                 aria-label="Volume slider"
-                className="w-14 sm:w-20 h-1.5 accent-primary bg-white/30 rounded-lg cursor-pointer transition-all"
+                className="w-14 sm:w-20 h-1.5 accent-primary bg-white/30 rounded-lg cursor-pointer transition-all focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none"
               />
             </div>
 
@@ -1578,7 +1593,7 @@ export default function VideoPlayer({
               <button
                 type="button"
                 onClick={() => setShowSpeedMenu((v) => !v)}
-                className="px-2 py-1 rounded-md hover:bg-white/15 text-xs font-semibold text-white tracking-wide transition-colors"
+                className="px-2 py-1 rounded-md hover:bg-white/15 text-xs font-semibold text-white tracking-wide transition-colors focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none"
               >
                 {playbackRate}x
               </button>
@@ -1593,7 +1608,7 @@ export default function VideoPlayer({
                       key={rate}
                       type="button"
                       onClick={() => handleRateSelect(rate)}
-                      className={`px-3 py-1 text-left text-xs font-medium hover:bg-primary hover:text-white transition-colors ${
+                      className={`px-3 py-1 text-left text-xs font-medium hover:bg-primary hover:text-white transition-colors focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none ${
                         playbackRate === rate ? "text-primary font-bold" : "text-white"
                       }`}
                     >
@@ -1610,7 +1625,7 @@ export default function VideoPlayer({
               title="Picture in Picture"
               aria-label="Picture in Picture"
               onClick={togglePiP}
-              className="p-1.5 sm:p-2 rounded-md hover:bg-white/15 text-white transition-colors"
+              className="p-1.5 sm:p-2 rounded-md hover:bg-white/15 text-white transition-colors focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none"
             >
               <PictureInPicture2 size={17} />
             </button>
@@ -1621,7 +1636,7 @@ export default function VideoPlayer({
               title={isFullscreen ? "Exit Fullscreen (F)" : "Fullscreen (F)"}
               aria-label={isFullscreen ? "Exit Fullscreen" : "Fullscreen"}
               onClick={toggleFullscreen}
-              className="p-1.5 sm:p-2 rounded-md hover:bg-white/15 text-white transition-colors"
+              className="p-1.5 sm:p-2 rounded-md hover:bg-white/15 text-white transition-colors focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none"
             >
               {isFullscreen ? <Minimize size={18} /> : <Maximize size={18} />}
             </button>

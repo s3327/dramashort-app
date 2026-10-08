@@ -632,7 +632,7 @@ export default function WatchPlayerIsland({
             <button
               type="button"
               onClick={handleRetryPlayback}
-              className="px-4 py-2 text-xs font-semibold rounded-full bg-btn-primary text-btn-primary-text hover:bg-btn-primary-hover transition-colors"
+              className="px-4 py-2 text-xs font-semibold rounded-full bg-btn-primary text-btn-primary-text hover:bg-btn-primary-hover transition-colors focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none"
             >
               Retry
             </button>
@@ -673,7 +673,7 @@ export default function WatchPlayerIsland({
                 href={`/contact?category=playback&title=${encodeURIComponent(
                   drama.slug
                 )}&ep=${currentEpisode}&titleName=${encodeURIComponent(drama.title)}`}
-                className="inline-flex items-center gap-1.5 text-xs font-semibold text-text-muted hover:text-danger px-3 py-1.5 rounded-md border border-border bg-bg hover:border-danger/30 transition-colors"
+                className="inline-flex items-center gap-1.5 text-xs font-semibold text-text-muted hover:text-danger px-3 py-1.5 rounded-md border border-border bg-bg hover:border-danger/30 transition-colors focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none"
               >
                 <Flag size={13} strokeWidth={2} />
                 Report Issue
@@ -737,7 +737,7 @@ export default function WatchPlayerIsland({
                     type="button"
                     onClick={() => setActiveTab(index)}
                     aria-current={active}
-                    className={`flex-1 min-w-[54px] rounded-md py-1.5 text-xs font-semibold transition-colors ${
+                    className={`flex-1 min-w-[54px] rounded-md py-1.5 text-xs font-semibold transition-colors focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none ${
                       active
                         ? "bg-primary text-text-light shadow-sm"
                         : "bg-bg border border-border text-text-muted hover:text-text hover:border-primary/50"
@@ -765,6 +765,7 @@ export default function WatchPlayerIsland({
                     key={ep}
                     title="Coming soon"
                     aria-disabled="true"
+                    aria-label={`Episode ${ep}, coming soon`}
                     className="aspect-square rounded-lg text-xs font-bold flex flex-col items-center justify-center bg-bg/50 border border-border/40 text-text-muted/40 cursor-not-allowed select-none"
                   >
                     <span>{ep}</span>
@@ -779,7 +780,8 @@ export default function WatchPlayerIsland({
                   type="button"
                   onClick={() => handleSelectEpisode(ep)}
                   aria-current={active}
-                  className={`aspect-square rounded-lg text-xs font-bold transition-all duration-150 ${
+                  aria-label={active ? `Episode ${ep}, currently playing` : `Episode ${ep}`}
+                  className={`aspect-square rounded-lg text-xs font-bold transition-all duration-150 focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none ${
                     active
                       ? "bg-btn-primary text-btn-primary-text ring-2 ring-primary ring-offset-2 ring-offset-bg shadow-md scale-105"
                       : "bg-bg border border-border text-text-muted hover:text-text hover:border-primary/50 hover:bg-surface-elevated"

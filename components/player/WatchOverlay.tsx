@@ -175,7 +175,7 @@ export default function WatchOverlay({
       <div className="pointer-events-auto flex items-center justify-between gap-3 px-4 pt-[max(0.75rem,env(safe-area-inset-top))] pb-3 bg-gradient-to-b from-black/80 via-black/40 to-transparent">
         <Link
           href={`/drama/${drama.slug}`}
-          className="p-2 -ml-1 rounded-full text-white/90 hover:text-white hover:bg-white/10 transition-colors"
+          className="p-2 -ml-1 rounded-full text-white/90 hover:text-white hover:bg-white/10 transition-colors focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none"
           aria-label="Back to drama details"
         >
           <ArrowLeft size={20} />
@@ -194,7 +194,7 @@ export default function WatchOverlay({
           <button
             type="button"
             onClick={handleToggleFullscreen}
-            className="p-2 rounded-full text-white/90 hover:text-white hover:bg-white/10 transition-colors"
+            className="p-2 rounded-full text-white/90 hover:text-white hover:bg-white/10 transition-colors focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none"
             aria-label={isFullscreen ? "Exit Fullscreen" : "Fullscreen"}
           >
             {isFullscreen ? <Minimize size={18} /> : <Maximize size={18} />}
@@ -203,7 +203,7 @@ export default function WatchOverlay({
           <button
             type="button"
             onClick={handleShare}
-            className="p-2 rounded-full text-white/90 hover:text-white hover:bg-white/10 transition-colors"
+            className="p-2 rounded-full text-white/90 hover:text-white hover:bg-white/10 transition-colors focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none"
             aria-label="Share episode"
           >
             <Share2 size={18} />
@@ -213,7 +213,12 @@ export default function WatchOverlay({
 
       {/* Share Toast Notification */}
       {shareToast && (
-        <div className="self-center bg-black/85 border border-white/20 text-white text-xs px-4 py-2 rounded-full backdrop-blur-md shadow-xl animate-in fade-in">
+        <div
+          role="status"
+          aria-live="polite"
+          aria-atomic="true"
+          className="self-center bg-black/85 border border-white/20 text-white text-xs px-4 py-2 rounded-full backdrop-blur-md shadow-xl animate-in fade-in"
+        >
           {shareToast}
         </div>
       )}
@@ -274,7 +279,7 @@ export default function WatchOverlay({
           <button
             type="button"
             onClick={handleToggleMute}
-            className="flex items-center gap-2 px-4 py-2 rounded-full bg-black/80 backdrop-blur-md border border-white/20 text-white shadow-2xl hover:bg-black/95 active:scale-95 transition-all text-xs sm:text-sm font-semibold tracking-wide"
+            className="flex items-center gap-2 px-4 py-2 rounded-full bg-black/80 backdrop-blur-md border border-white/20 text-white shadow-2xl hover:bg-black/95 active:scale-95 transition-all text-xs sm:text-sm font-semibold tracking-wide focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none"
             aria-label="Tap to unmute audio"
           >
             <VolumeX size={16} className="text-primary animate-pulse" />
@@ -309,7 +314,7 @@ export default function WatchOverlay({
         <button
           type="button"
           onClick={handleToggleFavorite}
-          className="flex flex-col items-center gap-1 text-white group"
+          className="flex flex-col items-center gap-1 text-white group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary rounded-xl"
           aria-label={favorited ? "Remove from favorites" : "Add to favorites"}
         >
           <div
@@ -330,7 +335,7 @@ export default function WatchOverlay({
         <button
           type="button"
           onClick={onOpenEpisodes}
-          className="flex flex-col items-center gap-1 text-white group"
+          className="flex flex-col items-center gap-1 text-white group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary rounded-xl"
           aria-label="View all episodes"
         >
           <div className="p-3 rounded-full bg-black/60 hover:bg-black/80 text-white/90 hover:text-white border border-white/10 backdrop-blur-md transition-all shadow-lg">
@@ -345,7 +350,7 @@ export default function WatchOverlay({
         <button
           type="button"
           onClick={handleShare}
-          className="flex flex-col items-center gap-1 text-white group"
+          className="flex flex-col items-center gap-1 text-white group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary rounded-xl"
           aria-label="Share episode"
         >
           <div className="p-3 rounded-full bg-black/60 hover:bg-black/80 text-white/90 hover:text-white border border-white/10 backdrop-blur-md transition-all shadow-lg">
@@ -361,7 +366,7 @@ export default function WatchOverlay({
           href={`/contact?category=playback&title=${encodeURIComponent(
             drama.slug
           )}&ep=${currentEpisode}&titleName=${encodeURIComponent(drama.title)}`}
-          className="flex flex-col items-center gap-1 text-white/80 hover:text-red-400 group"
+          className="flex flex-col items-center gap-1 text-white/80 hover:text-red-400 group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary rounded-xl"
           aria-label="Report playback issue"
         >
           <div className="p-3 rounded-full bg-black/60 hover:bg-black/80 text-white/90 hover:text-red-400 border border-white/10 backdrop-blur-md transition-all shadow-lg">
@@ -390,7 +395,7 @@ export default function WatchOverlay({
             value={progressRatio}
             onChange={handleScrubChange}
             aria-label="Video seek scrubber"
-            className="w-full h-1 bg-white/20 rounded-full appearance-none cursor-pointer accent-primary focus:outline-none"
+            className="w-full h-1 bg-white/20 rounded-full appearance-none cursor-pointer accent-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
           />
         </div>
       </div>

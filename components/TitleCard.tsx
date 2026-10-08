@@ -22,7 +22,10 @@ export default function TitleCard({
   titleClassName?: string;
 }) {
   return (
-    <Link href={href} className="group">
+    <Link
+      href={href}
+      className="group block rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-bg"
+    >
       <div className="relative aspect-[2/3] rounded-md overflow-hidden bg-surface shadow-sm">
         <Image
           src={poster}

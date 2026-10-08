@@ -101,7 +101,7 @@ export default function EpisodeSheet({
             type="button"
             onClick={onClose}
             aria-label="Close episodes sheet"
-            className="p-1.5 rounded-full text-text-muted hover:text-text hover:bg-surface-elevated transition-colors"
+            className="p-1.5 rounded-full text-text-muted hover:text-text hover:bg-surface-elevated transition-colors focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none"
           >
             <X size={18} />
           </button>
@@ -118,7 +118,7 @@ export default function EpisodeSheet({
                   type="button"
                   onClick={() => setActiveTab(idx)}
                   aria-current={active}
-                  className={`px-3 py-1.5 rounded-md text-xs font-semibold whitespace-nowrap transition-colors ${
+                  className={`px-3 py-1.5 rounded-md text-xs font-semibold whitespace-nowrap transition-colors focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none ${
                     active
                       ? "bg-primary text-text-light shadow-sm"
                       : "bg-bg border border-border text-text-muted hover:text-text hover:border-primary/50"
@@ -149,6 +149,7 @@ export default function EpisodeSheet({
                     key={ep}
                     title="Coming soon"
                     aria-disabled="true"
+                    aria-label={`Episode ${ep}, coming soon`}
                     className="aspect-square rounded-xl text-xs font-bold flex flex-col items-center justify-center bg-bg/50 border border-border/40 text-text-muted/40 cursor-not-allowed select-none"
                   >
                     <span>{ep}</span>
@@ -168,7 +169,14 @@ export default function EpisodeSheet({
                     onClose();
                   }}
                   aria-current={active}
-                  className={`relative aspect-square rounded-xl text-xs font-bold flex flex-col items-center justify-center transition-all duration-150 ${
+                  aria-label={
+                    active
+                      ? `Episode ${ep}, currently playing`
+                      : isLocked
+                      ? `Episode ${ep}, locked`
+                      : `Episode ${ep}`
+                  }
+                  className={`relative aspect-square rounded-xl text-xs font-bold flex flex-col items-center justify-center transition-all duration-150 focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none ${
                     active
                       ? "bg-btn-primary text-btn-primary-text ring-2 ring-primary ring-offset-2 ring-offset-surface shadow-md scale-105"
                       : "bg-bg border border-border text-text hover:text-primary hover:border-primary/50 hover:bg-surface-elevated"

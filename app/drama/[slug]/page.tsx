@@ -167,7 +167,8 @@ export default async function DramaPage({
                 <Link
                   key={ep}
                   href={`/watch/${drama.slug}?ep=${ep}`}
-                  className="aspect-square rounded-lg text-xs font-bold flex items-center justify-center bg-surface border border-border text-text hover:bg-surface-elevated hover:border-primary/50 transition-colors"
+                  aria-label={`Episode ${ep}`}
+                  className="aspect-square rounded-lg text-xs font-bold flex items-center justify-center bg-surface border border-border text-text hover:bg-surface-elevated hover:border-primary/50 transition-colors focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none"
                 >
                   {ep}
                 </Link>
@@ -177,7 +178,7 @@ export default async function DramaPage({
               <div className="mt-3">
                 <Link
                   href={`/watch/${drama.slug}`}
-                  className="text-xs font-semibold text-link hover:text-link-hover transition-colors"
+                  className="text-xs font-semibold text-link hover:text-link-hover transition-colors focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none rounded"
                 >
                   View all {drama.totalEpisodes} episodes in player →
                 </Link>

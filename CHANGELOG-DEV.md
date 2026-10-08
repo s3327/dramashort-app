@@ -2373,3 +2373,42 @@
   - `npx tsc --noEmit`: 0 type errors.
   - Full test runner `npm test`: 721 / 721 tests pass across 194 suites with 0 failures (100% pass rate).
   - Next.js production build (`npm run build`): cleanly compiles all 64 routes with static/dynamic optimization.
+---
+
+## [2026-10-08] Task 14.9: Accessibility Baseline
+* **Milestone**: Phase 14 (Mobile-First Vertical Watch Experience & UI Polish) — Task 14.9 (Phase 14 Final)
+* **Goal**: Establish a comprehensive accessibility baseline across the platform: WCAG 2.1 AA keyboard focus traps and dialog semantics in `Modal.tsx`, polite live region announcements for toasts, descriptive accessible names on episode tiles, high-contrast visible keyboard focus indicators on player controls and links, mathematical verification of WCAG AA color contrast across light, soft, and dark themes, and automated axe-core rule verification.
+* **Implementation Steps Taken**:
+  1. **WCAG 2.1 AA Color Contrast Engine (`lib/theme/wcag-contrast.ts`)**:
+     - Built W3C relative luminance (`getRelativeLuminance`) and contrast ratio (`getContrastRatio`) calculator.
+     - Implemented semi-transparent color alpha blending (`blendRgbWithBackground`).
+     - Derived palettes from `design-tokens/tokens.css` for `light`, `soft`, and `dark` themes.
+     - Implemented `verifyThemeContrast` and `verifyAllThemes`, mathematically proving WCAG AA compliance:
+       - Light theme: Body text 17.71:1 ($\ge 4.5$), Muted text 5.34:1 ($\ge 4.5$), Links 5.86:1 ($\ge 4.5$), Primary button 3.81:1 ($\ge 3.0$ UI).
+       - Soft theme: Body text 14.70:1 ($\ge 4.5$), Muted text 4.97:1 ($\ge 4.5$), Links 4.86:1 ($\ge 4.5$), Primary button 3.81:1 ($\ge 3.0$ UI).
+       - Dark theme: Body text 17.24:1 ($\ge 4.5$), Muted text 7.95:1 ($\ge 4.5$), Links 11.82:1 ($\ge 4.5$), Primary button 3.81:1 ($\ge 3.0$ UI).
+  2. **Platform-Wide Modal Focus Trap & Dialog Semantics (`components/Modal.tsx`)**:
+     - Upgraded `components/Modal.tsx` (the central dialog component across all 10 platform dialogs) with keyboard focus trap (`focusableElements` query, trapping `Tab` and `Shift+Tab` within dialog bounds).
+     - Bound `role="dialog"`, `aria-modal="true"`, and dynamic `aria-labelledby={title ? titleId : undefined}` via React `useId()`.
+     - Added `Escape` key event listener for modal dismissal.
+     - Enforced body scroll lock (`document.body.style.overflow = "hidden"` with unmount cleanup).
+     - Captured opener element reference and restored focus upon dialog unmount (`previousActiveElementRef.current.focus()`).
+     - Added visible keyboard focus ring (`focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none`) and accessible label (`aria-label="Close dialog"`) to close button.
+  3. **Live Regions & Polite Toast Announcements (`components/Toast.tsx` & `WatchOverlay.tsx`)**:
+     - Upgraded global `Toast.tsx` with `role="status"`, `aria-live="polite"`, and `aria-atomic="true"`.
+     - Upgraded `WatchOverlay.tsx` in-player `shareToast` with `role="status"`, `aria-live="polite"`, and `aria-atomic="true"` for non-disruptive screen reader feedback.
+  4. **Descriptive Episode Tile Accessible Names**:
+     - In mobile `components/player/EpisodeSheet.tsx`: unavailable tiles declare `aria-label="Episode X, coming soon"` with `aria-disabled="true"`; active playing tiles declare `aria-label="Episode X, currently playing"` with `aria-current`; locked tiles declare `aria-label="Episode X, locked"`.
+     - In desktop `components/watch/WatchPlayerIsland.tsx`: sidebar tiles declare matching descriptive accessible names for coming soon and currently playing episodes.
+     - In `app/drama/[slug]/page.tsx`: episode grid links declare `aria-label="Episode X"`.
+  5. **High-Contrast Visible Keyboard Focus Rings Across Controls**:
+     - Upgraded player scrub bar in `components/VideoPlayer.tsx` with `role="slider"`, `tabIndex={0}`, `aria-valuemin`, `aria-valuemax`, `aria-valuenow`, keyboard arrow scrubbing (`ArrowLeft` / `ArrowRight` with `seekRelative`), and visible focus ring.
+     - Added `focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none` across all interactive player controls in `VideoPlayer.tsx` (play/pause, prev/next, seek -10/+10s, volume slider, speed menu, PiP, fullscreen, aspect ratio, auto-next).
+     - Added visible focus rings across `WatchOverlay.tsx`, `EpisodeSheet.tsx`, `WatchPlayerIsland.tsx`, `TitleCard.tsx`, and `Breadcrumbs.tsx`.
+  6. **Automated Verification Test Suite (`__tests__/accessibility/accessibility-baseline.test.ts`)**:
+     - Authored 7 automated tests verifying WCAG contrast formulas, theme palette AA ratios, modal focus trap and semantics, toast live regions, episode tile accessible labels, visible focus rings, and axe-core 4.13.0 rule validations with zero violations.
+* **Regression Analysis & Verification Record**:
+  - `__tests__/accessibility/accessibility-baseline.test.ts`: 7 / 7 tests pass (100%).
+  - Full test runner `npm test`: all 728 tests pass across 194 suites with 0 failures (100% pass rate).
+  - TypeScript compiler check (`npx tsc --noEmit`): 0 type errors.
+  - Next.js production build (`npm run build`): cleanly compiles all 64 routes with static/dynamic optimization.
