@@ -2622,13 +2622,54 @@ These items stay ✅ for history; the gaps are tracked as new tasks.
 ---
 
 ### Task 16.8: Platform Settings Persistence
-* **Status**: ⏳ Planned
-* **Problem**: Toggles in `app/admin/settings/page.tsx` are local state only; nothing is saved.
-* **Planned Specifications**:
-  1. Table `app_settings` (`key`, `value jsonb`, `updated_by`, `updated_at`) with a typed schema.
-  2. Settings: site name, maintenance mode (wired to `/maintenance` through middleware), signup enabled, default free episodes (Phase 8), ads configuration, feature flags (Task 15.5).
-  3. Read on the server with caching; writes are admin-only and audited.
-* **Verification**: enabling maintenance mode routes public pages to `/maintenance` while admin stays reachable.
+* **Status**: ✅ Completed
+* **Depends on**: 10.4, 15.5, 16.7
+* **Target Files**:
+  - `supabase/content/supabase/migrations/20261009180000_platform_settings.sql`
+  - `supabase/user/supabase/migrations/20261009180000_platform_settings.sql`
+  - `types/settings.ts`
+  - `types/supabase-content.ts`
+  - `lib/validation/settings.ts`
+  - `lib/server/settings.ts`
+  - `lib/middleware/maintenance.ts`
+  - `lib/middleware/route-decision.ts`
+  - `middleware.ts`
+  - `app/api/admin/settings/route.ts`
+  - `app/admin/settings/page.tsx`
+  - `__tests__/admin/platform-settings.test.ts`
+* **Delivered Capabilities**:
+  1. Database Schema & Migration Layer:
+     - Authored `20261009180000_platform_settings.sql` in both Content and User databases.
+     - Created `public.app_settings` (`key TEXT PRIMARY KEY`, `value JSONB NOT NULL`, `description TEXT`, `updated_by UUID REFERENCES auth.users(id) ON DELETE SET NULL`, `created_at TIMESTAMPTZ`, `updated_at TIMESTAMPTZ`) with `trg_app_settings_updated_at` trigger.
+     - Seeded initial canonical configuration keys: `general`, `maintenance`, `auth`, `playback`, `ads`, `features`.
+     - Configured RLS granting `SELECT` to `anon`, `authenticated`, and `service_role`; mutations restricted strictly to `service_role`.
+  2. Domain Modeling & Architecture Layer:
+     - Created client-safe `types/settings.ts` defining typed interfaces: `GeneralSettings`, `MaintenanceSettings`, `AuthSettings`, `PlaybackSettings`, `AdsSettings`, `FeaturesSettings`, `PlatformSettings`, and typed update inputs.
+     - Defined default constants in `types/settings.ts` to uphold architectural boundary isolation (`service-layer-split`).
+  3. Validation Engine (`lib/validation/settings.ts`):
+     - Validates payload schemas for all sections (site name lengths, URL formats, bypass secret length, free episode ranges, feature flag booleans).
+  4. Server Operations & Multi-Tier Caching (`lib/server/settings.ts`):
+     - `getPlatformSettingsServer()`: Fetches settings with Next.js `unstable_cache` (tag: `platform_settings`) and in-memory TTL caching with fallback to safe defaults.
+     - `updatePlatformSettingSectionServer()`: Admin-only mutating function writing to DB, recording audit log (`admin_audit_log`), and revalidating cache tag `platform_settings`.
+  5. Edge Maintenance Middleware Enforcement:
+     - Created Edge-safe `lib/middleware/maintenance.ts` and wired into `lib/middleware/route-decision.ts` and `middleware.ts`.
+     - When maintenance mode is active, public routes (`/`, `/drama/*`, `/watch/*`, `/account/*`, `/browse`) redirect or rewrite to `/maintenance`.
+     - The admin operations console (`/admin`, `/api/admin`, `/admin/login`, subdomain `admin.dramashort.app`) and static assets remain completely accessible.
+  6. Admin Settings REST API Handler:
+     - `app/api/admin/settings/route.ts`: Protected with `requireAdmin({ roles: ['admin'] })` (editors denied with 403). Supports `GET` (returns platform settings) and `PATCH` (validates section and payload, applies atomic update).
+  7. Modernized Admin Settings Console UI (`app/admin/settings/page.tsx`):
+     - Completely replaced mock / ephemeral local state with live querying against `/api/admin/settings`.
+     - Tab navigation across General, Maintenance, Authentication, Playback, Advertising, and Features.
+     - Dirty change tracking per section with active "Save" buttons and loading spinners.
+     - Modal confirmation barrier for toggling Maintenance Mode on or off to prevent accidental production outages.
+     - Toast notifications (`useToast`) on save and error.
+  8. Automated Verification Test Suite (`__tests__/admin/platform-settings.test.ts`):
+     - 20 comprehensive unit and integration tests covering migrations, schema validation, server operations, edge maintenance routing, admin exemption, bypass headers, and API route security.
+* **Verification**:
+  - `npx tsc --noEmit` passed with 0 errors.
+  - `__tests__/admin/platform-settings.test.ts` passed 20/20 tests.
+  - Full test runner `npm test` passed 900/900 tests across 238 suites (100% pass rate).
+  - Next.js production build (`npm run build`) compiled all static and dynamic routes cleanly.
 
 ---
 

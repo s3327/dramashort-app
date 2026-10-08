@@ -7,6 +7,7 @@ import {
   resolveRoute,
   type SessionState,
 } from "@/lib/middleware/route-decision";
+import { isMaintenanceModeActive } from "@/lib/middleware/maintenance";
 import { logger, getRequestIdFromHeaders } from "@/lib/observability/logger";
 import { reportError } from "@/lib/observability/error-reporter";
 
@@ -41,7 +42,14 @@ export async function middleware(request: NextRequest) {
       state = getUserRole(session.user) === "admin" ? "admin" : "user";
     }
 
-    const decision = decideRoute(route, state, search, searchParams.get("returnUrl"));
+    const maintenanceMode = await isMaintenanceModeActive(request);
+    const decision = decideRoute(
+      route,
+      state,
+      search,
+      searchParams.get("returnUrl"),
+      maintenanceMode
+    );
     const forwardedRequest = { request: { headers: requestHeaders } };
 
     let response: NextResponse;

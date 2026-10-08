@@ -70,14 +70,34 @@ function serve(route: ResolvedRoute, search: string): RouteDecision {
 /**
  * @param search  the request's query string including "?" (or "")
  * @param returnUrlParam  the `returnUrl` query value, used on /admin/login
+ * @param maintenanceMode whether platform maintenance mode is currently active
  */
 export function decideRoute(
   route: ResolvedRoute,
   session: SessionState,
   search: string = "",
-  returnUrlParam: string | null = null
+  returnUrlParam: string | null = null,
+  maintenanceMode: boolean = false
 ): RouteDecision {
   const path = route.effectivePath;
+
+  // Maintenance mode handling
+  if (maintenanceMode) {
+    if (route.area === "admin" || route.area === "admin-api") {
+      // Admin area remains accessible to manage platform and toggle maintenance off
+    } else if (path === "/maintenance") {
+      return serve(route, search);
+    } else if (
+      path.startsWith("/api/health") ||
+      path.startsWith("/_next") ||
+      path === "/favicon.ico" ||
+      path === "/icon.png"
+    ) {
+      return serve(route, search);
+    } else {
+      return { type: "redirect", location: "/maintenance" };
+    }
+  }
 
   switch (route.area) {
     case "admin-api":
