@@ -49,7 +49,7 @@
 | **Phase 13** | 🟠 High | Backend Architecture Consolidation (database topology ADR-0003, server-rendered catalog, service split, taxonomy scalability, observability) | ✅ Completed (13.1–13.6 ✅) | Decision gate for Phase 8; faster pages; operability |
 | **Phase 14** | 🟠 High | Mobile-First Vertical Watch Experience & UI Polish | ✅ Completed (14.1–14.9 ✅) | Core 9:16 viewing experience on phones |
 | **Phase 15** | 🟠 High | Product Analytics, Engagement Tracking & Real Trending | ✅ Completed (15.1–15.5 ✅) | Real views, trending and dashboard; data to tune the paywall |
-| **Phase 16** | 🟠 High | Admin Content Operations Console (episodes, uploads, scheduling, taxonomy, users, audit log, support inbox) | 🚧 In progress (16.1–16.10 ✅) | Catalog operable end-to-end without SQL |
+| **Phase 16** | 🟠 High | Admin Content Operations Console (episodes, uploads, scheduling, taxonomy, users, audit log, support inbox, bulk import) | ✅ Completed (16.1–16.11 ✅) | Catalog operable end-to-end without SQL |
 | **Phase 17** | 🟡 Medium | Quality Engineering, CI & Documentation Integrity (continuous) | ⏳ Planned | Regression safety; trustworthy status docs |
 
 > **Execution order (set by the 2026-10-04 platform audit)**: Phase numbers are stable identifiers, not a sequence. Remaining work executes as **10 → 11 → 12 → 13 → 14 → 15 → 16 → 8 → 9**, with Phase 17 running continuously alongside. Gates and dependencies are defined in [§12](#12-platform-audit-remediation-track-phases-1017).
@@ -2787,14 +2787,51 @@ These items stay ✅ for history; the gaps are tracked as new tasks.
 ---
 
 ### Task 16.11: Bulk Import Pipeline (Replaces the `/admin/import` Placeholder)
-* **Status**: ⏳ Planned
-* **Problem**: `app/admin/import/page.tsx` is a placeholder for bulk import from partner sources such as DramaBoss.
-* **Planned Specifications**:
-  1. Import manifest (JSON or CSV) covering drama metadata, episodes, and media references.
-  2. Dry-run validation report before committing.
-  3. Idempotent upsert keyed by `external_source` + `external_id` on dramas and episodes.
-  4. `import_jobs` table tracking status, counts, and errors.
-* **Verification**: re-running the same manifest produces no duplicates and reports zero changes.
+* **Status**: ✅ Completed
+* **Target Files**:
+  - `supabase/content/supabase/migrations/20261009210000_bulk_import_pipeline.sql`
+  - `supabase/user/supabase/migrations/20261009210000_bulk_import_pipeline.sql`
+  - `types/import.ts`
+  - `lib/auth/permissions.ts`
+  - `lib/validation/import.ts`
+  - `lib/server/admin-import.ts`
+  - `app/api/admin/import/validate/route.ts`
+  - `app/api/admin/import/execute/route.ts`
+  - `app/api/admin/import/jobs/route.ts`
+  - `app/admin/import/page.tsx`
+  - `__tests__/admin/bulk-import-pipeline.test.ts`
+* **Delivered Capabilities**:
+  1. Database Schema & Dual Migrations:
+     - Authored `20261009210000_bulk_import_pipeline.sql` across Content and User databases.
+     - Added `external_source TEXT` and `external_id TEXT` to `titles` and `episodes` tables with partial unique indexes `idx_titles_external_ref` and `idx_episodes_external_ref` for fast, conflict-free lookups.
+     - Created `public.import_jobs` table (`id`, `actor_id`, `actor_email`, `source_name`, `file_name`, `status`, `total_dramas`, `total_episodes`, `created_dramas`, `updated_dramas`, `created_episodes`, `updated_episodes`, `unchanged_records`, `failed_records`, `validation_report`, `errors`, `created_at`, `updated_at`, `completed_at`) with trigger `trg_import_jobs_updated_at` and index `idx_import_jobs_created_at`.
+  2. Domain Modeling & RBAC Permissions Matrix:
+     - Created `types/import.ts` defining domain interfaces: `ImportSourceFormat`, `ImportDramaManifest`, `ImportEpisodeManifest`, `ImportValidationSummary`, `ImportJobItem`, `ExecuteImportResult`.
+     - Integrated `import:read` and `import:write` in `lib/auth/permissions.ts` for `admin` and `editor` roles.
+  3. Multi-Format Ingestion & Validation Engine:
+     - Implemented `lib/validation/import.ts` supporting DramaBoss partner JSON (`drama_title`, `intro`, `items`), generic JSON format, and RFC-4180 compliant CSV parser (`parseCsvRows`).
+     - Added dry-run validation engine `validateImportDramas` validating slug collision, title lengths, genres, status, episode numbers, durations, and media URLs.
+  4. Server Operations Layer (`lib/server/admin-import.ts`):
+     - `validateImportManifestServer`: runs pre-flight dry run against the live database without mutating state, calculating entity changes (new vs existing vs unchanged).
+     - `executeImportJobServer`: idempotent upsert engine that creates or updates dramas and episodes, maintains referential integrity, records audit logs (`import.job_completed`), and writes job progress to `import_jobs`.
+     - `getImportJobsServer`: historical job reader querying past imports.
+  5. Secured Admin REST APIs:
+     - `POST /api/admin/import/validate`: Pre-flight dry-run validator returning change summary.
+     - `POST /api/admin/import/execute`: Ingestion executor with atomic batch processing.
+     - `GET /api/admin/import/jobs`: Historical job viewer with recent import summaries.
+     - Guarded by `requireAdmin` enforcing `import:read` and `import:write`.
+  6. Admin Import Console Wizard UI (`app/admin/import/page.tsx`):
+     - Replaced `AdminPlaceholderPage` with a 3-step import wizard:
+       - **Step 1: Ingestion & Input**: Source format selector (DramaBoss JSON, Generic JSON, CSV), drag-and-drop file upload, raw manifest text editor, sample template loaders.
+       - **Step 2: Pre-Flight Dry Run**: Entity counts (Dramas & Episodes to Create / Update / Unchanged), validation alerts, preview table with drama and episode details.
+       - **Step 3: Execute & Job Results**: Progress state, real-time result banner, summary cards, and past import job history table.
+  7. Automated Verification Test Suite (`__tests__/admin/bulk-import-pipeline.test.ts`):
+     - 11 automated unit and integration tests verifying dual migrations, manifest parsing (DramaBoss JSON, Generic JSON, CSV), dry-run pre-flight calculation, idempotent re-run (reporting zero changes and 100% unchanged), and API route security guards.
+* **Verification**:
+  - `npx tsc --noEmit` passed with 0 errors.
+  - `__tests__/admin/bulk-import-pipeline.test.ts` passed 11/11 tests (100%).
+  - Full test runner `npm test` passed 945/945 tests across 258 suites with 0 failures (100% pass rate).
+  - Next.js production build (`npm run build`) compiled all 84 routes cleanly including `/admin/import` and `/api/admin/import/*`.
 
 ---
 

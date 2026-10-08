@@ -3046,3 +3046,45 @@
   - Full test runner `npm test`: all 934 tests pass across 251 suites with 0 failures (100% pass rate).
   - TypeScript compiler check (`npx tsc --noEmit`): 0 type errors.
   - Next.js production build (`npm run build`): cleanly compiles all 84 static and dynamic routes.
+---
+
+## [2026-10-09] Task 16.11: Bulk Import Pipeline (Replaces the `/admin/import` Placeholder)
+* **Milestone**: Phase 16 (Admin Content Operations Console) — Task 16.11 (Phase 16 Finale)
+* **Goal**: Deliver a production-ready, idempotent bulk import engine for partner manifests (DramaBoss JSON, generic JSON, and tabular CSV); establish `external_source` and `external_id` tracking on dramas and episodes; implement pre-flight dry-run validation without data mutation; persist historical execution records in `import_jobs`; and replace `AdminPlaceholderPage` on `/admin/import` with a full 3-step import wizard.
+* **Implementation Steps Taken**:
+  1. **Dual Database Migrations (`supabase/content/supabase/migrations/20261009210000_bulk_import_pipeline.sql` & `supabase/user/supabase/migrations/20261009210000_bulk_import_pipeline.sql`)**:
+     - Added `external_source TEXT` and `external_id TEXT` to `titles` and `episodes` tables.
+     - Added partial unique indexes `idx_titles_external_ref` on `(external_source, external_id) WHERE external_source IS NOT NULL AND external_id IS NOT NULL` and `idx_episodes_external_ref` on `(external_source, external_id) WHERE external_source IS NOT NULL AND external_id IS NOT NULL`.
+     - Created `public.import_jobs` table (`id`, `actor_id`, `actor_email`, `source_name`, `file_name`, `status`, `total_dramas`, `total_episodes`, `created_dramas`, `updated_dramas`, `created_episodes`, `updated_episodes`, `unchanged_records`, `failed_records`, `validation_report`, `errors`, `created_at`, `updated_at`, `completed_at`).
+     - Added automated trigger `trg_import_jobs_updated_at` firing `BEFORE UPDATE`.
+     - Added index `idx_import_jobs_created_at` on `created_at DESC`.
+     - Granted appropriate permissions to `authenticated` and `service_role`.
+  2. **Domain Models & RBAC Permissions (`types/import.ts`, `lib/auth/permissions.ts`)**:
+     - Defined TypeScript types: `ImportSourceFormat`, `ImportDramaManifest`, `ImportEpisodeManifest`, `ImportValidationSummary`, `ImportJobItem`, `ExecuteImportResult`.
+     - Added `import:read` and `import:write` to `AdminPermission`.
+     - Granted `import:read` and `import:write` to `admin` and `editor` roles in `ROLE_PERMISSIONS`.
+  3. **Multi-Format Parsing & Validation Engine (`lib/validation/import.ts`)**:
+     - Built `parseCsvRows()` with RFC-4180 standard quotation and escape handling.
+     - Built `parseImportManifest()` normalizing DramaBoss partner JSON (`drama_title`, `intro`, `items`), generic JSON, and CSV into standard `ImportDramaManifest[]`.
+     - Implemented `validateImportDramas()` validating titles, synopsis, genres, statuses, episode numbers, durations, and streaming URLs.
+  4. **Server Operations Layer (`lib/server/admin-import.ts`)**:
+     - `validateImportManifestServer()`: Performs non-destructive dry-run against the database, computing counts of dramas/episodes to create, update, or leave unchanged.
+     - `executeImportJobServer()`: Idempotent upsert engine inserting new or updating existing dramas and episodes, writing audit trail entries (`import.job_completed`), and logging job state to `import_jobs`.
+     - `getImportJobsServer()`: Retrieves historical import jobs ordered by `created_at DESC`.
+  5. **Secured Admin REST APIs (`app/api/admin/import/validate/route.ts`, `app/api/admin/import/execute/route.ts`, `app/api/admin/import/jobs/route.ts`)**:
+     - `POST /api/admin/import/validate`: Protected dry-run validator returning change summary.
+     - `POST /api/admin/import/execute`: Ingestion executor with atomic batch processing.
+     - `GET /api/admin/import/jobs`: Historical job viewer with recent import summaries.
+     - Guarded by `requireAdmin` with `import:read` and `import:write`.
+  6. **Admin Import Wizard UI (`app/admin/import/page.tsx`)**:
+     - Replaced placeholder with a 3-step import wizard:
+       - **Step 1: Manifest Input**: Format selector (DramaBoss JSON, Generic JSON, CSV), drag-and-drop file upload, raw manifest text editor, sample template buttons.
+       - **Step 2: Dry Run Report**: Visual counters for dramas/episodes to create, update, or leave unchanged; validation errors/warnings; drama preview list with episode details.
+       - **Step 3: Execution & History**: Execution progress, status banner, summary cards, and past import job table.
+  7. **Automated Verification Test Suite (`__tests__/admin/bulk-import-pipeline.test.ts`)**:
+     - Authored 11 automated unit and integration tests verifying dual migrations, manifest parsing (DramaBoss JSON, Generic JSON, CSV), dry-run pre-flight calculation, idempotent re-run (reporting zero changes and 100% unchanged), and API route security guards.
+* **Regression Analysis & Verification Record**:
+  - `__tests__/admin/bulk-import-pipeline.test.ts`: 11 / 11 tests pass (100%).
+  - Full test runner `npm test`: all 945 tests pass across 258 suites with 0 failures (100% pass rate).
+  - TypeScript compiler check (`npx tsc --noEmit`): 0 type errors.
+  - Next.js production build (`npm run build`): cleanly compiles all 84 static and dynamic routes.
