@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Suspense } from "react";
+import Link from "next/link";
 import { Flame } from "lucide-react";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
@@ -7,7 +8,9 @@ import TitleCard from "@/components/TitleCard";
 import PageShell from "@/components/PageShell";
 import PaginationIsland from "@/components/islands/PaginationIsland";
 import { formatCompactNumber } from "@/lib/format";
+import { getTrendingTitles } from "@/lib/services/analytics.service";
 import { searchPublishedTitles } from "@/lib/services/content.service";
+import type { TrendingPeriod } from "@/types/analytics";
 
 export const revalidate = 300;
 
@@ -19,8 +22,14 @@ export const metadata: Metadata = {
 
 const PAGE_SIZE = 24;
 
+const PERIOD_DESCRIPTIONS: Record<TrendingPeriod, string> = {
+  "24h": "Ranked by real-time viewer momentum in the past 24 hours.",
+  "7d": "Ranked by 7-day completion-weighted momentum and viewer retention.",
+  "30d": "Ranked by sustained viewer engagement and watch volume over the past month.",
+};
+
 /**
- * Server Component pre-rendering ranked trending titles with server-side pagination.
+ * Server Component pre-rendering ranked trending titles with server-side pagination and period filtering.
  */
 export default async function TrendingPage({
   searchParams,
@@ -31,28 +40,74 @@ export default async function TrendingPage({
   const rawPage = typeof sp?.page === "string" ? sp.page : Array.isArray(sp?.page) ? sp.page[0] : undefined;
   const page = Math.max(1, parseInt(rawPage || "1", 10) || 1);
 
-  const results = await searchPublishedTitles({
-    sort: "trending",
-    page,
-    pageSize: PAGE_SIZE,
-  });
+  const rawPeriod = typeof sp?.period === "string" ? sp.period : Array.isArray(sp?.period) ? sp.period[0] : undefined;
+  const period: TrendingPeriod = rawPeriod === "24h" || rawPeriod === "30d" ? rawPeriod : "7d";
+
+  // Real analytics trending rankings with seamless fallback to catalog searchPublishedTitles
+  const results =
+    (await getTrendingTitles({
+      period,
+      page,
+      pageSize: PAGE_SIZE,
+    })) ||
+    (await searchPublishedTitles({
+      sort: "trending",
+      page,
+      pageSize: PAGE_SIZE,
+    }));
+
 
   return (
     <PageShell className="min-h-screen bg-bg text-text">
       <Header />
 
       <main className="max-w-[1200px] mx-auto px-6 pt-10 pb-16">
-        <div className="flex flex-wrap items-center justify-between gap-3 mb-1.5">
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-2">
           <h1 className="flex items-center gap-2 font-display font-bold text-2xl">
             <Flame size={24} strokeWidth={2.5} className="text-primary fill-primary/20" />
             Trending
           </h1>
-          <span className="rounded-pill bg-surface border border-border text-xs font-semibold text-text-muted px-3 py-1.5">
-            This Week
-          </span>
+
+          {/* Accessible Period Selector Tabs */}
+          <nav aria-label="Trending timeframe" className="flex items-center gap-1 p-1 bg-surface border border-border rounded-full text-xs font-semibold">
+            <Link
+              href="/trending?period=24h"
+              className={`px-3 py-1 rounded-full transition-colors ${
+                period === "24h"
+                  ? "bg-primary text-white shadow-sm"
+                  : "text-text-muted hover:text-text hover:bg-surface-elevated"
+              }`}
+              aria-current={period === "24h" ? "page" : undefined}
+            >
+              24 Hours
+            </Link>
+            <Link
+              href="/trending?period=7d"
+              className={`px-3 py-1 rounded-full transition-colors ${
+                period === "7d"
+                  ? "bg-primary text-white shadow-sm"
+                  : "text-text-muted hover:text-text hover:bg-surface-elevated"
+              }`}
+              aria-current={period === "7d" ? "page" : undefined}
+            >
+              This Week
+            </Link>
+            <Link
+              href="/trending?period=30d"
+              className={`px-3 py-1 rounded-full transition-colors ${
+                period === "30d"
+                  ? "bg-primary text-white shadow-sm"
+                  : "text-text-muted hover:text-text hover:bg-surface-elevated"
+              }`}
+              aria-current={period === "30d" ? "page" : undefined}
+            >
+              30 Days
+            </Link>
+          </nav>
         </div>
+
         <p className="text-sm text-text-muted mb-8">
-          Ranked by how many users pressed play, most viewed first.
+          {PERIOD_DESCRIPTIONS[period]}
         </p>
 
         {results.items.length === 0 ? (
@@ -103,3 +158,4 @@ export default async function TrendingPage({
     </PageShell>
   );
 }
+

@@ -59,3 +59,51 @@ export interface IngestEventsResult {
   anonId: string;
   errors?: string[];
 }
+
+export type TrendingPeriod = "24h" | "7d" | "30d";
+
+export interface TitleStatsDaily {
+  id?: number;
+  titleSlug: string;
+  statDate: string; // YYYY-MM-DD
+  starts: number;
+  completes: number;
+  uniqueViewers: number;
+  avgCompletion: number;
+  ep1ToEp2Rate: number;
+  trendingScore: number;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface EpisodeStatsDaily {
+  id?: number;
+  titleSlug: string;
+  episodeNumber: number;
+  statDate: string; // YYYY-MM-DD
+  starts: number;
+  completes: number;
+  uniqueViewers: number;
+  avgCompletion: number;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface TrendingRankingItem {
+  titleSlug: string;
+  trendingScore: number;
+  starts: number;
+  completes: number;
+  uniqueViewers: number;
+  avgCompletion: number;
+}
+
+export interface RollupJobResult {
+  ok: boolean;
+  date: string;
+  processedTitles: number;
+  processedEpisodes: number;
+  durationMs?: number;
+  error?: string;
+}
+

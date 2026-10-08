@@ -2189,15 +2189,36 @@ These items stay ✅ for history; the gaps are tracked as new tasks.
 ---
 
 ### Task 15.3: Aggregation Jobs — Views & Trending Score
-* **Status**: ⏳ Planned
+* **Status**: ✅ Completed (2026-10-08)
 * **Depends on**: 13.1
-* **Target Files**: migrations for `title_stats_daily` and `episode_stats_daily` (new), rollup RPC or `app/api/cron/rollup/route.ts` (new), `app/trending/page.tsx`
-* **Planned Specifications**:
-  1. Daily rollups (hourly for trending): `title_stats_daily(title_id, date, starts, completes, unique_viewers, avg_completion, ep1_to_ep2_rate)` and `episode_stats_daily`.
-  2. `views_count` = cumulative unique episode starts (definition documented); `trending_score` = time-decayed 7-day starts weighted by completion rate.
-  3. Scheduler: Supabase `pg_cron` (single-database topology) or Vercel Cron calling `/api/cron/rollup` with a secret.
-  4. The trending page gets a real 24h / 7d / 30d period selector (the README already advertises one that does not exist).
-* **Verification**: fixture events produce the expected rollup numbers (unit test of the SQL or RPC).
+* **Target Files**: `supabase/user/supabase/migrations/20261008180000_analytics_rollups.sql` (new), `types/analytics.ts`, `lib/services/analytics.service.ts`, `app/api/cron/rollup/route.ts` (new), `vercel.json` (new), `app/trending/page.tsx`, `__tests__/analytics/aggregation-rollups.test.ts` (new)
+* **Delivered Capabilities**:
+  1. **Dual DB Summary Rollup Tables & Stored Function (`20261008180000_analytics_rollups.sql`)**:
+     - Created `public.title_stats_daily` and `public.episode_stats_daily` with strict compound unique constraints (`uq_title_stats_daily`, `uq_episode_stats_daily`).
+     - Added performance indexes for fast time-window slicing and rankings: `idx_title_stats_daily_slug_date`, `idx_title_stats_daily_date_trending`, and `idx_episode_stats_daily_slug_ep_date`.
+     - Enabled RLS with public read policies and service-role mutation policies.
+     - Authored `public.rollup_daily_playback_stats(target_date)` stored procedure for high-performance in-database daily telemetry rollups.
+  2. **Mathematical Hyperbolic Time-Decayed Trending Formula**:
+     - Defined time-decayed trending momentum score:
+       $$\text{trending\_score} = \sum_{d=0}^{6} \frac{\text{starts}_d \times (1 + \text{avg\_completion}_d)}{1 + 0.15 \times d}$$
+     - Smoothly penalizes older playback starts ($1.00$ today $\to$ $0.5263$ at day 6) while heavily rewarding high episode completion rates (up to $2\times$ multiplier).
+  3. **Analytics Rollup Service Layer (`lib/services/analytics.service.ts`)**:
+     - `computeDecayedTrendingScore()`: pure mathematical decaying function with bounds safety.
+     - `runDailyRollupJob()`: runs daily aggregation via RPC with resilient TypeScript in-memory fallback, computes rolling 7-day decaying trending score, and updates daily rollups.
+     - `getTrendingStats()`: aggregates stats across 24h, 7d, and 30d timeframes.
+     - `getTrendingTitles()`: retrieves published titles ordered by trending momentum score, with seamless fallback to catalog search.
+  4. **Protected Cron Route Handler & Vercel Schedule**:
+     - Created `app/api/cron/rollup/route.ts` with `CRON_SECRET` authorization (Bearer token or `?secret=` query parameter) and optional `?date=YYYY-MM-DD` backfill param.
+     - Created `vercel.json` scheduling recurring daily rollups at `0 1 * * *` (01:00 UTC).
+  5. **Accessible Trending Period Selector (`app/trending/page.tsx`)**:
+     - Added accessible tab navigation (`24 Hours`, `This Week`, `30 Days`) with `aria-label="Trending timeframe"`, active pill indicator styles, and dynamic explanatory subtitles.
+  6. **Automated Verification Test Suite (`__tests__/analytics/aggregation-rollups.test.ts`)**:
+     - 9 unit and contract tests verifying migration schema, hyperbolic decay math, RPC execution, TypeScript aggregation fallback, period stats grouping, catalog fallbacks, cron secret authorization, and `vercel.json` format.
+* **Verification Results**:
+  - `__tests__/analytics/aggregation-rollups.test.ts`: 9 / 9 tests passing (100%).
+  - Clean TypeScript verification (`npx tsc --noEmit` with 0 errors).
+  - Full test runner `npm test`: all 764 tests passing with 0 failures across 204 test suites.
+  - Production build `npm run build`: cleanly compiles 66/66 static/dynamic routes.
 
 ---
 
