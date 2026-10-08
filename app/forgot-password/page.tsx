@@ -147,7 +147,7 @@ export default function ForgotPasswordPage() {
   const isCodeComplete = code.every((digit) => digit !== "");
 
   return (
-    <div className="min-h-screen flex flex-col bg-bg text-text">
+    <div data-theme="dark" className="min-h-screen flex flex-col bg-bg text-text">
       <div className="relative overflow-hidden flex-1 flex flex-col">
         {/* Ambient glow matching auth branding */}
         <div

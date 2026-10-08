@@ -6,6 +6,7 @@ import { AlertTriangle, RefreshCw, Home, Mail } from "lucide-react";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import { reportError } from "@/lib/observability/error-reporter";
+import { useTheme } from "@/contexts/ThemeContext";
 
 export default function GlobalAppError({
   error,
@@ -14,6 +15,15 @@ export default function GlobalAppError({
   error: Error & { digest?: string };
   reset: () => void;
 }) {
+  let activeTheme: string | undefined;
+  try {
+    // eslint-disable-next-line react-hooks/rules-of-hooks
+    const ctx = useTheme();
+    activeTheme = ctx.theme;
+  } catch {
+    activeTheme = undefined;
+  }
+
   useEffect(() => {
     reportError(error, {
       digest: error.digest,
@@ -23,7 +33,7 @@ export default function GlobalAppError({
   }, [error]);
 
   return (
-    <div className="min-h-screen bg-bg text-text flex flex-col">
+    <div data-theme={activeTheme} className="min-h-screen bg-bg text-text flex flex-col">
       <Header />
       <main className="flex-1 max-w-[800px] w-full mx-auto px-6 py-20 flex flex-col items-center justify-center text-center">
         <div className="w-16 h-16 rounded-full bg-danger-soft text-danger flex items-center justify-center mb-6 shadow-sm">

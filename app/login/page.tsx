@@ -56,7 +56,7 @@ function LoginForm() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col">
+    <div data-theme="dark" className="min-h-screen flex flex-col bg-bg text-text">
       <div className="relative overflow-hidden flex-1 flex flex-col">
         {/* Ambient glow, matching the landing gate */}
         <div

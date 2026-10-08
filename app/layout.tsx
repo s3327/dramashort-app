@@ -1,6 +1,14 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
+import { cookies } from "next/headers";
 import { Fredoka, Plus_Jakarta_Sans } from "next/font/google";
-import { ThemeProvider } from "@/contexts/ThemeContext";
+import {
+  ThemeProvider,
+  THEME_COOKIE_NAME,
+  DEFAULT_THEME,
+  isValidTheme,
+  getThemeColor,
+  type SiteTheme,
+} from "@/contexts/ThemeContext";
 import { FavoritesProvider } from "@/contexts/FavoritesContext";
 import { AuthProvider } from "@/contexts/AuthContext";
 import "./globals.css";
@@ -23,17 +31,45 @@ export const metadata: Metadata = {
     "Vertical dramas built for a 12-minute break — revenge, rebirth, forbidden marriages, repeat.",
 };
 
-export default function RootLayout({
+export const viewport: Viewport = {
+  themeColor: [
+    { media: "(prefers-color-scheme: dark)", color: "#1C1220" },
+    { media: "(prefers-color-scheme: light)", color: "#F3E7EA" },
+  ],
+};
+
+export default async function RootLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  const cookieStore = await cookies();
+  const themeCookie = cookieStore.get(THEME_COOKIE_NAME)?.value;
+  const initialTheme: SiteTheme =
+    themeCookie && isValidTheme(themeCookie) ? themeCookie : DEFAULT_THEME;
+
+  const colorScheme = initialTheme === "dark" ? "dark" : "light";
+  const themeColor = getThemeColor(initialTheme);
+
   return (
-    // Landing gate uses the fixed dark theme; app pages inside
-    // ThemeProvider read the visitor's chosen theme instead.
-    <html lang="en" data-theme="dark" className={`${fredoka.variable} ${jakarta.variable}`}>
+    <html
+      lang="en"
+      data-theme={initialTheme}
+      style={{ colorScheme }}
+      className={`${fredoka.variable} ${jakarta.variable}`}
+      suppressHydrationWarning
+    >
+      <head>
+        <meta name="theme-color" content={themeColor} />
+        {/* Pre-hydration sync script to prevent flash if user previously had theme in localStorage */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `(function(){try{var m=document.cookie.match(/${THEME_COOKIE_NAME}=([^;]+)/);if(!m){var s=localStorage.getItem('${THEME_COOKIE_NAME}');if(s&&['light','soft','dark'].indexOf(s)!==-1){document.documentElement.setAttribute('data-theme',s);document.documentElement.style.colorScheme=s==='dark'?'dark':'light';document.cookie='${THEME_COOKIE_NAME}='+s+';path=/;max-age=31536000;SameSite=Lax';}}}catch(e){}})();`,
+          }}
+        />
+      </head>
       <body>
-        <ThemeProvider>
+        <ThemeProvider initialTheme={initialTheme}>
           <AuthProvider>
             <FavoritesProvider>{children}</FavoritesProvider>
           </AuthProvider>

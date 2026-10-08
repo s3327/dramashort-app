@@ -71,7 +71,7 @@ function SignUpForm() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col">
+    <div data-theme="dark" className="min-h-screen flex flex-col bg-bg text-text">
       <div className="relative overflow-hidden flex-1 flex flex-col">
         <div
           className="pointer-events-none fixed -top-[20%] -inset-x-[10%] h-[70%] z-0"

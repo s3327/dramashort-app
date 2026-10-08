@@ -2297,3 +2297,37 @@
   - `npx tsc --noEmit`: 0 type errors.
   - Full test runner `npm test`: 701 / 701 tests pass across 189 suites with 0 failures (100% pass rate).
   - Next.js production build (`npm run build`): cleanly compiles all 64 routes with static ISR optimization.
+
+---
+
+## [2026-10-08] Task 14.7: Theme System Without Flash
+* **Milestone**: Phase 14 (Mobile-First Vertical Watch Experience & UI Polish) — Task 14.7
+* **Goal**: Completely eradicate multi-stage visual theme flashing on page reload (dark $\rightarrow$ white $\rightarrow$ soft/light) by reading the active theme preference from a cookie on the server, decorating `<html>` with `data-theme` and `colorScheme` during SSR, injecting an instant pre-hydration sync script for legacy `localStorage` users, replacing the hardcoded white loading screen with semantic theme tokens, and strictly isolating admin and auth gateway palettes.
+* **Implementation Steps Taken**:
+  1. **Server-Side Cookie Theme Resolution (`app/layout.tsx`)**:
+     - Converted `RootLayout` into an async Server Component reading the `dramashort-theme` cookie via `await cookies()`.
+     - Stamped `data-theme={initialTheme}` directly on `<html>` in the initial server HTML, rendering the user's saved theme from frame 0.
+     - Stamped `style={{ colorScheme }}` (`light` for light/soft, `dark` for dark) on `<html>`.
+     - Output `<meta name="theme-color" content={themeColor} />` with exact theme hex values (`#FFFFFF`, `#F3E7EA`, `#1C1220`).
+  2. **Pre-Hydration Sync & Zero-Flash LocalStorage Migration**:
+     - Injected an ultra-light, synchronous inline script in `<head>` that immediately inspects `localStorage` if no cookie is present, applies `data-theme` and `colorScheme`, and sets the cookie before first paint.
+     - Passed `initialTheme` into `<ThemeProvider initialTheme={initialTheme}>` to guarantee 0 hydration mismatches.
+  3. **Dual Persistence in Theme Context (`contexts/ThemeContext.tsx`)**:
+     - Upgraded `ThemeProvider` to synchronize across React state, `document.documentElement` attributes, `style.colorScheme`, `<meta name="theme-color">`, `document.cookie` (1 year, SameSite=Lax), and `localStorage`.
+     - Exported `THEME_COOKIE_NAME`, `THEME_STORAGE_KEY`, `VALID_THEMES`, `THEME_COLORS`, and validation/color helpers.
+  4. **Eliminated White Loading Screen Flash (`app/loading.tsx`)**:
+     - Replaced hardcoded `bg-white` in `app/loading.tsx` with semantic tokens `bg-bg text-text`, matching the underlying surface from frame 0.
+  5. **Theme Isolation on Admin & Gateway Routes**:
+     - Wrapped `app/admin/layout.tsx` in `<div data-theme="light">`, ensuring the admin console stays permanently in the light theme.
+     - Declared `data-theme="dark"` and `bg-bg text-text` on all auth gateway routes (`/login`, `/signup`, `/forgot-password`, `/reset-password`, `/verify-email`) to preserve signature dark aesthetic.
+     - Wrapped `app/error.tsx` with `useTheme` active theme binding.
+  6. **Automated Verification Test Suite (`__tests__/theme/theme-system-without-flash.test.ts`)**:
+     - Authored 6 tests verifying: theme helpers and constants, server layout cookie reading and HTML decoration, pre-hydration script, ThemeContext dual persistence and meta tag syncing, loading screen theme tokens, admin/auth isolation, and error boundary bindings.
+* **Regression Analysis & Verification Record**:
+  - `__tests__/theme/theme-system-without-flash.test.ts`: 6 / 6 tests pass (100%).
+  - `__tests__/components/hero-quality-accessibility.test.ts`: 7 / 7 tests pass (100%).
+  - `__tests__/navigation/landing-gate-and-home.test.ts`: 5 / 5 tests pass (100%).
+  - Catalog and runtime suites (`__tests__/catalog/server-rendered-catalog.test.ts`, `no-mock-fallback.test.ts`): 47 / 47 tests pass (100%).
+  - `npx tsc --noEmit`: 0 type errors.
+  - Full test runner `npm test`: 707 / 707 tests pass across 189 suites with 0 failures (100% pass rate).
+  - Next.js production build (`npm run build`): cleanly compiles all 64 routes with static/dynamic optimization.

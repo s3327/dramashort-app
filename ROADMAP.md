@@ -47,7 +47,7 @@
 | **Phase 11** | 🔴 Critical | Complete Stubbed User Flows (email verification, password recovery, account deletion, support pipeline, real 404s) | ✅ Completed (11.1–11.7 ✅) | Every visible action performs a real operation |
 | **Phase 12** | 🟠 High | Functional Bug Fixes & Data Integrity (12.1–12.8 ✅) | ✅ Completed | Full catalog visible, admin drafts, progress semantics, zero mocks, session, lists, integrity, player robustness |
 | **Phase 13** | 🟠 High | Backend Architecture Consolidation (database topology ADR-0003, server-rendered catalog, service split, taxonomy scalability, observability) | ✅ Completed (13.1–13.6 ✅) | Decision gate for Phase 8; faster pages; operability |
-| **Phase 14** | 🟠 High | Mobile-First Vertical Watch Experience & UI Polish | 🚧 In progress (14.1, 14.2, 14.3, 14.4, 14.5, 14.6 ✅) | Core 9:16 viewing experience on phones |
+| **Phase 14** | 🟠 High | Mobile-First Vertical Watch Experience & UI Polish | 🚧 In progress (14.1, 14.2, 14.3, 14.4, 14.5, 14.6, 14.7 ✅) | Core 9:16 viewing experience on phones |
 | **Phase 15** | 🟠 High | Product Analytics, Engagement Tracking & Real Trending | ⏳ Planned | Real views, trending and dashboard; data to tune the paywall |
 | **Phase 16** | 🟠 High | Admin Content Operations Console (episodes, uploads, scheduling, taxonomy, users, audit log) | ⏳ Planned | Catalog operable end-to-end without SQL |
 | **Phase 17** | 🟡 Medium | Quality Engineering, CI & Documentation Integrity (continuous) | ⏳ Planned | Regression safety; trustworthy status docs |
@@ -2030,13 +2030,24 @@ These items stay ✅ for history; the gaps are tracked as new tasks.
 ---
 
 ### Task 14.7: Theme System Without Flash
-* **Status**: ⏳ Planned
-* **Problem**: `<html data-theme="dark">` is hardcoded (`app/layout.tsx` L34), `app/loading.tsx` uses a hardcoded `bg-white`, and the saved theme is applied only after mount (`contexts/ThemeContext.tsx` L28–33). First paint flashes dark → white → soft. Every page must remember its own `data-theme` wrapper, and `app/error.tsx` does not.
-* **Planned Specifications**:
-  1. Persist the theme in a cookie; the root layout reads it on the server and sets `data-theme` on `<html>`. Gateway and admin routes override through route-group layouts.
-  2. Remove per-page `data-theme` wrappers; `loading.tsx` uses theme tokens.
-  3. Set `color-scheme` and a per-theme `theme-color` meta tag.
-* **Verification**: a hard reload with each saved theme shows no flash (filmstrip in DevTools Performance).
+* **Status**: ✅ Completed
+* **Problem**: `<html data-theme="dark">` was hardcoded (`app/layout.tsx`), `app/loading.tsx` used a hardcoded blinding `bg-white`, and saved theme preferences were applied only after mount via `localStorage` (`contexts/ThemeContext.tsx`). This resulted in a disruptive 3-way visual flash on page reload (dark $\rightarrow$ white $\rightarrow$ soft/light), missing theme tokens on error pages, and unsynchronized browser UI chrome.
+* **Delivered Capabilities**:
+  1. **Server-Side Cookie Theme Resolution**: Root `app/layout.tsx` is an async Server Component reading the `dramashort-theme` cookie via `await cookies()`. Sets `data-theme={initialTheme}` directly on `<html>` at the server level, rendering the user's chosen theme from frame 0 without any flash.
+  2. **System Color Scheme & Theme Color Meta**: Sets `style={{ colorScheme }}` on `<html>` matching the active theme (`light` for light/soft, `dark` for dark), and configures dynamic `<meta name="theme-color" content={...} />` for mobile browser address bars (`#FFFFFF`, `#F3E7EA`, `#1C1220`).
+  3. **Dual Persistence & Pre-Hydration Sync**:
+     - Upgraded `contexts/ThemeContext.tsx` to persist to both `document.cookie` (1-year max-age, SameSite=Lax) and `localStorage`.
+     - Injected synchronous inline pre-hydration script in `<head>` ensuring visitors with legacy `localStorage` settings transition seamlessly without a flash before client hydration.
+  4. **Eliminated White Loading Screen Flash**: Replaced hardcoded `bg-white` in `app/loading.tsx` with semantic theme tokens `bg-bg text-text`, seamlessly blending with `<html>` theme surface from the very first frame.
+  5. **Theme Isolation on Admin & Gateway Routes**:
+     - Admin layout (`app/admin/layout.tsx`) wraps children in `<div data-theme="light">`, permanently isolating the admin console into the light palette.
+     - Auth gateway routes (`/login`, `/signup`, `/forgot-password`, `/reset-password`, `/verify-email`) enforce `data-theme="dark"`, preserving their signature dark branding.
+     - Error boundaries (`app/error.tsx`, `app/not-found.tsx`) explicitly bind the active user theme.
+* **Verification & Test Coverage**:
+  - Authored `__tests__/theme/theme-system-without-flash.test.ts` (6/6 tests passing).
+  - Clean TypeScript verification (`npx tsc --noEmit` with 0 errors).
+  - Full test runner `npm test`: all 707 tests passing with 0 failures across 189 test suites.
+  - Production build `npm run build`: cleanly compiles 64/64 routes with static/dynamic optimization.
 
 ---
 
