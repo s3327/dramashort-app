@@ -35,6 +35,10 @@ import {
   RESUME_NOTIFICATION_DURATION_MS,
   calculateBackoffDelay,
 } from "@/lib/player/streaming-robustness";
+import {
+  toggleFullscreen as toggleFullscreenAdapter,
+  addFullscreenChangeListener,
+} from "@/lib/player/fullscreen-capabilities";
 
 export {
   HLS_SHORT_VOD_CONFIG,
@@ -407,15 +411,12 @@ export default function VideoPlayer({
     };
   }, []);
 
-  // Fullscreen change listener
+  // Fullscreen change listener across Desktop, iOS Safari, and Telegram WebApp
   useEffect(() => {
-    const handleFullscreenChange = () => {
-      setIsFullscreen(Boolean(document.fullscreenElement));
-    };
-    document.addEventListener("fullscreenchange", handleFullscreenChange);
-    return () => {
-      document.removeEventListener("fullscreenchange", handleFullscreenChange);
-    };
+    const cleanup = addFullscreenChangeListener(videoRef.current, (fs) => {
+      setIsFullscreen(fs);
+    });
+    return cleanup;
   }, []);
 
   const cancelNextCountdown = useCallback(() => {
@@ -556,16 +557,20 @@ export default function VideoPlayer({
     setShowSettingsMenu(false);
   };
 
-  // Fullscreen
+  // Fullscreen (Desktop, iOS Safari webkitEnterFullscreen, Telegram WebApp)
   const toggleFullscreen = async () => {
     const container = containerRef.current;
-    if (!container) return;
+    const video = videoRef.current;
+    if (!container && !video) return;
 
-    if (!document.fullscreenElement) {
-      await container.requestFullscreen().catch(() => {});
-    } else {
-      await document.exitFullscreen().catch(() => {});
+    if ((video as any)?.webkitEnterFullscreen && !container?.requestFullscreen) {
+      try {
+        (video as any).webkitEnterFullscreen();
+        return;
+      } catch {}
     }
+
+    await toggleFullscreenAdapter(container, video, { aspectMode });
   };
 
   // Picture in Picture
@@ -861,6 +866,7 @@ export default function VideoPlayer({
   }, [
     togglePlay,
     toggleMute,
+    toggleFullscreen,
     seekRelative,
     goToNextEpisode,
     goToPrevEpisode,

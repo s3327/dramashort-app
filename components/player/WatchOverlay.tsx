@@ -16,10 +16,13 @@ import {
   RotateCcw,
   RotateCw,
   FastForward,
+  Maximize,
+  Minimize,
 } from "lucide-react";
 import { useFavorites } from "@/contexts/FavoritesContext";
 import type { WatchOverlayProps } from "./PlayerTypes";
 import { usePlayerGestures } from "./usePlayerGestures";
+import { toggleFullscreen as toggleFullscreenAdapter } from "@/lib/player/fullscreen-capabilities";
 
 function formatTime(seconds: number): string {
   if (isNaN(seconds) || seconds < 0) return "00:00";
@@ -45,10 +48,21 @@ export default function WatchOverlay({
   onSetPlaybackRate,
   currentPlaybackRate = 1,
   swipeHint,
+  onToggleFullscreen,
+  isFullscreen = false,
 }: WatchOverlayProps) {
   const { isFavorited, toggleFavorite } = useFavorites();
   const favorited = isFavorited(drama.slug);
   const [shareToast, setShareToast] = useState<string | null>(null);
+
+  const handleToggleFullscreen = useCallback(() => {
+    if (onToggleFullscreen) {
+      onToggleFullscreen();
+    } else if (typeof document !== "undefined") {
+      const vid = document.querySelector("video");
+      toggleFullscreenAdapter(null, vid);
+    }
+  }, [onToggleFullscreen]);
 
   const handleSeekRelative = useCallback(
     (seconds: number) => {
@@ -140,14 +154,25 @@ export default function WatchOverlay({
           </p>
         </div>
 
-        <button
-          type="button"
-          onClick={handleShare}
-          className="p-2 -mr-1 rounded-full text-white/90 hover:text-white hover:bg-white/10 transition-colors"
-          aria-label="Share episode"
-        >
-          <Share2 size={18} />
-        </button>
+        <div className="flex items-center gap-1 -mr-1">
+          <button
+            type="button"
+            onClick={handleToggleFullscreen}
+            className="p-2 rounded-full text-white/90 hover:text-white hover:bg-white/10 transition-colors"
+            aria-label={isFullscreen ? "Exit Fullscreen" : "Fullscreen"}
+          >
+            {isFullscreen ? <Minimize size={18} /> : <Maximize size={18} />}
+          </button>
+
+          <button
+            type="button"
+            onClick={handleShare}
+            className="p-2 rounded-full text-white/90 hover:text-white hover:bg-white/10 transition-colors"
+            aria-label="Share episode"
+          >
+            <Share2 size={18} />
+          </button>
+        </div>
       </div>
 
       {/* Share Toast Notification */}

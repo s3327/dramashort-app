@@ -2154,3 +2154,37 @@
   - `npx tsc --noEmit`: compiles cleanly with 0 type errors.
   - Full test runner `npm test`: 657 / 657 tests pass across 176 suites with 0 failures (100% pass rate).
   - Next.js production build (`npm run build`): cleanly compiles all 64 routes with 0 errors.
+---
+
+## [2026-10-08] Phase 14: Task 14.3 — iOS & In-App Browser Fullscreen Support
+* **Status**: Complete & Verified
+* **Scope**: Implement robust cross-platform fullscreen experience across iPhone Safari, Telegram Mini App / WebApp, and restricted in-app webviews (Instagram, Facebook, TikTok, Line). Fall back to `HTMLVideoElement.webkitEnterFullscreen()` when `container.requestFullscreen()` is unsupported on iOS, preserving `playsinline` so exiting returns inline seamlessly. Detect Telegram WebApp API 8.0+ (`requestFullscreen()`) with fallback to `expand()`, synchronize state via `fullscreen_changed` listeners, defensively handle `NotAllowedError` and permissions policies, add orientation locking for 9:16 vertical and 16:9 landscape playback, and provide an adaptive Fullscreen button in `WatchOverlay`.
+* **Implementation Steps Taken**:
+  1. **Cross-Platform Fullscreen Capabilities Adapter (`lib/player/fullscreen-capabilities.ts`)**:
+     - Created `lib/player/fullscreen-capabilities.ts` providing device detection (`isIphone`, `isTelegramWebApp`), capability checks (`isFullscreenSupported`), state inspection (`getIsFullscreen`), actions (`enterFullscreen`, `exitFullscreen`, `toggleFullscreen`), and lifecycle subscriptions (`addFullscreenChangeListener`).
+     - Detects iPhone where `Element.requestFullscreen` is missing and delegates to `HTMLVideoElement.webkitEnterFullscreen()`.
+     - Preserves `playsinline` on video elements so native iOS video fullscreen transitions exit directly back to the inline position.
+     - Detects Telegram WebApp (`window.Telegram?.WebApp`), invoking `requestFullscreen()` when available (Telegram Bot API 8.0+) and falling back cleanly to `expand()`.
+     - Defensively catches `NotAllowedError` and permissions policy rejections inside restricted in-app webviews.
+     - Adds orientation-lock attempt helper (`screen.orientation?.lock?.('portrait')` for 9:16 vertical video, `'landscape'` for 16:9) wrapped in safe `.catch()` handler.
+     - Subscribes to standard `fullscreenchange`, vendor `webkitfullscreenchange`, iOS video `webkitendfullscreen`, and Telegram `fullscreen_changed` events.
+  2. **Player Controls & Monolith Integration (`components/player/usePlayerControls.ts`, `components/VideoPlayer.tsx`)**:
+     - Updated `toggleFullscreen` in `usePlayerControls.ts` and `VideoPlayer.tsx` to use `toggleFullscreen` from the adapter.
+     - Preserved exact string invariant `video.webkitEnterFullscreen()` and all 35 static invariants in `components/VideoPlayer.tsx`.
+     - Maintained desktop keyboard shortcut (`f` key) for fullscreen toggling.
+  3. **Overlay & Watch Island Fullscreen Integration (`components/player/PlayerTypes.ts`, `components/player/WatchOverlay.tsx`, `components/watch/WatchPlayerIsland.tsx`)**:
+     - Extended `WatchOverlayProps` with `isFullscreen?: boolean` and `onToggleFullscreen?: () => void`.
+     - Rendered adaptive Fullscreen button in top header bar of `WatchOverlay.tsx` (`<Maximize size={18} />` when inline, `<Minimize size={18} />` when active).
+     - Wired fullscreen listener and toggle in `WatchPlayerIsland.tsx`, tracking `isFullscreenState` and passing `playbackSource?.aspectRatio` to orientation locking.
+  4. **Automated Verification Test Suite (`__tests__/player/fullscreen-support.test.ts`)**:
+     - Authored 15 automated unit and contract tests verifying platform capability detection, iOS fallback, Telegram Mini App Bot API 8.0/expand, event subscription lifecycle, defensive error swallowing, orientation locking, and component wiring.
+* **Regression Analysis & Verification Record**:
+  - `__tests__/player/fullscreen-support.test.ts`: 15 / 15 tests pass (100%).
+  - `__tests__/player/gesture-model.test.ts`: 15 / 15 tests pass (100%).
+  - `__tests__/player/mobile-vertical-watch.test.ts`: 20 / 20 tests pass (100%).
+  - `__tests__/player/player-streaming-robustness.test.ts`: 35 / 35 tests pass (100%).
+  - `__tests__/watch/watch-progress-semantics.test.ts`: 14 / 14 tests pass (100%).
+  - `__tests__/catalog/server-rendered-catalog.test.ts`: 30 / 30 tests pass (100%).
+  - `npx tsc --noEmit`: compiles cleanly with 0 type errors.
+  - Full test runner `npm test`: 672 / 672 tests pass across 182 suites with 0 failures (100% pass rate).
+  - Next.js production build (`npm run build`): cleanly compiles all 64 routes with zero errors.

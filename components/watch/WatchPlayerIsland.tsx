@@ -16,6 +16,10 @@ import {
   upsertWatchProgress,
   saveGuestWatchProgress,
 } from "@/lib/services/user.service";
+import {
+  toggleFullscreen,
+  addFullscreenChangeListener,
+} from "@/lib/player/fullscreen-capabilities";
 
 const EPISODES_PER_TAB = 40;
 
@@ -286,6 +290,16 @@ export default function WatchPlayerIsland({
     }
   }, []);
 
+  const [isFullscreenState, setIsFullscreenState] = useState(false);
+
+  useEffect(() => {
+    const vid = document.querySelector("video");
+    const cleanup = addFullscreenChangeListener(vid, (fs) => {
+      setIsFullscreenState(fs);
+    });
+    return cleanup;
+  }, [currentEpisode]);
+
   // Reliable progress flush on visibilitychange, pagehide, and beforeunload
   useEffect(() => {
     const flushCurrentProgress = () => {
@@ -370,6 +384,14 @@ export default function WatchPlayerIsland({
       isMounted = false;
     };
   }, [currentEpData?.id, retryNonce]);
+
+  const handleToggleFullscreen = useCallback(() => {
+    const vid = document.querySelector("video");
+    const container = vid?.parentElement;
+    toggleFullscreen(container as HTMLElement, vid, {
+      aspectMode: playbackSource?.aspectRatio || "9:16",
+    });
+  }, [playbackSource?.aspectRatio]);
 
   const videoSrc =
     playbackSource?.url && playbackSource.url.trim() !== ""
@@ -490,6 +512,8 @@ export default function WatchPlayerIsland({
                     vid.playbackRate = rate;
                   }
                 }}
+                onToggleFullscreen={handleToggleFullscreen}
+                isFullscreen={isFullscreenState}
               />
             </div>
           </div>

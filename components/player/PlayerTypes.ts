@@ -52,4 +52,6 @@ export interface WatchOverlayProps {
   onSetPlaybackRate?: (rate: number) => void;
   currentPlaybackRate?: number;
   swipeHint?: "next" | "prev" | null;
+  onToggleFullscreen?: () => void;
+  isFullscreen?: boolean;
 }

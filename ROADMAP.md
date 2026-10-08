@@ -47,7 +47,7 @@
 | **Phase 11** | 🔴 Critical | Complete Stubbed User Flows (email verification, password recovery, account deletion, support pipeline, real 404s) | ✅ Completed (11.1–11.7 ✅) | Every visible action performs a real operation |
 | **Phase 12** | 🟠 High | Functional Bug Fixes & Data Integrity (12.1–12.8 ✅) | ✅ Completed | Full catalog visible, admin drafts, progress semantics, zero mocks, session, lists, integrity, player robustness |
 | **Phase 13** | 🟠 High | Backend Architecture Consolidation (database topology ADR-0003, server-rendered catalog, service split, taxonomy scalability, observability) | ✅ Completed (13.1–13.6 ✅) | Decision gate for Phase 8; faster pages; operability |
-| **Phase 14** | 🟠 High | Mobile-First Vertical Watch Experience & UI Polish | 🚧 In progress (14.1, 14.2 ✅) | Core 9:16 viewing experience on phones |
+| **Phase 14** | 🟠 High | Mobile-First Vertical Watch Experience & UI Polish | 🚧 In progress (14.1, 14.2, 14.3 ✅) | Core 9:16 viewing experience on phones |
 | **Phase 15** | 🟠 High | Product Analytics, Engagement Tracking & Real Trending | ⏳ Planned | Real views, trending and dashboard; data to tune the paywall |
 | **Phase 16** | 🟠 High | Admin Content Operations Console (episodes, uploads, scheduling, taxonomy, users, audit log) | ⏳ Planned | Catalog operable end-to-end without SQL |
 | **Phase 17** | 🟡 Medium | Quality Engineering, CI & Documentation Integrity (continuous) | ⏳ Planned | Regression safety; trustworthy status docs |
@@ -1953,13 +1953,19 @@ These items stay ✅ for history; the gaps are tracked as new tasks.
 ---
 
 ### Task 14.3: iOS & In-App Browser Fullscreen Support
-* **Status**: ⏳ Planned
+* **Status**: ✅ Completed
 * **Problem**: `container.requestFullscreen()` (`components/VideoPlayer.tsx` L334) is not supported on iPhone Safari, so the fullscreen button does nothing. Telegram, Facebook, and Instagram in-app browsers each behave differently.
-* **Planned Specifications**:
-  1. Fall back to `video.webkitEnterFullscreen()`; hide the button where neither API exists (immersive mode already fills the screen).
-  2. Detect the Telegram WebApp (`window.Telegram?.WebApp`) and call `expand()` / `requestFullscreen()`, aligned with the `FUTURE_PLAN.md` Mini App flow.
-  3. Handle orientation-lock attempts and `playsinline` gracefully.
-* **Verification**: fullscreen works on iOS Safari, Android Chrome, and the Telegram in-app browser.
+* **Delivered Specifications**:
+  1. Built unified cross-platform adapter `lib/player/fullscreen-capabilities.ts` detecting iOS / iPhone Safari and falling back seamlessly to `HTMLVideoElement.webkitEnterFullscreen()`, preserving `playsinline` so exiting returns inline without layout break.
+  2. Integrated Telegram Mini App detection (`window.Telegram?.WebApp`), triggering `requestFullscreen()` (Telegram Bot API 8.0+) with automatic fallback to `expand()`. Synchronized state via `fullscreen_changed` event listeners.
+  3. Added orientation-lock helper (`screen.orientation?.lock?.('portrait')` for 9:16 vertical video, `'landscape'` for 16:9) wrapped in safe `.catch()` handlers.
+  4. Defensively handled `NotAllowedError` and permissions policy exceptions in restricted in-app webviews (Instagram, Facebook, TikTok, Line).
+  5. Wired adaptive Fullscreen action into `components/player/WatchOverlay.tsx`, `components/watch/WatchPlayerIsland.tsx`, `components/player/usePlayerControls.ts`, and `components/VideoPlayer.tsx`.
+* **Verification & Test Coverage**:
+  - Authored `__tests__/player/fullscreen-support.test.ts` (15/15 unit and contract tests passing).
+  - Regression verified across all player test suites (85/85 tests passing).
+  - Full test runner `npm test`: all 672 tests passing with 0 failures across 182 test suites.
+  - `npm run build`: cleanly compiles all 64 routes with zero errors.
 
 ---
 

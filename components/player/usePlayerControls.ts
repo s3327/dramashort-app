@@ -2,6 +2,11 @@
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import type { AspectRatioMode } from "./PlayerTypes";
+import {
+  toggleFullscreen as toggleFullscreenAdapter,
+  addFullscreenChangeListener,
+  isFullscreenSupported as checkFullscreenSupported,
+} from "@/lib/player/fullscreen-capabilities";
 
 export interface UsePlayerControlsOptions {
   videoRef: React.RefObject<HTMLVideoElement | null>;
@@ -148,23 +153,20 @@ export function usePlayerControls({
     [videoRef, resetControlsTimeout]
   );
 
-  const toggleFullscreen = useCallback(() => {
+  const toggleFullscreen = useCallback(async () => {
     const container = containerRef.current;
     const video = videoRef.current;
 
-    if (!document.fullscreenElement) {
-      if (container?.requestFullscreen) {
-        container.requestFullscreen().catch(() => {});
-      } else if ((video as any)?.webkitEnterFullscreen) {
-        // iOS Safari native fullscreen
+    // Handles iOS Safari native video fullscreen fallback
+    if ((video as any)?.webkitEnterFullscreen && !container?.requestFullscreen) {
+      try {
         (video as any).webkitEnterFullscreen();
-      }
-    } else {
-      if (document.exitFullscreen) {
-        document.exitFullscreen().catch(() => {});
-      }
+        return;
+      } catch {}
     }
-  }, [containerRef, videoRef]);
+
+    await toggleFullscreenAdapter(container, video, { aspectMode });
+  }, [containerRef, videoRef, aspectMode]);
 
   const togglePip = useCallback(async () => {
     const video = videoRef.current;
@@ -180,16 +182,13 @@ export function usePlayerControls({
     }
   }, [videoRef]);
 
-  // Fullscreen change listener
+  // Fullscreen change listener across Desktop, iOS Safari, and Telegram WebApp
   useEffect(() => {
-    const handleFsChange = () => {
-      setIsFullscreen(Boolean(document.fullscreenElement));
-    };
-    document.addEventListener("fullscreenchange", handleFsChange);
-    return () => {
-      document.removeEventListener("fullscreenchange", handleFsChange);
-    };
-  }, []);
+    const cleanup = addFullscreenChangeListener(videoRef.current, (fs) => {
+      setIsFullscreen(fs);
+    });
+    return cleanup;
+  }, [videoRef]);
 
   // Controls auto-hide timer effect
   useEffect(() => {
@@ -295,6 +294,7 @@ export function usePlayerControls({
     aspectMode,
     setAspectMode,
     isFullscreen,
+    isFullscreenSupported: checkFullscreenSupported(videoRef.current, containerRef.current),
     toggleFullscreen,
     togglePip,
     controlsVisible,
