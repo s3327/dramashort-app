@@ -5,6 +5,7 @@ import Link from "next/link";
 import { AlertTriangle, RefreshCw, Home, Mail } from "lucide-react";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
+import { reportError } from "@/lib/observability/error-reporter";
 
 export default function GlobalAppError({
   error,
@@ -14,7 +15,11 @@ export default function GlobalAppError({
   reset: () => void;
 }) {
   useEffect(() => {
-    console.error("Root application error:", error);
+    reportError(error, {
+      digest: error.digest,
+      route: "root-layout",
+      tags: { boundary: "app/error" },
+    });
   }, [error]);
 
   return (

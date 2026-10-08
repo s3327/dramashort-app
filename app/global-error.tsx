@@ -3,6 +3,7 @@
 import { useEffect } from "react";
 import Link from "next/link";
 import { AlertTriangle, RefreshCw, Home } from "lucide-react";
+import { reportError } from "@/lib/observability/error-reporter";
 
 export default function GlobalRootError({
   error,
@@ -12,7 +13,11 @@ export default function GlobalRootError({
   reset: () => void;
 }) {
   useEffect(() => {
-    console.error("Critical root error:", error);
+    reportError(error, {
+      digest: error.digest,
+      route: "global-root",
+      tags: { boundary: "app/global-error" },
+    });
   }, [error]);
 
   return (

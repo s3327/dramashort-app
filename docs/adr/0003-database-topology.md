@@ -284,3 +284,8 @@ flowchart TD
   - *Mitigation*: Abstract all catalog database interactions inside `lib/services/content.service.ts` so components and routes consume high-level domain helpers.
 - **Shared Compute Resources**: High traffic on public catalog queries shares database CPU and memory with user authentication and payment ledger writes.
   - *Mitigation*: Implemented Next.js Server Components with ISR (`revalidate = 300`) in Task 13.3, caching public catalog pages at the edge and minimizing database read pressure.
+
+---
+
+## Related Operational Documentation
+- [Operational Readiness Runbook & Platform Telemetry](../operations/operational-readiness.md): Production backup policy, PITR drill procedures, staging isolation, sliding-window rate limiting, and incident triage runbooks for the consolidated database topology.

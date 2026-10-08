@@ -3,6 +3,7 @@ import { requireAdmin } from "@/lib/auth/require-admin";
 import { getContentAdminClient } from "@/lib/supabase/content";
 import { mapTitleRowToTitle } from "@/lib/services/content.service";
 import { apiError, apiSuccess } from "@/lib/api/responses";
+import { reportError } from "@/lib/observability/error-reporter";
 import {
   validateDramaPayload,
   escapeLikePattern,
@@ -100,6 +101,11 @@ export async function GET(request: NextRequest) {
     });
   } catch (err) {
     console.error("[GET /api/admin/dramas] Unexpected error:", err);
+    reportError(err, {
+      route: "/api/admin/dramas",
+      method: "GET",
+      requestId: request?.headers?.get?.("x-request-id") || undefined,
+    });
     return apiError("DATABASE_ERROR", "Failed to load dramas.", 500);
   }
 }
@@ -165,6 +171,11 @@ export async function POST(request: NextRequest) {
     return apiSuccess(mapTitleRowToTitle(insertedRow), 201);
   } catch (err) {
     console.error("[POST /api/admin/dramas] Unexpected error:", err);
+    reportError(err, {
+      route: "/api/admin/dramas",
+      method: "POST",
+      requestId: request?.headers?.get?.("x-request-id") || undefined,
+    });
     return apiError("DATABASE_ERROR", "Failed to create drama.", 500);
   }
 }

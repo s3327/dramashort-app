@@ -4,6 +4,7 @@ import {
   createUserServiceRoleClient,
 } from "@/lib/supabase/user-server";
 import { apiError, apiSuccess } from "@/lib/api/responses";
+import { reportError } from "@/lib/observability/error-reporter";
 
 interface DeleteAccountPayload {
   confirmationText?: string;
@@ -102,6 +103,12 @@ export async function DELETE(request: NextRequest) {
         "[api/account/delete] Failed to delete user:",
         deleteError.message
       );
+      reportError(deleteError, {
+        route: "/api/account",
+        method: "DELETE",
+        userId: user.id,
+        requestId: request.headers.get("x-request-id") || undefined,
+      });
       return apiError(
         "DELETION_FAILED",
         "Failed to delete account. Please try again or contact support.",
@@ -115,6 +122,11 @@ export async function DELETE(request: NextRequest) {
     });
   } catch (err: unknown) {
     console.error("[api/account/delete] Unexpected failure:", err);
+    reportError(err, {
+      route: "/api/account",
+      method: "DELETE",
+      requestId: request.headers.get("x-request-id") || undefined,
+    });
     return apiError(
       "INTERNAL_ERROR",
       "An unexpected error occurred during account deletion.",

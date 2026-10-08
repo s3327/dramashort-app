@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { searchDramas } from "@/lib/server/catalog";
 import { apiSuccess, apiError } from "@/lib/api/responses";
+import { reportError } from "@/lib/observability/error-reporter";
 
 export const dynamic = "force-dynamic";
 
@@ -31,11 +32,21 @@ export async function GET(request: NextRequest) {
     });
 
     if (result.error) {
+      reportError(new Error(result.error), {
+        route: "/api/dramas",
+        method: "GET",
+        requestId: request.headers.get("x-request-id") || undefined,
+      });
       return apiError("DATABASE_ERROR", result.error, 500);
     }
 
     return apiSuccess(result);
   } catch (error) {
+    reportError(error, {
+      route: "/api/dramas",
+      method: "GET",
+      requestId: request.headers.get("x-request-id") || undefined,
+    });
     return apiError(
       "DATABASE_ERROR",
       error instanceof Error ? error.message : "Error querying catalog",

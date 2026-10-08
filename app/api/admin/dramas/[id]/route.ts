@@ -3,6 +3,7 @@ import { requireAdmin } from "@/lib/auth/require-admin";
 import { getContentAdminClient } from "@/lib/supabase/content";
 import { mapTitleRowToTitle } from "@/lib/services/content.service";
 import { apiError, apiSuccess } from "@/lib/api/responses";
+import { reportError } from "@/lib/observability/error-reporter";
 import { isUuid, validateDramaPayload } from "@/lib/validation/drama";
 import { resolveChannelByName } from "@/lib/admin/resolve-channel";
 import { deleteDrama as deleteDramaDirect } from "@/lib/server/admin";
@@ -47,6 +48,11 @@ export async function GET(
     return apiSuccess(mapTitleRowToTitle(row));
   } catch (err) {
     console.error("[GET /api/admin/dramas/:id] Unexpected error:", err);
+    reportError(err, {
+      route: `/api/admin/dramas/${id}`,
+      method: "GET",
+      requestId: _request?.headers?.get?.("x-request-id") || undefined,
+    });
     return apiError("DATABASE_ERROR", "Failed to load drama.", 500);
   }
 }
@@ -185,6 +191,11 @@ export async function PATCH(
     return apiSuccess(mapTitleRowToTitle(updatedRow));
   } catch (err) {
     console.error("[PATCH /api/admin/dramas/:id] Unexpected error:", err);
+    reportError(err, {
+      route: `/api/admin/dramas/${id}`,
+      method: "PATCH",
+      requestId: request?.headers?.get?.("x-request-id") || undefined,
+    });
     return apiError("DATABASE_ERROR", "Failed to save drama changes.", 500);
   }
 }
@@ -207,11 +218,21 @@ export async function DELETE(
     return apiError("INVALID_ID", "Drama id must be a UUID.", 400);
   }
 
-  const res = await deleteDramaDirect(id);
-  if (!res.ok) {
-    return apiError("DATABASE_ERROR", res.error, 500);
-  }
+  try {
+    const res = await deleteDramaDirect(id);
+    if (!res.ok) {
+      return apiError("DATABASE_ERROR", res.error, 500);
+    }
 
-  return apiSuccess({ deleted: true });
+    return apiSuccess({ deleted: true });
+  } catch (err) {
+    console.error("[DELETE /api/admin/dramas/:id] Unexpected error:", err);
+    reportError(err, {
+      route: `/api/admin/dramas/${id}`,
+      method: "DELETE",
+      requestId: _request?.headers?.get?.("x-request-id") || undefined,
+    });
+    return apiError("DATABASE_ERROR", "Failed to delete drama.", 500);
+  }
 }
 

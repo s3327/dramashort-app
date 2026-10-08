@@ -5,6 +5,7 @@ import Link from "next/link";
 import { AlertCircle, RefreshCw, Home } from "lucide-react";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
+import { reportError } from "@/lib/observability/error-reporter";
 
 export default function SearchError({
   error,
@@ -14,7 +15,11 @@ export default function SearchError({
   reset: () => void;
 }) {
   useEffect(() => {
-    console.error("Search route segment error:", error);
+    reportError(error, {
+      digest: error.digest,
+      route: "/search",
+      tags: { boundary: "app/search/error" },
+    });
   }, [error]);
 
   return (

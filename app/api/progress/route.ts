@@ -1,6 +1,8 @@
 import { NextRequest } from "next/server";
 import { createUserServerClient } from "@/lib/supabase/user-server";
 import { apiError, apiSuccess } from "@/lib/api/responses";
+import { checkRateLimit, createRateLimitResponse, applyRateLimitHeaders, getClientIp } from "@/lib/security/rate-limiter";
+import { reportError } from "@/lib/observability/error-reporter";
 
 export interface WatchProgressPayload {
   titleSlug: string;
@@ -14,8 +16,15 @@ export interface WatchProgressPayload {
  * POST /api/progress
  * Reliable background beacon endpoint for flushing watch progress (Task 12.3).
  * Invoked on visibilitychange (hidden) and pagehide with fetch(..., { keepalive: true }).
+ * Rate-limited via shared rate limiter (Task 13.6).
  */
 export async function POST(request: NextRequest) {
+  const ip = getClientIp(request);
+  const ipRateLimit = checkRateLimit(`ip:${ip}`, "progress");
+  if (!ipRateLimit.allowed) {
+    return createRateLimitResponse(ipRateLimit);
+  }
+
   let body: unknown;
   try {
     body = await request.json();
@@ -59,7 +68,14 @@ export async function POST(request: NextRequest) {
 
     if (authErr || !user) {
       // Unauthenticated guest: progress saved to client-side localStorage
-      return apiSuccess({ saved: false, guest: true });
+      const guestRes = apiSuccess({ saved: false, guest: true });
+      applyRateLimitHeaders(guestRes, ipRateLimit);
+      return guestRes;
+    }
+
+    const userRateLimit = checkRateLimit(`user:${user.id}`, "progress");
+    if (!userRateLimit.allowed) {
+      return createRateLimitResponse(userRateLimit);
     }
 
     const { error: upsertErr } = await supabase.from("watch_history").upsert(
@@ -77,12 +93,25 @@ export async function POST(request: NextRequest) {
 
     if (upsertErr) {
       console.error("[POST /api/progress] Supabase upsert error:", upsertErr);
+      reportError(upsertErr, {
+        route: "/api/progress",
+        method: "POST",
+        userId: user.id,
+        requestId: request.headers.get("x-request-id") || undefined,
+      });
       return apiError("DATABASE_ERROR", "Failed to persist watch progress.", 500);
     }
 
-    return apiSuccess({ saved: true });
+    const successRes = apiSuccess({ saved: true });
+    applyRateLimitHeaders(successRes, userRateLimit);
+    return successRes;
   } catch (err) {
     console.error("[POST /api/progress] Unexpected error:", err);
+    reportError(err, {
+      route: "/api/progress",
+      method: "POST",
+      requestId: request.headers.get("x-request-id") || undefined,
+    });
     return apiError("INTERNAL_ERROR", "Failed to process progress update.", 500);
   }
 }

@@ -4,6 +4,7 @@ import { useEffect } from "react";
 import Link from "next/link";
 import { AlertCircle, RefreshCw, Home } from "lucide-react";
 import Header from "@/components/Header";
+import { reportError } from "@/lib/observability/error-reporter";
 
 export default function WatchError({
   error,
@@ -13,7 +14,11 @@ export default function WatchError({
   reset: () => void;
 }) {
   useEffect(() => {
-    console.error("Watch route segment error:", error);
+    reportError(error, {
+      digest: error.digest,
+      route: "/watch/[slug]",
+      tags: { boundary: "app/watch/[slug]/error" },
+    });
   }, [error]);
 
   return (

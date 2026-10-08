@@ -1,37 +1,26 @@
-const RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000; // 1 hour
-const RATE_LIMIT_MAX_REQUESTS = 5; // 5 tickets per hour
+/**
+ * Support Ticket Rate Limiting Facade (Refactored in Task 13.6)
+ *
+ * Delegates to the shared scalable rate limiter (lib/security/rate-limiter.ts)
+ * using the pre-configured 'support' profile (5 requests / hour / IP).
+ */
 
-interface RateLimitRecord {
-  count: number;
-  resetAt: number;
-}
-
-const rateLimitMap = new Map<string, RateLimitRecord>();
+import { checkRateLimit, resetRateLimits } from "@/lib/security/rate-limiter";
 
 /**
  * Reset helper for test suites to ensure isolated test runs.
  */
 export function _resetSupportRateLimits() {
-  rateLimitMap.clear();
+  resetRateLimits();
 }
 
 /**
  * Check and advance the sliding window rate limit for support submissions.
  */
 export function checkSupportRateLimit(key: string): { allowed: boolean; retryAfterSeconds: number } {
-  const now = Date.now();
-  const existing = rateLimitMap.get(key);
-
-  if (!existing || now > existing.resetAt) {
-    rateLimitMap.set(key, { count: 1, resetAt: now + RATE_LIMIT_WINDOW_MS });
-    return { allowed: true, retryAfterSeconds: 0 };
-  }
-
-  if (existing.count >= RATE_LIMIT_MAX_REQUESTS) {
-    const retryAfter = Math.ceil((existing.resetAt - now) / 1000);
-    return { allowed: false, retryAfterSeconds: retryAfter };
-  }
-
-  existing.count += 1;
-  return { allowed: true, retryAfterSeconds: 0 };
+  const result = checkRateLimit(key, "support");
+  return {
+    allowed: result.allowed,
+    retryAfterSeconds: result.retryAfterSeconds,
+  };
 }

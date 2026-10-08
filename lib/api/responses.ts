@@ -25,6 +25,7 @@ export type ApiErrorCode =
   | "DELETION_FAILED"
   | "INVALID_CREDENTIALS"
   | "TOO_MANY_REQUESTS"
+  | "RATE_LIMITED"
   | "INTERNAL_ERROR";
 
 export interface ApiErrorBody {

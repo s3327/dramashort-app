@@ -13,6 +13,7 @@ DramaShort is a vertical drama streaming web platform built for high-retention s
 * **Client State & Persistence**: `AuthContext` (mock session) and `FavoritesContext` with `localStorage` synchronization.
 * **Architecture Decision Records**: Formal platform architectural choices and decision gates are maintained in [`docs/adr/README.md`](docs/adr/README.md).
 * **Headless Reusability Architecture**: Multi-schema catalog access and PostgreSQL role grants for external apps are documented in [`docs/architecture/reusable-content-api.md`](docs/architecture/reusable-content-api.md).
+* **Operational Readiness & Telemetry**: Staging setup, database backup policy, PITR, rate limiting, and incident runbooks are documented in [`docs/operations/operational-readiness.md`](docs/operations/operational-readiness.md).
 
 ---
 

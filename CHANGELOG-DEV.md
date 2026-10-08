@@ -1987,3 +1987,86 @@
   - `npx tsc --noEmit`: compiles cleanly with 0 type errors.
   - `npm run build`: cleanly compiles all 63 Next.js routes with production fallback verification.
 
+---
+
+## [2026-10-08] Phase 13: Task 13.6 — Observability, Rate Limiting & Operational Readiness
+* **Status**: Complete & Verified
+* **Scope**: Establish structured JSON logging with request IDs, pluggable error reporting wired into all route and root error boundaries, a shared sliding-window rate limiter on write and playback endpoints, database reachability health check route (`/api/health`), and operational readiness documentation, concluding Phase 13 with 100% backward compatibility and test verification.
+* **Key Deliverables**:
+  1. **Structured JSON Logging & Request Tracing (R1)**:
+     - Created `lib/observability/logger.ts` implementing standardized operational log schema guaranteeing 10 top-level keys: `requestId`, `timestamp`, `level` (`info` | `warn` | `error`), `route`, `method`, `userId`, `durationMs`, `statusCode`, `message`, `details`.
+     - Updated `middleware.ts` to inspect or generate `x-request-id` header (UUID v4), propagate it to downstream request headers, replay it onto outgoing responses, and emit structured JSON logs with duration and status code.
+     - Provided logger hierarchy with `logger.child(context)` and subscriber hooks for test and telemetry capture.
+  2. **Pluggable Error Reporting & Boundary Integration (R2)**:
+     - Created `lib/observability/error-reporter.ts` implementing `reportError(error, context)` capturing error name, message, stack trace, error digest, request ID, user ID, and custom tags.
+     - Pluggable provider design (`registerErrorProvider`, `unregisterErrorProvider`, `clearErrorProviders`) supporting external monitoring sinks (e.g. Sentry / webhooks) with guaranteed safe local fallback.
+     - Wired `reportError` into all application error boundaries:
+       - `app/error.tsx` (in-layout root boundary)
+       - `app/global-error.tsx` (root HTML boundary)
+       - `app/drama/[slug]/error.tsx` (drama segment boundary)
+       - `app/watch/[slug]/error.tsx` (player segment boundary)
+       - `app/search/error.tsx` (search catalog boundary)
+       - Route handlers catching unhandled exceptions (`POST /api/progress`, `POST /api/support`, `GET /api/playback/[episodeId]`).
+  3. **Shared Scalable Rate Limiter (R3)**:
+     - Created `lib/security/rate-limiter.ts` implementing a sliding-window in-memory rate limiter supporting IP and user keys, custom windows, and request thresholds.
+     - Pre-configured policy profiles:
+       - `support`: 5 requests per hour per IP (refactored `lib/support/rate-limiter.ts` to delegate to this shared limiter)
+       - `progress`: 60 requests per minute per IP / user
+       - `playback`: 30 requests per minute per IP / user
+       - `auth`: 10 requests per minute per IP
+       - `generalApi`: 120 requests per minute per IP
+     - Standard HTTP rate limiting headers: `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset`, `Retry-After`.
+     - Standardized HTTP 429 response formatter returning `apiError("RATE_LIMITED", ...)`.
+     - Added `"RATE_LIMITED"` to `ApiErrorCode` in `lib/api/responses.ts`.
+     - Wired into `POST /api/progress`, `POST /api/support`, and `GET /api/playback/[episodeId]`.
+  4. **Database Health Check & Reachability Route (R4)**:
+     - Created `app/api/health/route.ts` and `lib/observability/health.ts` providing system uptime, timestamp, environment, and latency.
+     - Pinged database connectivity across configured Supabase instances with 3000ms timeout handling.
+     - Returned HTTP 200 `{ status: "ok", checks: { database: "healthy" }, latencyMs, timestamp, uptime, environment }` on healthy connectivity, and HTTP 503 `{ status: "unhealthy", ... }` on degraded or failed connectivity.
+  5. **Operational Readiness Runbook (R5)**:
+     - Created `docs/operations/operational-readiness.md` documenting staging environment setup, database backup policy, Point-in-Time Recovery (PITR) drill procedures, rate limiting thresholds, structured logging format, and incident response procedures.
+     - Cross-linked in `README.md` and `docs/adr/0003-database-topology.md`.
+  6. **Automated Verification Test Suite (R6)**:
+     - Authored `__tests__/observability/observability-readiness.test.ts` with 25 automated unit and contract tests verifying:
+       - Structured logger schema and request ID propagation.
+       - Error reporter capture and error boundary wiring.
+       - Rate limiter sliding window math, limit exhaustion, 429 status, and `Retry-After` headers.
+       - Health check endpoint contract and reachability.
+       - Operational runbook completeness.
+* **Regression Analysis & Verification Record**:
+  - `__tests__/observability/observability-readiness.test.ts`: 25 / 25 tests pass (100%).
+  - Full test runner `npm test`: 613 / 613 tests pass across 163 suites with 0 failures (100% pass rate).
+  - `npx tsc --noEmit`: compiles cleanly with 0 type errors.
+  - `npm run build`: cleanly compiles all 64 Next.js routes.
+
+---
+
+## [2026-10-08] Phase 13: Task 13.6 — Adversarial Review & Operational Hardening (Round 1)
+* **Status**: Complete & Verified
+* **Scope**: Adversarial review and hardening of Observability, Rate Limiting & Operational Readiness implementation.
+* **Issues Identified & Fixed**:
+  1. **Circular Object & Property Accessor Crash Protection in `reportError`**:
+     - `formatErrorPayload` previously crashed callers if passed circular objects or throwing property getters due to unhandled `JSON.stringify(error)`.
+     - Hardened with defensive serialization and try/catch fallbacks so `reportError` is guaranteed never to throw.
+     - Enhanced external provider dispatch with `Promise.resolve(outcome)` to safely handle thenables from diverse runtimes.
+  2. **Rate Limiter NaN Header Protection & Key Collision Fix**:
+     - Fixed mathematical bug where `checkRateLimit` produced `NaN` for `resetAt`, `resetSeconds`, and `retryAfterSeconds` when `maxRequests <= 0` or timestamp queues were empty.
+     - Fixed `resetKey` prefix matching bug in `SlidingWindowRateLimiter` where resetting `"bar"` could inadvertently match and delete `"foo:bar"`. Replaced with exact key segment matching.
+     - Added bounded memory pruning (`maybePrune`) to `SlidingWindowRateLimiter` to periodically evict stale timestamp buckets and prevent long-term memory bloat.
+  3. **Rate Limiting Headers on Successful Responses**:
+     - Standard HTTP rate limiting headers (`X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset`) were previously omitted on successful (200/201) responses.
+     - Wired `applyRateLimitHeaders` into `POST /api/progress`, `POST /api/support`, and `GET /api/playback/[episodeId]` on success paths.
+  4. **Universal Error Reporting Wiring Across Remaining Route Handlers**:
+     - Extended `reportError` integration into unhandled exception catch blocks across `DELETE /api/account`, `GET /api/dramas`, `GET/POST /api/admin/dramas`, and `GET/PATCH/DELETE /api/admin/dramas/[id]`.
+  5. **Structured Log Context Details Preservation**:
+     - Fixed `formatLogEntry` and `logger.child` to preserve extra top-level context fields into `details` rather than silently discarding them.
+  6. **Health Check Strict Timeout Boundary**:
+     - Ensured custom/hanging database ping overrides are strictly raced against the timeout promise with `unref()` timers.
+* **Regression Analysis & Verification Record**:
+  - `__tests__/observability/observability-readiness.test.ts`: 34 / 34 tests pass (100%).
+  - Full test runner `npm test`: 622 / 622 tests pass across 163 suites with 0 failures (100% pass rate).
+  - `npx tsc --noEmit`: compiles cleanly with 0 type errors.
+  - `npm run build`: cleanly compiles all 64 Next.js routes.
+
+
+

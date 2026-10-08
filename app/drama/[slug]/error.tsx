@@ -5,6 +5,7 @@ import Link from "next/link";
 import { AlertCircle, RefreshCw, Home, Search } from "lucide-react";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
+import { reportError } from "@/lib/observability/error-reporter";
 
 export default function DramaError({
   error,
@@ -14,7 +15,11 @@ export default function DramaError({
   reset: () => void;
 }) {
   useEffect(() => {
-    console.error("Drama route segment error:", error);
+    reportError(error, {
+      digest: error.digest,
+      route: "/drama/[slug]",
+      tags: { boundary: "app/drama/[slug]/error" },
+    });
   }, [error]);
 
   return (

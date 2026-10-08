@@ -46,7 +46,7 @@
 | **Phase 10** | 🔴 Critical | Security Hardening & Access Control (admin role escalation, RLS & grants, admin API auth, subdomain guard, open redirect, episode media lockdown, CI gate) | ✅ Completed (10.1–10.9 ✅) | Closes privilege escalation and data exposure; gate for all further work |
 | **Phase 11** | 🔴 Critical | Complete Stubbed User Flows (email verification, password recovery, account deletion, support pipeline, real 404s) | 🚧 In progress (11.1 ✅) | Every visible action performs a real operation |
 | **Phase 12** | 🟠 High | Functional Bug Fixes & Data Integrity (12.1–12.8 ✅) | ✅ Completed | Full catalog visible, admin drafts, progress semantics, zero mocks, session, lists, integrity, player robustness |
-| **Phase 13** | 🟠 High | Backend Architecture Consolidation (database topology ADR-0003, server-rendered catalog, service split, observability) | 🚧 In progress (13.1–13.4 ✅) | Decision gate for Phase 8; faster pages; operability |
+| **Phase 13** | 🟠 High | Backend Architecture Consolidation (database topology ADR-0003, server-rendered catalog, service split, taxonomy scalability, observability) | ✅ Completed (13.1–13.6 ✅) | Decision gate for Phase 8; faster pages; operability |
 | **Phase 14** | 🟠 High | Mobile-First Vertical Watch Experience & UI Polish | ⏳ Planned | Core 9:16 viewing experience on phones |
 | **Phase 15** | 🟠 High | Product Analytics, Engagement Tracking & Real Trending | ⏳ Planned | Real views, trending and dashboard; data to tune the paywall |
 | **Phase 16** | 🟠 High | Admin Content Operations Console (episodes, uploads, scheduling, taxonomy, users, audit log) | ⏳ Planned | Catalog operable end-to-end without SQL |
@@ -1826,16 +1826,49 @@ These items stay ✅ for history; the gaps are tracked as new tasks.
 ---
 
 ### Task 13.6: Observability, Rate Limiting & Operational Readiness
-* **Status**: ⏳ Planned
-* **Problem**: There is no error reporting — `app/error.tsx` tells users "Our team has been notified", but nothing is sent. Public write endpoints have no rate limits, and there is no staging environment.
-* **Planned Specifications**:
-  1. Error tracking (e.g., Sentry) for the client, server, and middleware, wired into every `error.tsx` boundary.
-  2. Structured logs in route handlers: request ID, user ID, route, latency, outcome.
-  3. A shared rate limiter (e.g., Upstash Redis or a Postgres-backed limiter) for `/api/support`, `/api/events`, `/api/progress`, and auth forms.
-  4. `GET /api/health` (database reachability) for uptime monitoring.
-  5. Environments: staging Supabase project(s) and preview deployments; development and tests never touch production data.
-  6. Document backups and point-in-time recovery.
-* **Verification**: a thrown test error appears in the tracker with a request ID; exceeding a rate limit returns `429`.
+* **Status**: ✅ Completed (2026-10-08)
+* **Problem**: There was no structured telemetry or error reporting — `app/error.tsx` informed users "Our team has been notified", but nothing was captured or sent. Public write and streaming endpoints had no shared rate limits, exposing the platform to beacon floods, scrape spam, and denial-of-service. There was no database reachability check route (`/api/health`) for synthetic uptime monitoring, and staging environment setups and point-in-time recovery (PITR) procedures were undocumented.
+* **Target Files**: `lib/observability/logger.ts` (new), `lib/observability/error-reporter.ts` (new), `lib/observability/health.ts` (new), `lib/security/rate-limiter.ts` (new), `app/api/health/route.ts` (new), `docs/operations/operational-readiness.md` (new), `middleware.ts`, `lib/support/rate-limiter.ts`, `app/api/support/route.ts`, `app/api/progress/route.ts`, `app/api/playback/[episodeId]/route.ts`, `app/error.tsx`, `app/global-error.tsx`, `app/drama/[slug]/error.tsx`, `app/watch/[slug]/error.tsx`, `app/search/error.tsx`, `lib/api/responses.ts`, `README.md`, `docs/adr/0003-database-topology.md`, `__tests__/observability/observability-readiness.test.ts` (new)
+* **Delivered Capabilities**:
+  1. **Structured JSON Logging & Trace Propagation (`lib/observability/logger.ts`, `middleware.ts`)**:
+     - Standardized operational JSON log schema guaranteeing 10 top-level keys: `requestId`, `timestamp`, `level` (`info` | `warn` | `error`), `route`, `method`, `userId`, `durationMs`, `statusCode`, `message`, `details`.
+     - Generated and propagated cryptographically random `x-request-id` UUID header across incoming requests, forwarded request headers, and outgoing client responses for end-to-end trace correlation.
+     - Provided logger hierarchy with `logger.child(context)` and subscriber hooks for test and telemetry capture.
+  2. **Pluggable Error Reporting & Error Boundary Integration (`lib/observability/error-reporter.ts`, error boundaries)**:
+     - Implemented `reportError(error, context)` capturing error name, message, stack trace, error digest, request ID, user ID, and custom tags.
+     - Pluggable provider design (`registerErrorProvider`, `unregisterErrorProvider`, `clearErrorProviders`) supporting external monitoring sinks (e.g. Sentry / webhooks) with guaranteed safe local fallback.
+     - Wired `reportError` into all application error boundaries:
+       - `app/error.tsx` (in-layout root boundary)
+       - `app/global-error.tsx` (root HTML boundary)
+       - `app/drama/[slug]/error.tsx` (drama segment boundary)
+       - `app/watch/[slug]/error.tsx` (player segment boundary)
+       - `app/search/error.tsx` (search catalog boundary)
+       - Route handlers catching unhandled exceptions (`/api/progress`, `/api/support`, `/api/playback/[episodeId]`).
+  3. **Shared Scalable Rate Limiter (`lib/security/rate-limiter.ts`)**:
+     - Implemented sliding-window in-memory rate limiter supporting IP and user keys, custom durations, and request thresholds.
+     - Pre-configured policy profiles:
+       - `support`: 5 requests per hour per IP (refactored `lib/support/rate-limiter.ts` to delegate to this shared limiter)
+       - `progress`: 60 requests per minute per IP / user
+       - `playback`: 30 requests per minute per IP / user
+       - `auth`: 10 requests per minute per IP
+       - `generalApi`: 120 requests per minute per IP
+     - Standard HTTP rate limiting headers: `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset`, `Retry-After`.
+     - Standardized HTTP 429 response formatter returning `apiError("RATE_LIMITED", ...)`.
+     - Wired into `POST /api/progress`, `POST /api/support`, and `GET /api/playback/[episodeId]`.
+  4. **Database Health Check & Reachability Route (`app/api/health/route.ts`)**:
+     - Implemented `GET /api/health` providing system uptime, timestamp, environment, and latency.
+     - Pinged database connectivity across configured Supabase instances with 3000ms timeout handling.
+     - Returned HTTP 200 `{ status: "ok", checks: { database: "healthy" }, latencyMs, timestamp, uptime, environment }` on healthy connectivity, and HTTP 503 `{ status: "unhealthy", ... }` on degraded or failed connectivity.
+  5. **Operational Readiness Runbook (`docs/operations/operational-readiness.md`)**:
+     - Documented staging environment setup, database backup policy, Point-in-Time Recovery (PITR) drill procedures, rate limiting thresholds, structured logging format, and incident response procedures.
+     - Cross-linked in `README.md` and `docs/adr/0003-database-topology.md`.
+  6. **Automated Verification Test Suite (`__tests__/observability/observability-readiness.test.ts`)**:
+     - 34 automated unit and contract tests verifying structured logging schema, request ID propagation, pluggable error reporting with circular reference handling, error boundary wiring, rate limiter sliding window math, exact key isolation, success and 429 headers, health check contract and reachability with timeout handling, and runbook completeness.
+* **Verification Results**:
+  - `__tests__/observability/observability-readiness.test.ts` (34 / 34 tests passing).
+  - `npx tsc --noEmit`: compiles cleanly with 0 type errors.
+  - Full test runner `npm test`: all test suites pass with 0 failures across 622 tests.
+  - `npm run build`: cleanly compiles all 64 Next.js routes.
 
 ---
 

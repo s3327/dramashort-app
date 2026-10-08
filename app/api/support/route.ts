@@ -3,16 +3,13 @@ import { apiError, apiSuccess } from "@/lib/api/responses";
 import { createUserServerClient, createUserServiceRoleClient } from "@/lib/supabase/user-server";
 
 import { SUPPORT_CATEGORIES, type SupportCategory } from "@/lib/support/types";
-import { checkSupportRateLimit } from "@/lib/support/rate-limiter";
-
-function getClientIp(req: NextRequest): string {
-  const forwarded = req.headers.get("x-forwarded-for");
-  if (forwarded) {
-    const firstIp = forwarded.split(",")[0]?.trim();
-    if (firstIp) return firstIp;
-  }
-  return req.headers.get("x-real-ip") || "127.0.0.1";
-}
+import {
+  checkRateLimit,
+  createRateLimitResponse,
+  applyRateLimitHeaders,
+  getRateLimitKey,
+} from "@/lib/security/rate-limiter";
+import { reportError } from "@/lib/observability/error-reporter";
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -42,17 +39,14 @@ export async function POST(req: NextRequest) {
     // Guest or unauthenticated caller
   }
 
-  const rateLimitKey = userId ? `user:${userId}` : `ip:${getClientIp(req)}`;
-  const { allowed, retryAfterSeconds } = checkSupportRateLimit(rateLimitKey);
-  if (!allowed) {
-    const response = apiError(
-      "TOO_MANY_REQUESTS",
+  const rateLimitKey = getRateLimitKey(req, userId);
+  const rateLimitResult = checkRateLimit(rateLimitKey, "support");
+  if (!rateLimitResult.allowed) {
+    return createRateLimitResponse(
+      rateLimitResult,
       "Too many support requests. Please try again later.",
-      429,
-      { retryAfter: retryAfterSeconds }
+      "TOO_MANY_REQUESTS"
     );
-    response.headers.set("Retry-After", String(retryAfterSeconds));
-    return response;
   }
 
   // 3. Payload validation
@@ -118,6 +112,12 @@ export async function POST(req: NextRequest) {
 
     if (error || !data) {
       console.error("[SUPPORT TICKET INSERT ERROR]", error);
+      reportError(error || new Error("Failed to save support ticket"), {
+        route: "/api/support",
+        method: "POST",
+        userId: userId ?? undefined,
+        requestId: req.headers.get("x-request-id") || undefined,
+      });
       return apiError("DATABASE_ERROR", "Failed to save support ticket. Please try again later.", 500);
     }
 
@@ -139,7 +139,7 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    return apiSuccess(
+    const successRes = apiSuccess(
       {
         success: true,
         ticketId: data.id,
@@ -147,8 +147,16 @@ export async function POST(req: NextRequest) {
       },
       201
     );
+    applyRateLimitHeaders(successRes, rateLimitResult);
+    return successRes;
   } catch (err: any) {
     console.error("[SUPPORT TICKET UNHANDLED ERROR]", err);
+    reportError(err, {
+      route: "/api/support",
+      method: "POST",
+      userId: userId ?? undefined,
+      requestId: req.headers.get("x-request-id") || undefined,
+    });
     return apiError("INTERNAL_ERROR", "An unexpected error occurred while submitting your ticket.", 500);
   }
 }
