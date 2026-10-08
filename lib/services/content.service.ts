@@ -10,6 +10,13 @@ import type {
   Episode,
   HeroSlide,
   PlaybackSource,
+  AdminEpisode,
+  AdminEpisodeMedia,
+  EpisodeMediaStatus,
+  CreateEpisodeInput,
+  BulkCreateEpisodesInput,
+  BulkAssignMediaItem,
+  UpdateEpisodeInput,
 } from "@/types/content";
 import { ENABLE_MOCK_FALLBACK } from "@/lib/config";
 import { isUuid } from "@/lib/validation/drama";
@@ -17,15 +24,30 @@ import { type Result, ok, err } from "@/types/result";
 import { getApiErrorMessage, readJsonSafely } from "@/lib/api/error-message";
 import { adminFetch } from "@/lib/api/admin-fetch";
 
-export type { Title, TitleStatus, Drama, DramaStatus, Channel, Episode, HeroSlide, PlaybackSource };
+export type {
+  Title,
+  TitleStatus,
+  Drama,
+  DramaStatus,
+  Channel,
+  Episode,
+  HeroSlide,
+  PlaybackSource,
+  AdminEpisode,
+  AdminEpisodeMedia,
+  EpisodeMediaStatus,
+  CreateEpisodeInput,
+  BulkCreateEpisodesInput,
+  BulkAssignMediaItem,
+  UpdateEpisodeInput,
+};
 export type { Result };
 
 export type TitleRow = Database["public"]["Tables"]["titles"]["Row"];
 export type DramaRow = TitleRow;
 export type ChannelRow = Database["public"]["Tables"]["channels"]["Row"];
 export type EpisodeRow = Database["public"]["Tables"]["episodes"]["Row"];
-
-
+export type EpisodeMediaRow = Database["public"]["Tables"]["episode_media"]["Row"];
 
 /**
  * Adapter converting Supabase `titles` table row to frontend `Title` shape.
@@ -62,6 +84,10 @@ export function mapTitleRowToTitle(row: TitleRow): Title {
       row.featured_rank !== undefined && row.featured_rank !== null
         ? Number(row.featured_rank)
         : null,
+    freeEpisodesCount:
+      row.free_episodes_count !== undefined && row.free_episodes_count !== null
+        ? Number(row.free_episodes_count)
+        : 5,
   };
 }
 
@@ -88,6 +114,8 @@ export function mapEpisodeRowToEpisode(
     thumbnailUrl: row.thumbnail_url || "",
     durationSeconds: row.duration_seconds || 0,
     isFree: row.is_free ?? true,
+    releaseAt: row.release_at || null,
+    createdAt: row.created_at || undefined,
   };
 }
 
@@ -1401,5 +1429,252 @@ export async function deleteDrama(
  * @deprecated Use deleteDrama instead. Forwarded for 100% backward compatibility.
  */
 export const deleteTitle = deleteDrama;
+
+/**
+ * ============================================================================
+ * ADMIN EPISODE OPERATIONS (Task 16.1)
+ * ============================================================================
+ */
+
+/**
+ * Fetches all admin episodes for a drama, ordered by episode_number ASC.
+ */
+export async function getAdminEpisodes(
+  dramaId: string
+): Promise<{ success: boolean; data?: AdminEpisode[]; error?: string }> {
+  try {
+    const res = await adminFetch(`/api/admin/dramas/${encodeURIComponent(dramaId)}/episodes`);
+    const json = (await readJsonSafely(res)) as { success?: boolean; data?: AdminEpisode[]; error?: string };
+
+    if (!res.ok || !json?.success) {
+      return {
+        success: false,
+        error: getApiErrorMessage(json, `Failed to load episodes (HTTP ${res.status})`),
+      };
+    }
+
+    return {
+      success: true,
+      data: json.data || [],
+    };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Network error loading episodes";
+    return { success: false, error: msg };
+  }
+}
+
+/**
+ * Creates a single episode for a drama.
+ */
+export async function createAdminEpisode(
+  dramaId: string,
+  input: CreateEpisodeInput
+): Promise<{ success: boolean; data?: AdminEpisode; error?: string }> {
+  try {
+    const res = await adminFetch(`/api/admin/dramas/${encodeURIComponent(dramaId)}/episodes`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ mode: "single", ...input }),
+    });
+
+    const json = (await readJsonSafely(res)) as { success?: boolean; data?: AdminEpisode; error?: string };
+    if (!res.ok || !json?.success) {
+      return {
+        success: false,
+        error: getApiErrorMessage(json, `Failed to create episode (HTTP ${res.status})`),
+      };
+    }
+
+    return {
+      success: true,
+      data: json.data,
+    };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Network error creating episode";
+    return { success: false, error: msg };
+  }
+}
+
+/**
+ * Bulk-creates a range of episodes (e.g. 1 to 80).
+ */
+export async function bulkCreateAdminEpisodes(
+  dramaId: string,
+  input: BulkCreateEpisodesInput
+): Promise<{ success: boolean; count?: number; error?: string }> {
+  try {
+    const res = await adminFetch(`/api/admin/dramas/${encodeURIComponent(dramaId)}/episodes`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ mode: "bulk_range", ...input }),
+    });
+
+    const json = (await readJsonSafely(res)) as { success?: boolean; data?: { createdCount: number }; error?: string };
+    if (!res.ok || !json?.success) {
+      return {
+        success: false,
+        error: getApiErrorMessage(json, `Failed to bulk create episodes (HTTP ${res.status})`),
+      };
+    }
+
+    return {
+      success: true,
+      count: json.data?.createdCount ?? 0,
+    };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Network error bulk creating episodes";
+    return { success: false, error: msg };
+  }
+}
+
+/**
+ * Bulk-assigns media URLs or provider asset IDs.
+ */
+export async function bulkAssignMedia(
+  dramaId: string,
+  items: BulkAssignMediaItem[]
+): Promise<{ success: boolean; count?: number; error?: string }> {
+  try {
+    const res = await adminFetch(`/api/admin/dramas/${encodeURIComponent(dramaId)}/episodes`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ mode: "bulk_media", items }),
+    });
+
+    const json = (await readJsonSafely(res)) as { success?: boolean; data?: { updatedCount: number }; error?: string };
+    if (!res.ok || !json?.success) {
+      return {
+        success: false,
+        error: getApiErrorMessage(json, `Failed to bulk assign media (HTTP ${res.status})`),
+      };
+    }
+
+    return {
+      success: true,
+      count: json.data?.updatedCount ?? 0,
+    };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Network error bulk assigning media";
+    return { success: false, error: msg };
+  }
+}
+
+/**
+ * Reorders episodes in sequential order.
+ */
+export async function reorderAdminEpisodes(
+  dramaId: string,
+  orderedEpisodeIds: string[]
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const res = await adminFetch(`/api/admin/dramas/${encodeURIComponent(dramaId)}/episodes`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ mode: "reorder", orderedEpisodeIds }),
+    });
+
+    const json = (await readJsonSafely(res)) as { success?: boolean; error?: string };
+    if (!res.ok || !json?.success) {
+      return {
+        success: false,
+        error: getApiErrorMessage(json, `Failed to reorder episodes (HTTP ${res.status})`),
+      };
+    }
+
+    return { success: true };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Network error reordering episodes";
+    return { success: false, error: msg };
+  }
+}
+
+/**
+ * Updates free_episodes_count for a drama.
+ */
+export async function updateFreeEpisodesCount(
+  dramaId: string,
+  count: number,
+  syncExistingEpisodes = true
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const res = await adminFetch(`/api/admin/dramas/${encodeURIComponent(dramaId)}/episodes`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ mode: "update_free_count", freeEpisodesCount: count, syncExistingEpisodes }),
+    });
+
+    const json = (await readJsonSafely(res)) as { success?: boolean; error?: string };
+    if (!res.ok || !json?.success) {
+      return {
+        success: false,
+        error: getApiErrorMessage(json, `Failed to update free episodes count (HTTP ${res.status})`),
+      };
+    }
+
+    return { success: true };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Network error updating free episodes count";
+    return { success: false, error: msg };
+  }
+}
+
+/**
+ * Updates a single episode metadata or media fields.
+ */
+export async function updateAdminEpisode(
+  episodeId: string,
+  input: UpdateEpisodeInput
+): Promise<{ success: boolean; data?: AdminEpisode; error?: string }> {
+  try {
+    const res = await adminFetch(`/api/admin/episodes/${encodeURIComponent(episodeId)}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    });
+
+    const json = (await readJsonSafely(res)) as { success?: boolean; data?: AdminEpisode; error?: string };
+    if (!res.ok || !json?.success) {
+      return {
+        success: false,
+        error: getApiErrorMessage(json, `Failed to update episode (HTTP ${res.status})`),
+      };
+    }
+
+    return {
+      success: true,
+      data: json.data,
+    };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Network error updating episode";
+    return { success: false, error: msg };
+  }
+}
+
+/**
+ * Deletes a single episode and renumbers remaining episodes.
+ */
+export async function deleteAdminEpisode(
+  episodeId: string
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const res = await adminFetch(`/api/admin/episodes/${encodeURIComponent(episodeId)}`, {
+      method: "DELETE",
+    });
+
+    const json = (await readJsonSafely(res)) as { success?: boolean; error?: string };
+    if (!res.ok || !json?.success) {
+      return {
+        success: false,
+        error: getApiErrorMessage(json, `Failed to delete episode (HTTP ${res.status})`),
+      };
+    }
+
+    return { success: true };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Network error deleting episode";
+    return { success: false, error: msg };
+  }
+}
+
 
 

@@ -4,7 +4,7 @@ import { Suspense, useCallback, useEffect, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Search, List, LayoutGrid, Pencil, Plus, Loader2 } from "lucide-react";
+import { Search, List, LayoutGrid, Pencil, Plus, Loader2, Film } from "lucide-react";
 import AdminSidebar from "@/components/admin/AdminSidebar";
 import Pagination from "@/components/Pagination";
 import Modal from "@/components/Modal";
@@ -503,13 +503,24 @@ function AdminTitlesContent() {
                       </span>
                     </td>
                     <td className="px-3 py-3 text-right">
-                      <Link
-                        href={`/admin/dramas/${t.id}/edit`}
-                        aria-label={`Edit ${t.title}`}
-                        className="inline-flex p-1.5 rounded-md text-text-muted hover:text-primary hover:bg-surface transition-colors"
-                      >
-                        <Pencil size={15} strokeWidth={2} />
-                      </Link>
+                      <div className="inline-flex items-center gap-1 justify-end">
+                        <Link
+                          href={`/admin/dramas/${t.id}/episodes`}
+                          aria-label={`Manage episodes for ${t.title}`}
+                          title="Manage Episodes"
+                          className="inline-flex p-1.5 rounded-md text-text-muted hover:text-primary hover:bg-surface transition-colors"
+                        >
+                          <Film size={15} strokeWidth={2} />
+                        </Link>
+                        <Link
+                          href={`/admin/dramas/${t.id}/edit`}
+                          aria-label={`Edit ${t.title}`}
+                          title="Edit Drama"
+                          className="inline-flex p-1.5 rounded-md text-text-muted hover:text-primary hover:bg-surface transition-colors"
+                        >
+                          <Pencil size={15} strokeWidth={2} />
+                        </Link>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -538,13 +549,24 @@ function AdminTitlesContent() {
                     aria-label={`Select ${t.title}`}
                     className="absolute top-2 left-2 h-4 w-4 accent-primary"
                   />
-                  <Link
-                    href={`/admin/dramas/${t.id}/edit`}
-                    aria-label={`Edit ${t.title}`}
-                    className="absolute top-2 right-2 flex h-7 w-7 items-center justify-center rounded-full bg-black/60 text-text-light hover:bg-black/75 transition-colors"
-                  >
-                    <Pencil size={13} strokeWidth={2} />
-                  </Link>
+                  <div className="absolute top-2 right-2 flex items-center gap-1">
+                    <Link
+                      href={`/admin/dramas/${t.id}/episodes`}
+                      aria-label={`Manage episodes for ${t.title}`}
+                      title="Manage Episodes"
+                      className="flex h-7 w-7 items-center justify-center rounded-full bg-black/60 text-text-light hover:bg-black/75 transition-colors"
+                    >
+                      <Film size={13} strokeWidth={2} />
+                    </Link>
+                    <Link
+                      href={`/admin/dramas/${t.id}/edit`}
+                      aria-label={`Edit ${t.title}`}
+                      title="Edit Drama"
+                      className="flex h-7 w-7 items-center justify-center rounded-full bg-black/60 text-text-light hover:bg-black/75 transition-colors"
+                    >
+                      <Pencil size={13} strokeWidth={2} />
+                    </Link>
+                  </div>
                 </div>
                 <div className="p-3">
                   <Link

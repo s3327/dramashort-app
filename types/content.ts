@@ -32,6 +32,7 @@ export interface Drama {
   bannerUrl?: string | null;
   heroTagline?: string | null;
   featuredRank?: number | null;
+  freeEpisodesCount?: number;
 }
 
 /**
@@ -54,7 +55,76 @@ export interface Episode {
   thumbnailUrl: string | null;
   durationSeconds: number;
   isFree: boolean;
+  releaseAt?: string | null;
   createdAt?: string;
+}
+
+export type EpisodeMediaStatus = "missing" | "processing" | "ready" | "error";
+
+export interface AdminEpisodeMedia {
+  id?: string;
+  provider: string;
+  assetRef?: string | null;
+  hlsUrl?: string | null;
+  mp4Url?: string | null;
+  durationSeconds?: number;
+  aspectRatio?: string;
+  status: EpisodeMediaStatus;
+}
+
+export interface AdminEpisode {
+  id: string;
+  titleId: string;
+  episodeNumber: number;
+  title: string;
+  thumbnailUrl: string | null;
+  durationSeconds: number;
+  isFree: boolean;
+  releaseAt?: string | null;
+  createdAt: string;
+  mediaStatus: EpisodeMediaStatus;
+  media?: AdminEpisodeMedia | null;
+}
+
+export interface CreateEpisodeInput {
+  episodeNumber?: number;
+  title?: string;
+  durationSeconds?: number;
+  isFree?: boolean;
+  thumbnailUrl?: string | null;
+  releaseAt?: string | null;
+  videoUrl?: string | null;
+  hlsUrl?: string | null;
+  mp4Url?: string | null;
+  assetRef?: string | null;
+  provider?: string;
+}
+
+export interface BulkCreateEpisodesInput {
+  startNumber: number;
+  endNumber: number;
+  titleTemplate?: string;
+  autoFree?: boolean;
+}
+
+export interface BulkAssignMediaItem {
+  episodeNumber: number;
+  urlOrAssetId: string;
+  provider?: string;
+  durationSeconds?: number;
+}
+
+export interface UpdateEpisodeInput {
+  title?: string;
+  durationSeconds?: number;
+  isFree?: boolean;
+  thumbnailUrl?: string | null;
+  releaseAt?: string | null;
+  hlsUrl?: string | null;
+  mp4Url?: string | null;
+  assetRef?: string | null;
+  provider?: string;
+  status?: EpisodeMediaStatus;
 }
 
 export interface HeroSlide {

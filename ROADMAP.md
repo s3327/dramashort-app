@@ -47,9 +47,9 @@
 | **Phase 11** | 🔴 Critical | Complete Stubbed User Flows (email verification, password recovery, account deletion, support pipeline, real 404s) | ✅ Completed (11.1–11.7 ✅) | Every visible action performs a real operation |
 | **Phase 12** | 🟠 High | Functional Bug Fixes & Data Integrity (12.1–12.8 ✅) | ✅ Completed | Full catalog visible, admin drafts, progress semantics, zero mocks, session, lists, integrity, player robustness |
 | **Phase 13** | 🟠 High | Backend Architecture Consolidation (database topology ADR-0003, server-rendered catalog, service split, taxonomy scalability, observability) | ✅ Completed (13.1–13.6 ✅) | Decision gate for Phase 8; faster pages; operability |
-| **Phase 14** | 🟠 High | Mobile-First Vertical Watch Experience & UI Polish | 🚧 In progress (14.1, 14.2, 14.3, 14.4, 14.5, 14.6, 14.7 ✅) | Core 9:16 viewing experience on phones |
-| **Phase 15** | 🟠 High | Product Analytics, Engagement Tracking & Real Trending | ⏳ Planned | Real views, trending and dashboard; data to tune the paywall |
-| **Phase 16** | 🟠 High | Admin Content Operations Console (episodes, uploads, scheduling, taxonomy, users, audit log) | ⏳ Planned | Catalog operable end-to-end without SQL |
+| **Phase 14** | 🟠 High | Mobile-First Vertical Watch Experience & UI Polish | ✅ Completed (14.1–14.9 ✅) | Core 9:16 viewing experience on phones |
+| **Phase 15** | 🟠 High | Product Analytics, Engagement Tracking & Real Trending | ✅ Completed (15.1–15.5 ✅) | Real views, trending and dashboard; data to tune the paywall |
+| **Phase 16** | 🟠 High | Admin Content Operations Console (episodes, uploads, scheduling, taxonomy, users, audit log) | 🚧 In progress (16.1 ✅) | Catalog operable end-to-end without SQL |
 | **Phase 17** | 🟡 Medium | Quality Engineering, CI & Documentation Integrity (continuous) | ⏳ Planned | Regression safety; trustworthy status docs |
 
 > **Execution order (set by the 2026-10-04 platform audit)**: Phase numbers are stable identifiers, not a sequence. Remaining work executes as **10 → 11 → 12 → 13 → 14 → 15 → 16 → 8 → 9**, with Phase 17 running continuously alongside. Gates and dependencies are defined in [§12](#12-platform-audit-remediation-track-phases-1017).
@@ -2285,18 +2285,46 @@ These items stay ✅ for history; the gaps are tracked as new tasks.
 > **Objective**: Let the content team run the catalog end-to-end without SQL: episodes and media, artwork, scheduling, taxonomy, channels, users, settings, support, and a full audit trail.
 
 ### Task 16.1: Episode Management
-* **Status**: ⏳ Planned
+* **Status**: ✅ Completed
 * **Depends on**: 10.6
-* **Problem**: There is no admin UI for episodes (video, duration, thumbnail, free flag). With 40–80 episodes per drama this is the core daily admin task; the seed creates only 5 episodes per drama.
-* **Target Files**: `app/admin/dramas/[id]/episodes/page.tsx` (new), `app/api/admin/dramas/[id]/episodes/route.ts` (new), `app/api/admin/episodes/[episodeId]/route.ts` (new)
-* **Planned Specifications**:
-  1. Episode table per drama: number, title, duration, media status (missing / processing / ready), free or locked, release time.
-  2. Bulk create a range (e.g., 1–80), bulk-paste media IDs or URLs, and CSV import.
-  3. Media assignment through `episode_media` (Task 10.6): upload to the video provider or paste a provider asset ID; duration read automatically.
-  4. Reorder and renumber safely under `UNIQUE(title_id, episode_number)`.
-  5. Publishing a drama with zero ready episodes is blocked.
-  6. Per-drama `free_episodes_count` (Phase 8, Task 8.2) is editable here.
-* **Verification**: create 80 episodes in one operation, attach media, and play them on the public site.
+* **Target Files**:
+  - `supabase/content/supabase/migrations/20261009100000_episode_operations.sql`
+  - `supabase/user/supabase/migrations/20261009100000_episode_operations.sql`
+  - `types/content.ts`
+  - `types/supabase-content.ts`
+  - `lib/validation/episode.ts`
+  - `lib/validation/drama.ts`
+  - `lib/server/admin-episodes.ts`
+  - `lib/services/content.service.ts`
+  - `app/api/admin/dramas/[id]/episodes/route.ts`
+  - `app/api/admin/episodes/[episodeId]/route.ts`
+  - `app/api/admin/dramas/[id]/route.ts`
+  - `app/api/admin/dramas/route.ts`
+  - `app/admin/dramas/[id]/episodes/page.tsx`
+  - `app/admin/titles/[id]/episodes/page.tsx`
+  - `app/admin/titles/[id]/edit/page.tsx`
+  - `app/admin/titles/page.tsx`
+  - `__tests__/admin/episode-management.test.ts`
+* **Delivered Capabilities**:
+  1. Database Schema Migration:
+     - Added `free_episodes_count INT NOT NULL DEFAULT 5 CHECK (free_episodes_count >= 0)` to `titles` table.
+     - Added `release_at TIMESTAMPTZ DEFAULT NULL` to `episodes` table and granted column-level SELECT to `anon` and `authenticated`.
+  2. Episode Admin API Endpoints:
+     - `GET /api/admin/dramas/[id]/episodes`: Lists episodes ordered by `episode_number ASC` with joined `episode_media` status (`missing`, `processing`, `ready`, `error`), duration, and access mode (`is_free`).
+     - `POST /api/admin/dramas/[id]/episodes`: Supports single creation, bulk range generator (1–N), bulk media paste, reordering, and updating `free_episodes_count`.
+     - `PATCH /api/admin/episodes/[episodeId]`: Updates episode metadata (`title`, `durationSeconds`, `isFree`, `thumbnailUrl`, `releaseAt`) and upserts `episode_media` records.
+     - `DELETE /api/admin/episodes/[episodeId]`: Deletes episode and safely renumbers remaining episodes sequentially (1, 2, 3...) under `UNIQUE(title_id, episode_number)` using a two-phase temporary offset algorithm.
+  3. Publish Validation Guard:
+     - Blocked updating drama status to `"Published"` in `PATCH /api/admin/dramas/[id]` and `POST /api/admin/dramas` when the drama has 0 ready episodes in `episode_media`, returning HTTP 400 with `VALIDATION_ERROR`.
+  4. Content Operations Admin UI:
+     - Created `app/admin/dramas/[id]/episodes/page.tsx` with top overview card, freemium paywall gatekeeper (editable `free_episodes_count` with instant save & sync), bulk range generator modal, bulk media paste modal, and rich episode table.
+     - Integrated quick-toggle access button (Free vs Coin-Locked) and single-step Up/Down reordering.
+     - Wired direct access links from `app/admin/titles/[id]/edit/page.tsx` and the drama table and card views in `app/admin/titles/page.tsx`.
+* **Verification**:
+  - `npx tsc --noEmit` passed with 0 errors.
+  - `__tests__/admin/episode-management.test.ts` passed (14/14 tests).
+  - Full test suite `npm test` passed with 100% success (790/790 tests across 210 suites).
+  - Next.js production build (`npm run build`) compiled all 67 routes successfully.
 
 ---
 

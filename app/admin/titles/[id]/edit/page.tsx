@@ -4,7 +4,7 @@ import { use, useEffect, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Save, Loader2, AlertCircle } from "lucide-react";
+import { ArrowLeft, Save, Loader2, AlertCircle, Film } from "lucide-react";
 import AdminSidebar from "@/components/admin/AdminSidebar";
 import Breadcrumbs from "@/components/Breadcrumbs";
 import Toast from "@/components/Toast";
@@ -240,6 +240,13 @@ export default function AdminTitleEditPage({
           </div>
 
           <div className="flex items-center gap-2.5">
+            <Link
+              href={`/admin/dramas/${id}/episodes`}
+              className="inline-flex items-center gap-1.5 rounded-md border border-border bg-surface px-4 py-2 text-sm font-semibold text-text hover:bg-surface-raised transition-colors shadow-sm"
+            >
+              <Film size={16} />
+              <span>Manage Episodes</span>
+            </Link>
             <Link
               href="/admin/dramas"
               className="inline-flex items-center gap-1.5 rounded-md border border-border bg-surface px-4 py-2 text-sm font-semibold text-text hover:bg-surface-raised transition-colors"

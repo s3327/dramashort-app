@@ -96,6 +96,7 @@ export async function PATCH(
   if (input.totalEpisodes !== undefined) updateData.total_episodes = input.totalEpisodes;
   if (input.tags !== undefined) updateData.tags = input.tags;
   if (input.posterUrl !== undefined) updateData.poster_url = input.posterUrl;
+  if (input.freeEpisodesCount !== undefined) updateData.free_episodes_count = input.freeEpisodesCount;
 
   if (
     input.channelName === undefined &&
@@ -107,6 +108,57 @@ export async function PATCH(
 
   try {
     const adminClient = getContentAdminClient();
+
+    if (input.status === "Published") {
+      // Task 16.1: Block publishing a drama if it has zero ready episodes
+      const { data: episodes, error: epErr } = await adminClient
+        .from("episodes")
+        .select("id, video_url")
+        .eq("title_id", id);
+
+      if (epErr) {
+        console.error("[PATCH /api/admin/dramas/:id] Episodes check error:", epErr);
+        return apiError("DATABASE_ERROR", "Failed to verify drama episodes before publishing.", 500);
+      }
+
+      if (!episodes || episodes.length === 0) {
+        return apiError(
+          "VALIDATION_ERROR",
+          "Cannot publish drama with zero ready episodes.",
+          400,
+          [{ field: "status", message: "A drama must have at least one episode with ready media before being published." }]
+        );
+      }
+
+      const epIds = (episodes as Array<{ id: string; video_url?: string | null }>).map((e) => e.id);
+      const { data: mediaRows, error: mediaErr } = await adminClient
+        .from("episode_media")
+        .select("id, status, hls_url, mp4_url, asset_ref")
+        .in("episode_id", epIds);
+
+      if (mediaErr) {
+        console.error("[PATCH /api/admin/dramas/:id] Media check error:", mediaErr);
+        return apiError("DATABASE_ERROR", "Failed to verify episode media before publishing.", 500);
+      }
+
+      const hasReadyMedia =
+        (mediaRows &&
+          (mediaRows as any[]).some(
+            (m) =>
+              m.status === "ready" &&
+              Boolean(m.hls_url || m.mp4_url || m.asset_ref)
+          )) ||
+        (episodes as any[]).some((e) => Boolean(e.video_url && e.video_url.trim() !== ""));
+
+      if (!hasReadyMedia) {
+        return apiError(
+          "VALIDATION_ERROR",
+          "Cannot publish drama with zero ready episodes.",
+          400,
+          [{ field: "status", message: "A drama must have at least one episode with ready media before being published." }]
+        );
+      }
+    }
 
     if (input.slug !== undefined) {
       const { data: currentDrama, error: fetchError } = await adminClient

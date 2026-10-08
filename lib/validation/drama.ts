@@ -37,6 +37,7 @@ export interface DramaFields {
   totalEpisodes?: number;
   posterUrl?: string;
   bannerUrl?: string;
+  freeEpisodesCount?: number;
 }
 
 export interface FieldError {
@@ -296,6 +297,24 @@ export function validateDramaPayload(input: unknown, mode: "create" | "update"):
       });
     } else {
       value.totalEpisodes = n;
+    }
+  }
+
+  const freeEpisodes = firstDefined(body, ["freeEpisodesCount", "free_episodes_count"]);
+  if (freeEpisodes !== undefined) {
+    const n = typeof freeEpisodes === "string" && freeEpisodes.trim() !== "" ? Number(freeEpisodes) : freeEpisodes;
+    if (
+      typeof n !== "number" ||
+      !Number.isInteger(n) ||
+      n < 0 ||
+      n > DRAMA_LIMITS.episodesMax
+    ) {
+      errors.push({
+        field: "freeEpisodesCount",
+        message: `freeEpisodesCount must be an integer from 0 to ${DRAMA_LIMITS.episodesMax}.`,
+      });
+    } else {
+      value.freeEpisodesCount = n;
     }
   }
 

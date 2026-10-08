@@ -132,6 +132,14 @@ export async function POST(request: NextRequest) {
     return apiError("VALIDATION_ERROR", "Invalid drama payload.", 400, validation.errors);
   }
   const input = validation.value;
+  if (input.status === "Published") {
+    return apiError(
+      "VALIDATION_ERROR",
+      "Cannot publish drama with zero ready episodes.",
+      400,
+      [{ field: "status", message: "A drama must have at least one episode with ready media before being published." }]
+    );
+  }
 
   try {
     const adminClient = getContentAdminClient();
@@ -154,6 +162,7 @@ export async function POST(request: NextRequest) {
       poster_url: input.posterUrl ?? DEFAULT_POSTER_URL,
       status: input.status ?? "Draft",
       total_episodes: input.totalEpisodes ?? 40,
+      free_episodes_count: input.freeEpisodesCount ?? 5,
       release_year: new Date().getFullYear(),
     };
 

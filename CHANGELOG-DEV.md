@@ -2578,3 +2578,49 @@
   - Full test runner `npm test`: all 776 tests pass across 204 suites with 0 failures (100% pass rate).
   - TypeScript compiler check (`npx tsc --noEmit`): 0 type errors.
   - Next.js production build (`npm run build`): cleanly compiles 67/67 static/dynamic routes.
+---
+
+## [2026-10-09] Task 16.1: Episode Management
+* **Milestone**: Phase 16 (Admin Content Operations Console) — Task 16.1
+* **Goal**: Build complete end-to-end admin episode management enabling content operations without SQL: database schema migrations for freemium thresholds and scheduled release times, CRUD & bulk API endpoints, collision-free safe reordering, publish gating (blocking zero ready episodes), and comprehensive Admin Episode Management UI.
+* **Implementation Steps Taken**:
+  1. **Database Schema Migrations (`supabase/content/supabase/migrations/20261009100000_episode_operations.sql` & `supabase/user/supabase/migrations/20261009100000_episode_operations.sql`)**:
+     - Added `free_episodes_count INT NOT NULL DEFAULT 5 CHECK (free_episodes_count >= 0)` to `titles` table for per-drama freemium paywall configuration.
+     - Added `release_at TIMESTAMPTZ DEFAULT NULL` to `episodes` table for scheduled episode release timing.
+     - Granted column-level SELECT on `release_at` to `anon` and `authenticated`.
+     - Ensured full permissions to `service_role` and `postgres` on `episodes` and `episode_media`.
+  2. **Domain & Database Types Expansion (`types/content.ts` & `types/supabase-content.ts`)**:
+     - Added `freeEpisodesCount?: number;` to `Drama` and `Title` interfaces.
+     - Added `releaseAt?: string | null;` to `Episode` interface.
+     - Defined `EpisodeMediaStatus`, `AdminEpisodeMedia`, `AdminEpisode`, `CreateEpisodeInput`, `BulkCreateEpisodesInput`, `BulkAssignMediaItem`, and `UpdateEpisodeInput`.
+     - Updated Supabase schema types in `types/supabase-content.ts` for `episodes` and `titles` rows, inserts, and updates.
+  3. **Payload Validation Schemas (`lib/validation/episode.ts` & `lib/validation/drama.ts`)**:
+     - Created `lib/validation/episode.ts` with strict validators for single episode creation/updates, bulk range generation, bulk media array payloads, and reordering arrays.
+     - Updated `lib/validation/drama.ts` to validate and normalize `free_episodes_count` / `freeEpisodesCount`.
+  4. **Server-Side Operations Layer (`lib/server/admin-episodes.ts`)**:
+     - `getAdminEpisodesServer(titleId)`: Selects all episodes for a drama ordered by `episode_number ASC` with joined `episode_media` rows, computing accurate media status (`ready`, `processing`, `error`, `missing`).
+     - `createAdminEpisodeServer(titleId, input)`: Generates next sequential episode number, computes `is_free` against `free_episodes_count`, inserts episode, attaches media to `episode_media`, and updates `titles.total_episodes`.
+     - `bulkCreateAdminEpisodesServer(titleId, input)`: Batch creates episodes across range (e.g. 1–80), auto-sets titles and free access, checks for number conflicts, and updates `titles.total_episodes`.
+     - `bulkAssignMediaServer(titleId, items)`: Matches episode numbers and upserts `episode_media` rows with streaming URLs/asset IDs.
+     - `updateAdminEpisodeServer(episodeId, input)`: Partially updates episode metadata and associated `episode_media`.
+     - `deleteAdminEpisodeServer(episodeId)`: Deletes episode and safely renumbers all remaining episodes sequentially (1, 2, 3...) using a two-phase temporary offset algorithm to avoid `UNIQUE(title_id, episode_number)` collisions.
+     - `reorderAdminEpisodesServer(titleId, orderedIds)`: Safely renumbers episodes in two phases to guarantee collision-free ordering.
+     - `updateFreeEpisodesCountServer(titleId, count, sync)`: Updates threshold and synchronizes `is_free` flags across existing episodes.
+  5. **Client Service Methods (`lib/services/content.service.ts`)**:
+     - Implemented `getAdminEpisodes`, `createAdminEpisode`, `bulkCreateAdminEpisodes`, `bulkAssignMedia`, `reorderAdminEpisodes`, `updateFreeEpisodesCount`, `updateAdminEpisode`, and `deleteAdminEpisode` via `adminFetch`.
+  6. **Admin API Route Handlers**:
+     - `GET & POST /api/admin/dramas/[id]/episodes`: Protected with `requireAdmin()`, supporting single creation, bulk range, bulk media, reordering, and free episode count updates.
+     - `PATCH & DELETE /api/admin/episodes/[episodeId]`: Protected with `requireAdmin()`, updating episode metadata/media or deleting and safely renumbering.
+     - `PATCH /api/admin/dramas/[id]` & `POST /api/admin/dramas`: Enforced Requirement 5 publish check, blocking transition to `"Published"` if the drama has 0 ready episodes in `episode_media`.
+  7. **Admin Content Operations Console UI (`app/admin/dramas/[id]/episodes/page.tsx`)**:
+     - Built comprehensive episode management interface with drama header card, freemium paywall gatekeeper (editable `free_episodes_count` with instant save & sync), bulk range generator modal, bulk media paste modal (supporting sequential lines and CSV/TSV), and rich episode table.
+     - Features duration formatting (mm:ss), media status badges (`Ready`, `Processing`, `Missing`), quick-toggle access button (`Free` vs `Locked`), single-step Up/Down reorder controls, and delete confirmation modal.
+     - Created alias forwarding route at `app/admin/titles/[id]/episodes/page.tsx`.
+     - Added "Manage Episodes" button to `app/admin/titles/[id]/edit/page.tsx` and direct episode management icon links to table and card views in `app/admin/titles/page.tsx`.
+  8. **Automated Verification Test Suite (`__tests__/admin/episode-management.test.ts`)**:
+     - Authored 14 tests verifying auth guards (401/403), UUID validation, GET sorting & media status join, single creation with freemium default, bulk range generation, conflict detection, bulk media assignment, safe reordering, free count sync, PATCH/DELETE renumbering, and publish blocking for 0 ready episodes.
+* **Regression Analysis & Verification Record**:
+  - `__tests__/admin/episode-management.test.ts`: 14 / 14 tests pass (100%).
+  - Full test runner `npm test`: all 790 tests pass across 210 suites with 0 failures (100% pass rate).
+  - TypeScript compiler check (`npx tsc --noEmit`): 0 type errors.
+  - Next.js production build (`npm run build`): cleanly compiles 67/67 static/dynamic routes.

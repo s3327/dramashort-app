@@ -54,6 +54,7 @@ export type Database = {
           episode_number: number
           id: string
           is_free: boolean | null
+          release_at?: string | null
           thumbnail_url: string | null
           title: string | null
           title_id: string
@@ -65,6 +66,7 @@ export type Database = {
           episode_number: number
           id?: string
           is_free?: boolean | null
+          release_at?: string | null
           thumbnail_url?: string | null
           title?: string | null
           title_id: string
@@ -76,6 +78,7 @@ export type Database = {
           episode_number?: number
           id?: string
           is_free?: boolean | null
+          release_at?: string | null
           thumbnail_url?: string | null
           title?: string | null
           title_id?: string
@@ -164,6 +167,7 @@ export type Database = {
           banner_url?: string | null
           hero_tagline?: string | null
           featured_rank?: number | null
+          free_episodes_count?: number
         }
         Insert: {
           channel_code: string
@@ -187,6 +191,7 @@ export type Database = {
           banner_url?: string | null
           hero_tagline?: string | null
           featured_rank?: number | null
+          free_episodes_count?: number
         }
         Update: {
           channel_code?: string
@@ -210,6 +215,7 @@ export type Database = {
           banner_url?: string | null
           hero_tagline?: string | null
           featured_rank?: number | null
+          free_episodes_count?: number
         }
         Relationships: [
           {
