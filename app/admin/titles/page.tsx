@@ -8,6 +8,7 @@ import { Search, List, LayoutGrid, Pencil, Plus, Loader2, Film } from "lucide-re
 import AdminSidebar from "@/components/admin/AdminSidebar";
 import Pagination from "@/components/Pagination";
 import Modal from "@/components/Modal";
+import { ArtworkUploader } from "@/components/admin/ArtworkUploader";
 import Toast from "@/components/Toast";
 import { useToast } from "@/hooks/useToast";
 import type { Channel } from "@/types/content";
@@ -70,6 +71,7 @@ function AdminTitlesContent() {
     channel: "",
     totalEpisodes: 40,
     poster: "",
+    banner: "",
     status: "Draft" as TitleStatus,
   });
 
@@ -211,6 +213,7 @@ function AdminTitlesContent() {
       channel: chosenChannel,
       totalEpisodes: Number(newDrama.totalEpisodes) || 40,
       poster: newDrama.poster.trim() || undefined,
+      banner: newDrama.banner.trim() || undefined,
       status: newDrama.status,
     });
 
@@ -226,6 +229,7 @@ function AdminTitlesContent() {
         channel: channelList[0]?.name || "",
         totalEpisodes: 40,
         poster: "",
+        banner: "",
         status: "Draft",
       });
       showToast("Drama created successfully");
@@ -717,17 +721,21 @@ function AdminTitlesContent() {
               </div>
             </div>
 
-            <div>
-              <label htmlFor="drama-poster" className="block text-xs font-semibold text-text mb-1">
-                Poster Image URL (optional)
-              </label>
-              <input
-                id="drama-poster"
-                type="url"
+            <div className="space-y-4 pt-1 border-t border-border/60">
+              <ArtworkUploader
+                type="poster"
                 value={newDrama.poster}
-                onChange={(e) => setNewDrama({ ...newDrama, poster: e.target.value })}
-                placeholder="https://images.unsplash.com/... or Supabase storage URL"
-                className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm text-text placeholder:text-text-muted/60 focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-colors"
+                onChange={(url) => setNewDrama((prev) => ({ ...prev, poster: url || "" }))}
+                label="Poster Image (optional)"
+                disabled={isSubmittingDrama}
+              />
+
+              <ArtworkUploader
+                type="banner"
+                value={newDrama.banner}
+                onChange={(url) => setNewDrama((prev) => ({ ...prev, banner: url || "" }))}
+                label="Banner Image (optional)"
+                disabled={isSubmittingDrama}
               />
             </div>
 

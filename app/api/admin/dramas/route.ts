@@ -160,6 +160,7 @@ export async function POST(request: NextRequest) {
       channel_code: channelCode,
       channel_id: channel?.id ?? null,
       poster_url: input.posterUrl ?? DEFAULT_POSTER_URL,
+      banner_url: input.bannerUrl ?? null,
       status: input.status ?? "Draft",
       total_episodes: input.totalEpisodes ?? 40,
       free_episodes_count: input.freeEpisodesCount ?? 5,

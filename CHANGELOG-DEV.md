@@ -2624,3 +2624,41 @@
   - Full test runner `npm test`: all 790 tests pass across 210 suites with 0 failures (100% pass rate).
   - TypeScript compiler check (`npx tsc --noEmit`): 0 type errors.
   - Next.js production build (`npm run build`): cleanly compiles 67/67 static/dynamic routes.
+
+
+---
+
+## [2026-10-09] Task 16.2: Artwork Uploads (Poster & Banner, Aspect Ratio & 5MB Limit)
+* **Milestone**: Phase 16 (Admin Content Operations Console) — Task 16.2
+* **Goal**: Provide automated, validated image uploads for Posters (~2:3 vertical aspect ratio) and Banners (~16:9 landscape aspect ratio) to Supabase Storage `artwork` bucket, enforcing a strict 5 MB file size limit, MIME whitelisting, binary dimension inspection, and replacing raw text inputs with rich drag-and-drop preview components.
+* **Implementation Steps Taken**:
+  1. **Storage Infrastructure Migrations (`supabase/content/supabase/migrations/20261009120000_artwork_storage.sql` & `supabase/user/supabase/migrations/20261009120000_artwork_storage.sql`)**:
+     - Configured the `artwork` storage bucket with a 5 MB file size limit and MIME whitelisting (`image/jpeg`, `image/png`, `image/webp`).
+     - Established public read RLS policy (`ALLOW SELECT ON storage.objects`) and admin-only upload/update/delete policies.
+  2. **Zero-Dependency Binary Dimension & Aspect Ratio Engine (`lib/validation/artwork.ts`)**:
+     - Built pure Node.js Buffer parser detecting image dimensions directly from binary headers without external dependencies:
+       - PNG: IHDR chunk width/height BE uint32.
+       - JPEG: SOF0/SOF1/SOF2 marker height/width BE uint16.
+       - WebP: VP8, VP8L, and VP8X chunk width/height LE parsing.
+     - Enforces aspect ratio tolerance and minimum resolution:
+       - Posters: ~2:3 vertical (ratio range 0.58–0.74, min 300x450px).
+       - Banners: ~16:9 landscape (ratio range 1.65–1.90, min 640x360px).
+       - File size limit: 5 MB (5,242,880 bytes).
+  3. **Backend API Route Handlers**:
+     - `POST /api/admin/artwork/upload`: Protected with `requireAdmin()`, processes multipart `FormData`, runs binary validation, uploads to `artwork` bucket under `posters/` or `banners/`, and returns public URL with image metadata.
+     - `POST /api/admin/artwork/signed-url`: Protected with `requireAdmin()`, generates signed upload URLs for direct client uploads with mimeType and size verification.
+     - Updated `POST /api/admin/dramas` and `PATCH /api/admin/dramas/[id]`: Added support for `banner_url` persistence and normalized `posterUrl`/`bannerUrl` aliases in `validateDramaPayload()`.
+  4. **Client Service Layer (`lib/services/artwork.service.ts`)**:
+     - Implemented `validateClientImage(file, type)` using native browser DOM `Image()` for instant client-side feedback before network requests.
+     - Implemented `uploadArtwork(file, type)` and `getArtworkSignedUrl()` wrapping `adminFetch`.
+  5. **UI Component & Admin Console Integration (`components/admin/ArtworkUploader.tsx`)**:
+     - Built reusable `ArtworkUploader` supporting drag-and-drop, client dimension check, aspect ratio badge, format badge, upload progress spinner, image preview, replace/remove buttons, and external URL fallback toggle.
+     - Upgraded `app/admin/titles/[id]/edit/page.tsx`: Replaced raw text input with `ArtworkUploader` for both Poster and Banner, added real-time Banner Preview (16:9) to the sidebar, and wired form submission to persist both fields.
+     - Upgraded `app/admin/titles/page.tsx`: Augmented "Add Drama" modal with `ArtworkUploader` for both Poster and Banner.
+  6. **Automated Verification Test Suite (`__tests__/admin/artwork-uploads.test.ts`)**:
+     - Created 22 tests covering binary header parsing, aspect ratio rejection, admin authorization, multipart upload, signed URL generation, and drama persistence.
+* **Regression Analysis & Verification Record**:
+  - `__tests__/admin/artwork-uploads.test.ts`: 22 / 22 tests pass (100%).
+  - Full test runner `npm test`: all 812 tests pass across 215 suites with 0 failures (100% pass rate).
+  - TypeScript compiler check (`npx tsc --noEmit`): 0 type errors.
+  - Next.js production build (`npm run build`): cleanly compiles 67/67 routes.

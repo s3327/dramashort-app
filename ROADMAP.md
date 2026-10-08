@@ -2329,13 +2329,41 @@ These items stay ✅ for history; the gaps are tracked as new tasks.
 ---
 
 ### Task 16.2: Artwork Uploads (Poster & Banner)
-* **Status**: ⏳ Planned
-* **Problem**: Posters are entered as free-text URLs; there is no banner field.
-* **Planned Specifications**:
-  1. Upload to a Supabase Storage bucket `artwork` through signed upload URLs issued by an admin route.
-  2. Validation: type (JPEG, PNG, WebP), size ≤ 5 MB, minimum dimensions, aspect ratio 2:3 for posters and 16:9 for banners.
-  3. Store the storage path; serve from a `remotePatterns`-allowed host; the free-text URL field is removed.
-* **Verification**: an uploaded poster renders sharply on the drama page; an invalid file is rejected with a clear message.
+* **Status**: ✅ Completed
+* **Depends on**: 16.1
+* **Target Files**:
+  - `supabase/content/supabase/migrations/20261009120000_artwork_storage.sql`
+  - `supabase/user/supabase/migrations/20261009120000_artwork_storage.sql`
+  - `lib/validation/artwork.ts`
+  - `lib/services/artwork.service.ts`
+  - `app/api/admin/artwork/upload/route.ts`
+  - `app/api/admin/artwork/signed-url/route.ts`
+  - `components/admin/ArtworkUploader.tsx`
+  - `app/admin/titles/[id]/edit/page.tsx`
+  - `app/admin/titles/page.tsx`
+  - `__tests__/admin/artwork-uploads.test.ts`
+* **Delivered Capabilities**:
+  1. Storage Infrastructure:
+     - Configured `artwork` bucket in Supabase Storage with 5 MB max file size limit and MIME whitelisting (`image/jpeg`, `image/png`, `image/webp`).
+     - Added public read policy for CDN delivery and admin-authenticated insert/update/delete RLS policies.
+  2. Binary Dimension & Aspect Ratio Engine (`lib/validation/artwork.ts`):
+     - Zero-dependency binary parser for PNG IHDR, JPEG SOF markers, and WebP VP8/VP8L/VP8X chunks.
+     - Strict aspect ratio checking: Posters enforce vertical ~2:3 (ratio range 0.58–0.74, min 300x450px); Banners enforce landscape ~16:9 (ratio range 1.65–1.90, min 640x360px).
+     - Strict rejection of oversized files (>5 MB) and non-whitelisted MIME types.
+  3. API Upload Endpoints:
+     - `POST /api/admin/artwork/upload`: Multipart direct upload with `requireAdmin()` auth guard, binary dimension inspection, and public URL generation under `posters/` and `banners/` storage paths.
+     - `POST /api/admin/artwork/signed-url`: Direct storage signed upload URL generation with size and MIME validation.
+     - Updated `POST /api/admin/dramas` and `PATCH /api/admin/dramas/[id]` to persist `banner_url` and normalized `posterUrl`/`bannerUrl` aliases.
+  4. UI Component & Admin Console Integration:
+     - Built `ArtworkUploader` with drag-and-drop zone, instant client-side dimension verification, format badge, upload spinner, replace/remove buttons, and external URL toggle fallback.
+     - Upgraded `app/admin/titles/[id]/edit/page.tsx` to replace raw text input with Poster (2:3) and Banner (16:9) uploaders and real-time previews.
+     - Upgraded `app/admin/titles/page.tsx` "Add Drama" modal to support both Poster and Banner uploads.
+  5. Automated Test Suite:
+     - Comprehensive 22-test suite in `__tests__/admin/artwork-uploads.test.ts` testing binary parsing, aspect ratio rejection, admin authorization, multipart upload, signed URL creation, and database persistence.
+* **Verification**:
+  - `npx tsc --noEmit` passed with 0 errors.
+  - `npm test` passed 812/812 tests across 215 suites (100% pass rate).
+  - Next.js production build (`npm run build`) compiled all 67 routes successfully.
 
 ---
 

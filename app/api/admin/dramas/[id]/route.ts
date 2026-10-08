@@ -96,6 +96,7 @@ export async function PATCH(
   if (input.totalEpisodes !== undefined) updateData.total_episodes = input.totalEpisodes;
   if (input.tags !== undefined) updateData.tags = input.tags;
   if (input.posterUrl !== undefined) updateData.poster_url = input.posterUrl;
+  if (input.bannerUrl !== undefined) updateData.banner_url = input.bannerUrl;
   if (input.freeEpisodesCount !== undefined) updateData.free_episodes_count = input.freeEpisodesCount;
 
   if (

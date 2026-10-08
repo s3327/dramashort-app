@@ -326,7 +326,7 @@ export function validateDramaPayload(input: unknown, mode: "create" | "update"):
     value.slug = readText(body.slug, "slug", DRAMA_LIMITS.slugMax, errors, { allowEmpty: false });
   }
 
-  const poster = firstDefined(body, ["poster_url", "poster"]);
+  const poster = firstDefined(body, ["posterUrl", "poster_url", "poster"]);
   if (poster !== undefined) {
     if (typeof poster !== "string" || !poster.trim()) {
       errors.push({ field: "poster", message: "poster must be a non-empty URL string." });
@@ -342,7 +342,7 @@ export function validateDramaPayload(input: unknown, mode: "create" | "update"):
     }
   }
 
-  const banner = firstDefined(body, ["banner_url", "banner"]);
+  const banner = firstDefined(body, ["bannerUrl", "banner_url", "banner"]);
   if (banner !== undefined) {
     if (typeof banner !== "string" || !banner.trim()) {
       errors.push({ field: "banner", message: "banner must be a non-empty URL string." });

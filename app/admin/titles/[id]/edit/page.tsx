@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, Save, Loader2, AlertCircle, Film } from "lucide-react";
 import AdminSidebar from "@/components/admin/AdminSidebar";
+import { ArtworkUploader } from "@/components/admin/ArtworkUploader";
 import Breadcrumbs from "@/components/Breadcrumbs";
 import Toast from "@/components/Toast";
 import { useToast } from "@/hooks/useToast";
@@ -50,6 +51,7 @@ export default function AdminTitleEditPage({
     totalEpisodes: 40,
     synopsis: "",
     poster: "",
+    banner: "",
   });
 
   // 1. Fetch dynamic Drama data & Channels catalog on mount
@@ -89,6 +91,7 @@ export default function AdminTitleEditPage({
             totalEpisodes: dramaData.totalEpisodes || 1,
             synopsis: dramaData.synopsis || "",
             poster: dramaData.poster || "",
+            banner: dramaData.bannerUrl || "",
           });
         }
       } catch (err: unknown) {
@@ -133,6 +136,7 @@ export default function AdminTitleEditPage({
       totalEpisodes: Math.max(1, Number(form.totalEpisodes) || 1),
       synopsis: form.synopsis.trim(),
       poster: form.poster.trim() || undefined,
+      banner: form.banner.trim() || undefined,
     });
 
     setIsSubmitting(false);
@@ -420,18 +424,23 @@ export default function AdminTitleEditPage({
               />
             </div>
 
-            <div>
-              <label htmlFor="poster" className="block text-sm font-semibold mb-1.5">
-                Poster Image URL
-              </label>
-              <input
-                id="poster"
-                type="url"
+            <div className="pt-4 border-t border-border space-y-6">
+              <ArtworkUploader
+                type="poster"
                 value={form.poster}
-                onChange={(e) => setForm((prev) => ({ ...prev, poster: e.target.value }))}
-                placeholder="https://..."
+                onChange={(url) => setForm((prev) => ({ ...prev, poster: url || "" }))}
+                label="Poster Artwork"
+                description="Primary key art displayed in drama listings, cards, and catalog carousels."
                 disabled={isSubmitting}
-                className="w-full rounded-md border border-border bg-bg px-3.5 py-2.5 text-sm text-text focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-colors disabled:opacity-60"
+              />
+
+              <ArtworkUploader
+                type="banner"
+                value={form.banner}
+                onChange={(url) => setForm((prev) => ({ ...prev, banner: url || "" }))}
+                label="Banner Artwork"
+                description="Wide horizontal artwork displayed in the hero carousel and watch pages."
+                disabled={isSubmitting}
               />
             </div>
           </div>
@@ -440,7 +449,7 @@ export default function AdminTitleEditPage({
           <div className="space-y-5">
             <div className="bg-surface border border-border rounded-lg shadow-sm p-5">
               <p className="text-xs font-semibold text-text-muted mb-3 uppercase tracking-wider">
-                Poster Preview
+                Poster Preview (2:3)
               </p>
               <div className="relative aspect-[2/3] w-full rounded-md overflow-hidden bg-bg border border-border shadow-inner">
                 {form.poster || drama.poster ? (
@@ -455,6 +464,28 @@ export default function AdminTitleEditPage({
                 ) : (
                   <div className="w-full h-full flex items-center justify-center text-text-muted text-xs">
                     No Poster Available
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="bg-surface border border-border rounded-lg shadow-sm p-5">
+              <p className="text-xs font-semibold text-text-muted mb-3 uppercase tracking-wider">
+                Banner Preview (16:9)
+              </p>
+              <div className="relative aspect-[16/9] w-full rounded-md overflow-hidden bg-bg border border-border shadow-inner">
+                {form.banner || drama.bannerUrl ? (
+                  <Image
+                    src={form.banner || drama.bannerUrl || ""}
+                    alt={form.title || drama.title}
+                    fill
+                    sizes="(min-width: 1024px) 300px, 100vw"
+                    className="object-cover"
+                    unoptimized
+                  />
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center text-text-muted text-xs">
+                    No Banner Available
                   </div>
                 )}
               </div>
