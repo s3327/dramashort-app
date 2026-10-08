@@ -2863,3 +2863,57 @@
   - Full test runner `npm test`: all 859 tests pass across 227 suites with 0 failures (100% pass rate).
   - TypeScript compiler check (`npx tsc --noEmit`): 0 type errors.
   - Next.js production build (`npm run build`): cleanly compiles all 74 static and dynamic routes.
+---
+
+## [2026-10-09] Task 16.7: User Management Console & RBAC Enforcement
+* **Milestone**: Phase 16 (Admin Content Operations Console) — Task 16.7
+* **Goal**: Replace the static mock user dataset in `app/admin/users/page.tsx` with live database querying against Supabase Auth accounts and public profiles, enforce strict PII protection via role-based access control (blocking editors with 403 Forbidden), implement user suspension/ban lifecycle controls with duration presets and audit entries, implement session revocation / forced sign-outs, enable authoritative role changes with self-demotion prevention, and aggregate engagement statistics (watch history and favorites counts).
+* **Implementation Steps Taken**:
+  1. **Dual Database Schema Migrations (`supabase/user/supabase/migrations/20261009170000_admin_user_management.sql` & `supabase/content/supabase/migrations/20261009170000_admin_user_management.sql`)**:
+     - Updated `public.profiles.role` check constraint to support `('user', 'editor', 'admin')`.
+     - Added ban tracking columns to `public.profiles`: `is_banned BOOLEAN NOT NULL DEFAULT FALSE`, `banned_until TIMESTAMPTZ`, and `ban_reason TEXT`.
+     - Created performance indexes `idx_profiles_role` and `idx_profiles_is_banned`.
+     - Explicitly granted `service_role` full privileges on `public.profiles`.
+     - Mirrored to content migrations directory for topology parity across projects.
+  2. **Domain Models & Database Type Updates (`types/user-admin.ts`, `types/supabase-user.ts`)**:
+     - Defined domain interfaces: `AdminUserRole`, `AdminUserStatusFilter`, `AdminUserRoleFilter`, `AdminUserSortBy`, `AdminUserSortDir`, `AdminManagedUser`, `AdminUserDetail`, `GetAdminUsersQuery`, `PaginatedAdminUsersResult`, `BanUserPayload`, `UnbanUserPayload`, and `UpdateRolePayload`.
+     - Added `is_banned: boolean`, `banned_until: string | null`, and `ban_reason: string | null` to `Database["public"]["Tables"]["profiles"]` in `types/supabase-user.ts`.
+  3. **Validation & Query Parsing Engine (`lib/validation/user-admin.ts`)**:
+     - Implemented `validateUpdateRolePayload(payload)` strictly validating allowed roles (`user`, `editor`, `admin`).
+     - Implemented `validateBanUserPayload(payload)` supporting preset durations (`24h`, `168h`, `720h`, `876000h`/`permanent`), custom positive hourly strings, and 500-char max reason boundaries.
+     - Implemented `validateUnbanUserPayload(payload)` for optional reason logging.
+     - Implemented `parseAdminUsersQueryParams(searchParams)` with safe defaults and boundaries (page >= 1, pageSize 1-100).
+  4. **Server Operations Engine (`lib/server/admin-users.ts`)**:
+     - `getAdminUsersServer(query)`: Uses service-role client to query `auth.admin.listUsers({ page: 1, perPage: 1000 })`, joins with `public.profiles`, extracts and normalizes provider chips (`google`, `telegram`, `email`), computes active ban states, executes multi-field search and filters in memory, computes pagination, and aggregates engagement counters (`watch_history` count and `favorites` count) for displayed users.
+     - `getAdminUserDetailServer(userId)`: Resolves single user profile with provider identities and last watched drama activity.
+     - `banUserServer(userId, payload, actor)`: Enforces self-ban prevention guard, updates Supabase Auth ban via `auth.admin.updateUserById`, updates `profiles` ban columns, logs structured audit event `user.ban`, and returns updated user.
+     - `unbanUserServer(userId, payload, actor)`: Lifts suspension via `ban_duration: 'none'`, clears `profiles` ban columns, and logs `user.unban`.
+     - `forceSignOutUserServer(userId, actor)`: Invokes session revocation, updates app metadata timestamp, updates profile timestamp, and logs `user.force_signout`.
+     - `updateUserRoleServer(userId, newRole, actor)`: Enforces self-demotion prevention guard, mutates `app_metadata.role` and `profiles.role`, and logs `user.role_change`.
+  5. **Secured Admin API Endpoints (`app/api/admin/users/...`)**:
+     - `GET /api/admin/users`: Server-side paginated list with query, status, role, and sorting.
+     - `GET /api/admin/users/[id]`: Single user detail and engagement stats.
+     - `POST /api/admin/users/[id]/ban`: Suspend user account.
+     - `POST /api/admin/users/[id]/unban`: Lift suspension.
+     - `POST /api/admin/users/[id]/signout`: Force sign out all active sessions.
+     - `PATCH /api/admin/users/[id]/role`: Change user role.
+     - Strict RBAC: All endpoints enforce `requireAdmin({ roles: ["admin"] })`, returning `403 FORBIDDEN` for editors (protecting user PII) and `401 UNAUTHORIZED` for guests.
+  6. **Admin Console UI Overhaul (`app/admin/users/page.tsx`)**:
+     - Removed static mock imports from `@/data/admin-users.mock.ts`.
+     - Integrated real `/api/admin/users` fetch with shimmer skeleton loading states and empty state display.
+     - 300ms debounced search bar querying email, display name, and UUID with instant clear button.
+     - Status filter (`All`, `Active`, `Banned`) and Role filter (`All`, `User`, `Editor`, `Admin`).
+     - Sorting by Created Date, Last Login, Display Name, and Email with Ascending/Descending toggle.
+     - Server-side pagination controls with item range and total count indicators.
+     - Engagement indicators showing watched dramas count and favorited dramas count.
+     - Expandable details accordion showing UUID, registration date, auth provider chips, and active suspension notices.
+     - Interactive modals for Change Role (radio selector), Ban User (duration selector + reason input), Lift Ban, and Force Sign Out.
+     - Handled 403 Forbidden with clean access restriction notice explaining PII protection.
+     - Toast notifications (`useToast`) on all state mutations.
+  7. **Automated Verification Test Suite (`__tests__/admin/user-management.test.ts`)**:
+     - Authored 21 automated unit, integration, and security tests verifying migration SQL invariants, payload validation, query parsing, server CRUD operations, engagement aggregation, self-action safeguards, editor 403 Forbidden protection, unauthenticated 401 blocks, and structured audit logs.
+* **Regression Analysis & Verification Record**:
+  - `__tests__/admin/user-management.test.ts`: 21 / 21 tests pass (100%).
+  - Full test runner `npm test`: all 880 tests pass across 232 suites with 0 failures (100% pass rate).
+  - TypeScript compiler check (`npx tsc --noEmit`): 0 type errors.
+  - Next.js production build (`npm run build`): cleanly compiles all 80 static and dynamic routes.

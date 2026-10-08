@@ -2576,14 +2576,48 @@ These items stay ✅ for history; the gaps are tracked as new tasks.
 ---
 
 ### Task 16.7: User Management
-* **Status**: ⏳ Planned
-* **Problem**: `app/admin/users/page.tsx` renders `data/admin-users.mock.ts`, including fake VIP statuses.
-* **Planned Specifications**:
-  1. Server route (service role): paginated `auth.admin.listUsers()` joined with profiles; search by email.
-  2. User detail: history and favorites counts, sign-in providers, and (Phase 8) wallet summary.
-  3. Actions: ban and unban, force sign-out, change role (`app_metadata`, admin only), and (Phase 8) grant coins with an audit entry.
-  4. PII access restricted to the `admin` role, not `editor`.
-* **Verification**: a banned user cannot sign in; an editor cannot open the users page.
+* **Status**: ✅ Completed
+* **Problem**: `app/admin/users/page.tsx` previously rendered static mock dataset `data/admin-users.mock.ts` with hardcoded fake VIP statuses and lacked real database querying, PII protection, and administrative lifecycle actions.
+* **Delivered Capabilities**:
+  1. Database Schema Migration:
+     - Authored `20261009170000_admin_user_management.sql` in both `supabase/user/` and `supabase/content/` (topology parity).
+     - Expanded `public.profiles.role` check constraint to support `('user', 'editor', 'admin')`.
+     - Added `is_banned BOOLEAN NOT NULL DEFAULT FALSE`, `banned_until TIMESTAMPTZ`, and `ban_reason TEXT` columns to `public.profiles`.
+     - Created performance indexes `idx_profiles_role` and `idx_profiles_is_banned`, granting `service_role` full permissions.
+  2. Domain Types & Validation Layer:
+     - Defined `AdminUserRole`, `AdminManagedUser`, `AdminUserDetail`, `GetAdminUsersQuery`, `PaginatedAdminUsersResult`, `BanUserPayload`, `UnbanUserPayload`, and `UpdateRolePayload` in `types/user-admin.ts`.
+     - Implemented strict input validation and query normalization in `lib/validation/user-admin.ts` with presets for ban durations (`24h`, `168h`, `720h`, `permanent`/`876000h`), reason boundaries, and safe pagination clamping.
+  3. Server Operations Engine (`lib/server/admin-users.ts`):
+     - `getAdminUsersServer()`: Lists Supabase Auth users via `auth.admin.listUsers()`, joins with `public.profiles`, normalizes social login providers, evaluates active ban statuses, filters by keyword/status/role, and aggregates engagement counts (`watch_history` and `favorites`).
+     - `getAdminUserDetailServer()`: Resolves user details with identity provider records and recent playback history.
+     - `banUserServer()`: Updates auth suspension via `auth.admin.updateUserById(id, { ban_duration })`, updates `profiles` ban columns, logs audit entry `user.ban`, and prevents self-ban.
+     - `unbanUserServer()`: Lifts suspension via `ban_duration: 'none'`, resets profile columns, logs audit entry `user.unban`.
+     - `forceSignOutUserServer()`: Invokes session revocation, stamps metadata timestamp, updates profile, and logs audit entry `user.force_signout`.
+     - `updateUserRoleServer()`: Authoritatively mutates `app_metadata.role` and `profiles.role`, logs audit entry `user.role_change`, and prevents self-demotion from admin.
+  4. Secured REST API Endpoints:
+     - `GET /api/admin/users`: Server-side paginated user list with filters.
+     - `GET /api/admin/users/[id]`: Detailed user profile with engagement counters.
+     - `POST /api/admin/users/[id]/ban`: Suspend user account with duration and reason.
+     - `POST /api/admin/users/[id]/unban`: Lift user suspension.
+     - `POST /api/admin/users/[id]/signout`: Force session revocation.
+     - `PATCH /api/admin/users/[id]/role`: Change user role.
+     - Strict RBAC: All endpoints guarded by `requireAdmin({ roles: ["admin"] })`, returning `403 FORBIDDEN` for editors (protecting PII) and `401 UNAUTHORIZED` for guests.
+  5. Modernized Admin Console UI (`app/admin/users/page.tsx`):
+     - Completely replaced mock data imports with real `/api/admin/users` querying.
+     - Debounced 300ms search bar (email, username, UUID) with instant clear button.
+     - Dropdown filters for Status (`All`, `Active`, `Banned`) and Role (`All`, `User`, `Editor`, `Admin`).
+     - Sortable by Created Date, Last Login, Display Name, and Email.
+     - Server-side pagination controls (Previous/Next/Page Indicators).
+     - Responsive table with role badges, status badges, and engagement counters (dramas watched and favorited).
+     - Expandable row details displaying user UUID, registration date, auth providers, and ban notices.
+     - Interactive modals for Change Role, Ban User (duration selector + reason), Unban User, and Force Sign-Out.
+     - Graceful 403 Forbidden display when accessed by non-admin staff.
+     - Toast feedback (`useToast`) on all mutations.
+* **Verification**:
+  - `npx tsc --noEmit` passed with 0 errors.
+  - `__tests__/admin/user-management.test.ts` passed 21/21 tests (100%).
+  - Full test runner `npm test` passed 880/880 tests across 232 suites with 0 failures (100% pass rate).
+  - Next.js production build (`npm run build`) compiled all 80 static and dynamic routes cleanly.
 
 ---
 

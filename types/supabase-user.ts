@@ -119,6 +119,9 @@ export type Database = {
           id: string
           role: string | null
           updated_at: string | null
+          is_banned: boolean
+          banned_until: string | null
+          ban_reason: string | null
         }
         Insert: {
           avatar_url?: string | null
@@ -127,6 +130,9 @@ export type Database = {
           id: string
           role?: string | null
           updated_at?: string | null
+          is_banned?: boolean
+          banned_until?: string | null
+          ban_reason?: string | null
         }
         Update: {
           avatar_url?: string | null
@@ -135,6 +141,9 @@ export type Database = {
           id?: string
           role?: string | null
           updated_at?: string | null
+          is_banned?: boolean
+          banned_until?: string | null
+          ban_reason?: string | null
         }
         Relationships: []
       }
