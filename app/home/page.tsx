@@ -1,16 +1,5 @@
 import type { Metadata } from "next";
-import Header from "@/components/Header";
-import Footer from "@/components/Footer";
-import Hero from "@/components/Hero";
-import TopTrending from "@/components/TopTrending";
-import NewRelease from "@/components/NewRelease";
-import PageShell from "@/components/PageShell";
-import ContinueWatchingIsland from "@/components/islands/ContinueWatchingIsland";
-import {
-  getHeroSlides,
-  getTopTrendingTitles,
-  getNewReleaseTitles,
-} from "@/lib/services/content.service";
+import { permanentRedirect } from "next/navigation";
 
 export const revalidate = 300;
 
@@ -21,24 +10,8 @@ export const metadata: Metadata = {
 };
 
 /**
- * Server Component pre-rendering hero slides, top trending titles,
- * and new release catalog items directly into the initial server document.
+ * Server Component permanently redirecting /home to the root catalog feed / (Task 14.5).
  */
 export default async function HomePage() {
-  const [heroSlides, trendingTitles, newReleaseTitles] = await Promise.all([
-    getHeroSlides(),
-    getTopTrendingTitles(10),
-    getNewReleaseTitles(12),
-  ]);
-
-  return (
-    <PageShell className="min-h-screen bg-bg text-text">
-      <Header />
-      <Hero initialSlides={heroSlides} />
-      <ContinueWatchingIsland />
-      <TopTrending initialTitles={trendingTitles} />
-      <NewRelease initialTitles={newReleaseTitles} />
-      <Footer />
-    </PageShell>
-  );
+  permanentRedirect("/");
 }

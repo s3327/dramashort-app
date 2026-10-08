@@ -45,7 +45,7 @@ export default function WatchError({
             Retry Playback
           </button>
           <Link
-            href="/home"
+            href="/"
             className="inline-flex items-center gap-2 rounded-full border border-border bg-surface hover:bg-surface-raised font-semibold text-sm px-5 py-2.5 transition-colors"
           >
             <Home size={15} strokeWidth={2} />

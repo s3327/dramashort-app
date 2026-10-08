@@ -40,7 +40,7 @@ export default function Header() {
     <header className="sticky top-0 z-50 border-b border-border bg-bg/85 backdrop-blur-md">
       <div className="max-w-[1200px] mx-auto px-6 h-16 flex items-center gap-6">
         {/* Logo */}
-        <Link href="/home" className="flex items-center gap-2.5 shrink-0">
+        <Link href="/" className="flex items-center gap-2.5 shrink-0">
           <Image src={icon} alt="DramaShort" className="h-10 w-10" priority />
           <span className="hidden sm:inline font-display font-semibold text-lg">
             DramaShort

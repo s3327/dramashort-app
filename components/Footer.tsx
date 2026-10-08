@@ -21,7 +21,7 @@ export default function Footer() {
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-x-6 gap-y-10 pb-10">
           {/* Brand column */}
           <div className="col-span-2 sm:col-span-1">
-            <Link href="/home" className="flex items-center gap-2.5">
+            <Link href="/" className="flex items-center gap-2.5">
               <Image src={icon} alt="DramaShort" className="h-9 w-9" />
               <span className="font-display font-semibold text-lg text-text">
                 DramaShort

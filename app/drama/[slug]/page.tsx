@@ -77,7 +77,7 @@ export default async function DramaPage({
       <main className="max-w-[1000px] mx-auto px-6 pt-10 pb-16">
         <Breadcrumbs
           items={[
-            { label: "Home", href: "/home" },
+            { label: "Home", href: "/" },
             { label: "Genres", href: "/genres" },
             { label: drama.genre, href: `/genres?genre=${encodeURIComponent(drama.genre)}` },
             { label: drama.title },

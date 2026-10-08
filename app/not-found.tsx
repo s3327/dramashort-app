@@ -10,7 +10,7 @@ export default function NotFound() {
   const { theme } = useTheme();
   return (
     <div data-theme={theme} className="min-h-screen bg-bg text-text flex flex-col items-center justify-center px-6 text-center">
-      <Link href="/home" className="inline-flex items-center gap-2.5 mb-10">
+      <Link href="/" className="inline-flex items-center gap-2.5 mb-10">
         <Image src={icon} alt="DramaShort" className="h-8 w-8" priority />
         <span className="font-display font-bold text-lg">
           <b className="text-primary">Drama</b>Short
@@ -26,7 +26,7 @@ export default function NotFound() {
       </p>
 
       <Link
-        href="/home"
+        href="/"
         className="inline-flex items-center gap-2 rounded-full bg-btn-primary hover:bg-btn-primary-hover text-btn-primary-text font-semibold px-6 py-3 text-sm shadow-sm transition-colors"
       >
         <Home size={16} strokeWidth={2.5} />

@@ -23,6 +23,11 @@ const nextConfig = {
   async redirects() {
     return [
       {
+        source: "/home",
+        destination: "/",
+        permanent: true,
+      },
+      {
         source: "/new",
         destination: "/new-release",
         permanent: true,

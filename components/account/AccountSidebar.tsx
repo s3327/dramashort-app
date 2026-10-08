@@ -18,7 +18,7 @@ export default function AccountSidebar() {
 
   const handleLogout = async () => {
     await logout();
-    router.push("/home");
+    router.push("/");
   };
 
   return (

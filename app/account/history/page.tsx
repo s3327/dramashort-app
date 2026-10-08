@@ -269,7 +269,7 @@ export default function HistoryPage() {
                   Start watching vertical dramas and your playback progress will automatically show up here so you can pick up where you left off.
                 </p>
                 <Link
-                  href="/home"
+                  href="/"
                   className="inline-flex items-center gap-2 rounded-full bg-btn-primary hover:bg-btn-primary-hover text-btn-primary-text font-semibold text-xs sm:text-sm px-5 py-2.5 shadow-sm transition-colors"
                 >
                   <span>Explore Dramas</span>

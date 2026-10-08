@@ -58,9 +58,9 @@ function ResetPasswordForm() {
     setIsSuccess(true);
     showToast("Password updated successfully! Other sessions signed out.");
 
-    // Redirect to /home after brief confirmation
+    // Redirect to / after brief confirmation
     setTimeout(() => {
-      router.push("/home");
+      router.push("/");
     }, 1500);
   };
 
@@ -116,7 +116,7 @@ function ResetPasswordForm() {
             have been invalidated. Redirecting to home...
           </p>
           <Link
-            href="/home"
+            href="/"
             className="inline-flex items-center justify-center w-full rounded-full bg-btn-primary hover:bg-btn-primary-hover text-btn-primary-text font-semibold text-sm py-2.5 shadow-sm transition-colors"
           >
             Continue to Home

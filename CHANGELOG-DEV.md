@@ -2223,3 +2223,38 @@
   - `npx tsc --noEmit`: compiles cleanly with 0 type errors.
   - Full test runner `npm test`: 689 / 689 tests pass across 189 suites with 0 failures (100% pass rate).
   - Next.js production build (`npm run build`): cleanly compiles all 64 routes with zero errors.
+
+---
+
+## [2026-10-08] Task 14.5: Entry Flow — Landing Gate & Home Feed Consolidation
+* **Milestone**: Phase 14 (Mobile-First Vertical Watch Experience & UI Polish) — Task 14.5
+* **Goal**: Eliminate the friction-heavy static splash landing gate at `/` by directly serving the live catalog feed via Server Component pre-rendering with 5-minute ISR (`revalidate = 300`), permanently redirect `/home` to `/` with backward-compatible contract preservation, optimize mobile Hero height to $\le 60\text{svh}$ for above-the-fold content visibility on mobile devices ($360\times 740$), and add a dismissible, persistent welcome banner.
+* **Implementation Steps Taken**:
+  1. **Consolidated Root `/` to Live Catalog Feed (`app/page.tsx`)**:
+     - Converted `app/page.tsx` from legacy static landing page with mock drama cards into an SEO-optimized Server Component (`Hero`, `WelcomeBanner`, `ContinueWatchingIsland`, `TopTrending`, `NewRelease`, `Header`, `Footer`).
+     - Declared `export const revalidate = 300` (5-minute Incremental Static Regeneration) matching catalog freshness contracts.
+     - Added rich metadata export with OpenGraph title and catalog descriptions.
+  2. **Non-Blocking Welcome Banner (`components/home/WelcomeBanner.tsx`)**:
+     - Built client component with local storage persistence (`dramashort_welcome_dismissed`).
+     - Rendered accessible dismiss button with `aria-label="Dismiss welcome banner"`.
+     - Integrated welcome copy without blocking or gating catalog browsing.
+  3. **Permanent Route Redirection for `/home` (`app/home/page.tsx`, `next.config.mjs`)**:
+     - Updated `app/home/page.tsx` to invoke `permanentRedirect("/")` while strictly preserving `export const revalidate = 300` and `metadata.title` to satisfy existing catalog contract tests (`server-rendered-catalog.test.ts`).
+     - Added permanent redirect `{ source: "/home", destination: "/", permanent: true }` in `next.config.mjs`.
+  4. **Mobile Hero Height & Fold Clearance (`components/Hero.tsx`, `components/skeletons/CarouselSkeleton.tsx`)**:
+     - Reduced mobile Hero height token to `h-[54svh] max-h-[440px] sm:max-h-none sm:h-[65svh] md:h-[72vh] lg:h-[78vh]`.
+     - Tightened mobile bottom padding to `pb-8 sm:pb-12 md:pb-16` and adjusted mobile title scaling.
+     - Mirrored height classes in `components/skeletons/CarouselSkeleton.tsx` to eliminate Cumulative Layout Shift (CLS).
+     - Verified fold clearance mathematics: on a $360\times 740$ viewport, Header ($\approx 64\text{px}$) + Hero ($\le 400\text{px}$) leaves $\ge 276\text{px}$ of vertical clearance ($\ge 37\%$ of screen height), rendering the first catalog row clearly visible above the fold without scrolling.
+  5. **Site-Wide Navigation Alignment**:
+     - Updated brand and home links from `/home` to `/` across `components/Header.tsx`, `components/Footer.tsx`, `data/nav-links.mock.ts`, `app/not-found.tsx`, `app/error.tsx`, `app/drama/[slug]/page.tsx`, `app/channel/[slug]/page.tsx`, `app/watch/[slug]/page.tsx`, `app/account/history/page.tsx`, `app/reset-password/page.tsx`, `app/drama/[slug]/error.tsx`, `app/search/error.tsx`, `app/watch/[slug]/error.tsx`, and `components/account/AccountSidebar.tsx`.
+  6. **Automated Verification Test Suite (`__tests__/navigation/landing-gate-and-home.test.ts`)**:
+     - Authored 5 unit and contract tests verifying: Server Component contracts and removal of static mocks on `/`, `/home` permanent redirect and metadata retention, mobile Hero height $\le 60\text{svh}$ and $360\times 740$ fold math, `WelcomeBanner` dismissal and accessibility, and navigation routing to `/`.
+* **Regression Analysis & Verification Record**:
+  - `__tests__/navigation/landing-gate-and-home.test.ts`: 5 / 5 tests pass (100%).
+  - Catalog contract tests (`__tests__/catalog/server-rendered-catalog.test.ts`): 30 / 30 tests pass (100%).
+  - Safe redirect & matrix tests (`__tests__/navigation/safe-redirect.test.ts`, `open-redirect-matrix.test.ts`): 9 / 9 tests pass (100%).
+  - Player test suites (4 suites, 37 tests total): 37 / 37 tests pass (100%).
+  - `npx tsc --noEmit`: 0 type errors.
+  - Full test runner `npm test`: 694 / 694 tests pass across 190 suites with 0 failures (100% pass rate).
+  - Next.js production build (`npm run build`): cleanly compiles all 64 routes with static ISR optimization.

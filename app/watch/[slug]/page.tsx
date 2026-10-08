@@ -75,7 +75,7 @@ export default async function WatchPage({
         <div className="hidden md:flex items-center justify-between gap-4 mb-4">
           <Breadcrumbs
             items={[
-              { label: "Home", href: "/home" },
+              { label: "Home", href: "/" },
               { label: drama.title, href: `/drama/${drama.slug}` },
               { label: "Watch" },
             ]}

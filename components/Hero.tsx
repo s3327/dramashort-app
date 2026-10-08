@@ -92,7 +92,7 @@ export default function Hero({ initialSlides }: HeroProps = {}) {
   }
 
   return (
-    <section className="relative h-[78vh] min-h-[520px] w-full overflow-hidden bg-bg">
+    <section className="relative h-[54svh] max-h-[440px] sm:max-h-none sm:h-[65svh] md:h-[72vh] lg:h-[78vh] min-h-[350px] md:min-h-[520px] w-full overflow-hidden bg-bg">
       {/* Slide backgrounds — stacked, crossfading via opacity */}
       {slides.map((slide, index) => (
         <div
@@ -124,7 +124,7 @@ export default function Hero({ initialSlides }: HeroProps = {}) {
       <div className="absolute inset-0 bg-gradient-to-r from-black/55 via-black/10 to-transparent" />
 
       {/* Content */}
-      <div className="relative z-10 h-full max-w-[1200px] mx-auto px-6 flex flex-col justify-end pb-16">
+      <div className="relative z-10 h-full max-w-[1200px] mx-auto px-6 flex flex-col justify-end pb-8 sm:pb-12 md:pb-16">
         <div className="grid max-w-xl">
           {slides.map((slide, index) => (
             <div
@@ -141,15 +141,15 @@ export default function Hero({ initialSlides }: HeroProps = {}) {
               <span className="inline-flex w-fit items-center rounded-pill bg-white/15 backdrop-blur-sm px-3 py-1 text-xs font-semibold text-text-light">
                 {slide.badge}
               </span>
-              <h1 className="mt-4 font-display font-bold text-3xl sm:text-4xl md:text-5xl leading-tight text-text-light">
+              <h1 className="mt-2 sm:mt-4 font-display font-bold text-2xl sm:text-4xl md:text-5xl leading-tight text-text-light">
                 {slide.title}
               </h1>
-              <p className="mt-3 text-sm sm:text-base text-text-light/80 max-w-md">
+              <p className="mt-2 sm:mt-3 text-xs sm:text-base text-text-light/80 max-w-md line-clamp-2 sm:line-clamp-none">
                 {slide.tagline}
               </p>
               <Link
                 href={slide.href}
-                className="mt-6 inline-flex w-fit items-center gap-2 rounded-pill bg-btn-primary hover:bg-btn-primary-hover text-btn-primary-text font-semibold px-6 py-3 text-sm shadow-md transition-colors"
+                className="mt-4 sm:mt-6 inline-flex w-fit items-center gap-2 rounded-pill bg-btn-primary hover:bg-btn-primary-hover text-btn-primary-text font-semibold px-4 py-2 sm:px-6 sm:py-3 text-xs sm:text-sm shadow-md transition-colors"
               >
                 <Play size={16} strokeWidth={2.5} fill="currentColor" />
                 Watch Now
@@ -159,7 +159,7 @@ export default function Hero({ initialSlides }: HeroProps = {}) {
         </div>
 
         {/* Pagination dots */}
-        <div className="mt-8 flex items-center gap-2">
+        <div className="mt-4 sm:mt-8 flex items-center gap-2">
           {slides.map((slide, index) => (
             <button
               key={slide.id}

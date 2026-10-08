@@ -63,7 +63,7 @@ export default async function ChannelPage({
       <main className="max-w-[1200px] mx-auto px-6 pt-10 pb-16">
         <Breadcrumbs
           items={[
-            { label: "Home", href: "/home" },
+            { label: "Home", href: "/" },
             { label: channel.name },
           ]}
         />

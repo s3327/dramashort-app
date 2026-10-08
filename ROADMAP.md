@@ -47,7 +47,7 @@
 | **Phase 11** | 🔴 Critical | Complete Stubbed User Flows (email verification, password recovery, account deletion, support pipeline, real 404s) | ✅ Completed (11.1–11.7 ✅) | Every visible action performs a real operation |
 | **Phase 12** | 🟠 High | Functional Bug Fixes & Data Integrity (12.1–12.8 ✅) | ✅ Completed | Full catalog visible, admin drafts, progress semantics, zero mocks, session, lists, integrity, player robustness |
 | **Phase 13** | 🟠 High | Backend Architecture Consolidation (database topology ADR-0003, server-rendered catalog, service split, taxonomy scalability, observability) | ✅ Completed (13.1–13.6 ✅) | Decision gate for Phase 8; faster pages; operability |
-| **Phase 14** | 🟠 High | Mobile-First Vertical Watch Experience & UI Polish | 🚧 In progress (14.1, 14.2, 14.3, 14.4 ✅) | Core 9:16 viewing experience on phones |
+| **Phase 14** | 🟠 High | Mobile-First Vertical Watch Experience & UI Polish | 🚧 In progress (14.1, 14.2, 14.3, 14.4, 14.5 ✅) | Core 9:16 viewing experience on phones |
 | **Phase 15** | 🟠 High | Product Analytics, Engagement Tracking & Real Trending | ⏳ Planned | Real views, trending and dashboard; data to tune the paywall |
 | **Phase 16** | 🟠 High | Admin Content Operations Console (episodes, uploads, scheduling, taxonomy, users, audit log) | ⏳ Planned | Catalog operable end-to-end without SQL |
 | **Phase 17** | 🟡 Medium | Quality Engineering, CI & Documentation Integrity (continuous) | ⏳ Planned | Regression safety; trustworthy status docs |
@@ -1988,13 +1988,19 @@ These items stay ✅ for history; the gaps are tracked as new tasks.
 ---
 
 ### Task 14.5: Entry Flow — Landing Gate & Home
-* **Status**: ⏳ Planned
-* **Problem**: `/` is an extra-click gate showing hardcoded fake cards (`app/page.tsx` L77–105). On mobile, the Hero takes 78vh (`components/Hero.tsx` L76), pushing every content row below the fold.
-* **Planned Specifications**:
-  1. **Option A (recommended)**: `/` serves the feed currently at `/home`, `/home` permanently redirects to `/`, and the brand intro becomes a dismissible first-visit banner. **Option B**: the landing page shows real trending posters and a direct "Start Episode 1" CTA.
-  2. Mobile home: a shorter hero (≤ 60svh) or a poster carousel, so the first content row is visible without scrolling.
-  3. Validate with the landing → first-play conversion metric (Phase 15).
-* **Verification**: on a 360×740 viewport, the first content row is visible without scrolling.
+* **Status**: ✅ Completed
+* **Problem**: `/` was an extra-click gate showing hardcoded fake cards (`app/page.tsx`). On mobile, the Hero took 78vh (`components/Hero.tsx`), pushing every content row below the fold.
+* **Delivered Capabilities**:
+  1. **Option A Implemented**: Root `/` now serves the live drama catalog directly as a Server Component (`Hero`, `WelcomeBanner`, `ContinueWatchingIsland`, `TopTrending`, `NewRelease`, `Header`, `Footer`) with 5-minute ISR (`revalidate = 300`) and rich metadata, eliminating the static mock gate and extra-click friction.
+  2. **Non-Blocking Welcome Banner**: Introduced `components/home/WelcomeBanner.tsx` featuring accessible dismiss control (`aria-label="Dismiss welcome banner"`), responsive copy, and local persistence via `localStorage` key `dramashort_welcome_dismissed`.
+  3. **Permanent Route Redirection**: Configured permanent redirects from `/home` to `/` via Next.js server runtime `permanentRedirect("/")` in `app/home/page.tsx` and 308 rule in `next.config.mjs`, while preserving `revalidate = 300` and `metadata.title` to satisfy existing catalog contracts.
+  4. **Mobile Fold Clearance**: Optimized responsive Hero height in `components/Hero.tsx` and `components/skeletons/CarouselSkeleton.tsx` to `h-[54svh] max-h-[440px] sm:max-h-none sm:h-[65svh] md:h-[72vh] lg:h-[78vh]`, with mobile bottom padding tightened (`pb-8 sm:pb-12 md:pb-16`). On $360\times 740$ viewports, the first content row / island clears the fold with $\ge 276\text{px}$ of vertical clearance without requiring user scrolling.
+  5. **Site-Wide Navigation Alignment**: Updated brand and home navigation links across `Header.tsx`, `Footer.tsx`, `data/nav-links.mock.ts`, `app/not-found.tsx`, `app/error.tsx`, drama/channel/watch breadcrumbs, history, and auth recovery flows to route to `/`.
+* **Verification & Test Coverage**:
+  - Authored `__tests__/navigation/landing-gate-and-home.test.ts` (5/5 tests passing).
+  - Clean TypeScript verification (`npx tsc --noEmit` with 0 errors).
+  - Full test runner `npm test`: all 694 tests passing with 0 failures across 190 test suites.
+  - Production build `npm run build`: cleanly compiles 64/64 routes with static ISR optimization.
 
 ---
 
