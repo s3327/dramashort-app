@@ -4,7 +4,24 @@ import { Suspense, useCallback, useEffect, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Search, List, LayoutGrid, Pencil, Plus, Loader2, Film, Calendar, Clock, Zap } from "lucide-react";
+import {
+  Search,
+  List,
+  LayoutGrid,
+  Pencil,
+  Plus,
+  Loader2,
+  Film,
+  Calendar,
+  Clock,
+  Zap,
+  Eye,
+  Copy,
+  Trash2,
+  FolderInput,
+  X,
+  AlertTriangle,
+} from "lucide-react";
 import AdminSidebar from "@/components/admin/AdminSidebar";
 import Pagination from "@/components/Pagination";
 import Modal from "@/components/Modal";
@@ -18,6 +35,11 @@ import {
   getChannels,
   createDrama,
   executeScheduledPublishing,
+  bulkUpdateDramas,
+  duplicateDrama,
+  getDramaPreviewUrl,
+  deleteDrama,
+  archiveDrama,
   type Drama,
   type TitleStatus,
 } from "@/lib/services/content.service";
@@ -77,6 +99,14 @@ function AdminTitlesContent() {
     status: "Draft" as TitleStatus,
   });
   const [isProcessingScheduled, setIsProcessingScheduled] = useState(false);
+  const [isBulkLoading, setIsBulkLoading] = useState(false);
+  const [isMoveChannelModalOpen, setIsMoveChannelModalOpen] = useState(false);
+  const [targetChannelForMove, setTargetChannelForMove] = useState("");
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [dramaToDelete, setDramaToDelete] = useState<Drama | null>(null);
+  const [typedDeleteConfirm, setTypedDeleteConfirm] = useState("");
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [actionInProgressId, setActionInProgressId] = useState<string | null>(null);
 
   // Load distinct channels from Content DB
   useEffect(() => {
@@ -267,6 +297,120 @@ function AdminTitlesContent() {
     }
   };
 
+  const handleBulkAction = async (action: "publish" | "unpublish" | "archive") => {
+    if (selectedIds.size === 0) return;
+    setIsBulkLoading(true);
+    const res = await bulkUpdateDramas({
+      action,
+      ids: Array.from(selectedIds),
+    });
+    setIsBulkLoading(false);
+    if (res.success && res.data) {
+      const { affected, skipped } = res.data;
+      let msg = `Bulk ${action} completed: ${affected} drama${affected === 1 ? "" : "s"} updated.`;
+      if (skipped > 0) {
+        msg += ` (${skipped} skipped)`;
+      }
+      showToast(msg);
+      setSelectedIds(new Set());
+      fetchCatalog(query, selectedChannel, selectedStatus, page, rowsPerPage);
+    } else {
+      showToast(res.error || `Bulk ${action} failed.`);
+    }
+  };
+
+  const handleBulkMoveChannel = async () => {
+    if (selectedIds.size === 0 || !targetChannelForMove) return;
+    setIsBulkLoading(true);
+    const res = await bulkUpdateDramas({
+      action: "move_channel",
+      ids: Array.from(selectedIds),
+      channelName: targetChannelForMove,
+    });
+    setIsBulkLoading(false);
+    setIsMoveChannelModalOpen(false);
+    if (res.success && res.data) {
+      showToast(`Moved ${res.data.affected} drama${res.data.affected === 1 ? "" : "s"} to ${targetChannelForMove}.`);
+      setSelectedIds(new Set());
+      fetchCatalog(query, selectedChannel, selectedStatus, page, rowsPerPage);
+    } else {
+      showToast(res.error || "Failed to move dramas.");
+    }
+  };
+
+  const handlePreviewDrama = async (drama: Drama) => {
+    if (drama.status === "Published") {
+      window.open(`/drama/${drama.slug}`, "_blank");
+      return;
+    }
+    setActionInProgressId(drama.id);
+    const res = await getDramaPreviewUrl(drama.id);
+    setActionInProgressId(null);
+    if (res.success && res.previewUrl) {
+      window.open(res.previewUrl, "_blank");
+    } else {
+      showToast(res.error || "Failed to generate preview URL.");
+    }
+  };
+
+  const handleDuplicateDrama = async (drama: Drama) => {
+    setActionInProgressId(drama.id);
+    const res = await duplicateDrama(drama.id);
+    setActionInProgressId(null);
+    if (res.success && res.data) {
+      showToast(`Duplicated '${drama.title}' as '${res.data.title}'`);
+      fetchCatalog(query, selectedChannel, selectedStatus, page, rowsPerPage);
+    } else {
+      showToast(res.error || "Failed to duplicate drama.");
+    }
+  };
+
+  const handleArchiveDrama = async (drama: Drama) => {
+    setActionInProgressId(drama.id);
+    const res = await archiveDrama(drama.id);
+    setActionInProgressId(null);
+    if (res.success) {
+      showToast("Drama archived successfully.");
+      fetchCatalog(query, selectedChannel, selectedStatus, page, rowsPerPage);
+    } else {
+      showToast(res.error || "Failed to archive drama.");
+    }
+  };
+
+  const openDeleteModal = (drama: Drama) => {
+    setDramaToDelete(drama);
+    setTypedDeleteConfirm("");
+    setIsDeleteModalOpen(true);
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!dramaToDelete) return;
+    setIsDeleting(true);
+    if (dramaToDelete.hasBeenPublished || dramaToDelete.status === "Published") {
+      const res = await archiveDrama(dramaToDelete.id);
+      setIsDeleting(false);
+      setIsDeleteModalOpen(false);
+      setDramaToDelete(null);
+      if (res.success) {
+        showToast("Drama archived successfully.");
+        fetchCatalog(query, selectedChannel, selectedStatus, page, rowsPerPage);
+      } else {
+        showToast(res.error || "Failed to archive drama.");
+      }
+    } else {
+      const res = await deleteDrama(dramaToDelete.id, { hard: true });
+      setIsDeleting(false);
+      setIsDeleteModalOpen(false);
+      setDramaToDelete(null);
+      if (res.success) {
+        showToast("Draft permanently deleted.");
+        fetchCatalog(query, selectedChannel, selectedStatus, page, rowsPerPage);
+      } else {
+        showToast(res.error || "Failed to delete draft.");
+      }
+    }
+  };
+
   return (
     <div data-theme="light" className="min-h-screen bg-bg text-text flex">
       <AdminSidebar />
@@ -393,6 +537,73 @@ function AdminTitlesContent() {
             </button>
           </div>
         </form>
+
+        {/* Bulk Operations Toolbar */}
+        {selectedIds.size > 0 && (
+          <div className="sticky top-4 z-30 mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-primary/40 bg-surface shadow-lg p-3">
+            <div className="flex items-center gap-2">
+              <span className="inline-flex items-center justify-center rounded-full bg-primary text-text-light text-xs font-bold w-6 h-6">
+                {selectedIds.size}
+              </span>
+              <span className="text-sm font-semibold text-text">
+                {selectedIds.size} drama{selectedIds.size === 1 ? "" : "s"} selected
+              </span>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                disabled={isBulkLoading}
+                onClick={() => handleBulkAction("publish")}
+                className="inline-flex items-center gap-1.5 rounded-md bg-green-600 hover:bg-green-700 text-white text-xs font-semibold px-3 py-1.5 transition-colors shadow-sm disabled:opacity-50 cursor-pointer"
+              >
+                {isBulkLoading && <Loader2 size={13} className="animate-spin" />}
+                Publish
+              </button>
+
+              <button
+                type="button"
+                disabled={isBulkLoading}
+                onClick={() => handleBulkAction("unpublish")}
+                className="inline-flex items-center gap-1.5 rounded-md border border-border bg-surface hover:bg-surface-raised text-text text-xs font-semibold px-3 py-1.5 transition-colors disabled:opacity-50 cursor-pointer"
+              >
+                Unpublish
+              </button>
+
+              <button
+                type="button"
+                disabled={isBulkLoading}
+                onClick={() => handleBulkAction("archive")}
+                className="inline-flex items-center gap-1.5 rounded-md bg-amber-600 hover:bg-amber-700 text-white text-xs font-semibold px-3 py-1.5 transition-colors shadow-sm disabled:opacity-50 cursor-pointer"
+              >
+                Archive
+              </button>
+
+              <button
+                type="button"
+                disabled={isBulkLoading}
+                onClick={() => {
+                  setTargetChannelForMove(channelList[0]?.name || "");
+                  setIsMoveChannelModalOpen(true);
+                }}
+                className="inline-flex items-center gap-1.5 rounded-md border border-border bg-surface hover:bg-surface-raised text-text text-xs font-semibold px-3 py-1.5 transition-colors disabled:opacity-50 cursor-pointer"
+              >
+                <FolderInput size={13} />
+                Move Channel
+              </button>
+
+              <button
+                type="button"
+                disabled={isBulkLoading}
+                onClick={() => setSelectedIds(new Set())}
+                className="inline-flex items-center gap-1 text-xs text-text-muted hover:text-text px-2 py-1 transition-colors cursor-pointer"
+              >
+                <X size={14} />
+                Clear
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Rows-per-page + selection count */}
         <div className="flex items-center justify-between gap-3 mb-3">
@@ -559,6 +770,30 @@ function AdminTitlesContent() {
                     </td>
                     <td className="px-3 py-3 text-right">
                       <div className="inline-flex items-center gap-1 justify-end">
+                        <button
+                          type="button"
+                          onClick={() => handlePreviewDrama(t)}
+                          disabled={actionInProgressId === t.id}
+                          aria-label={`Preview ${t.title}`}
+                          title="Preview as User"
+                          className="inline-flex p-1.5 rounded-md text-text-muted hover:text-primary hover:bg-surface transition-colors cursor-pointer"
+                        >
+                          {actionInProgressId === t.id ? (
+                            <Loader2 size={15} className="animate-spin" />
+                          ) : (
+                            <Eye size={15} strokeWidth={2} />
+                          )}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDuplicateDrama(t)}
+                          disabled={actionInProgressId === t.id}
+                          aria-label={`Duplicate ${t.title}`}
+                          title="Duplicate Drama"
+                          className="inline-flex p-1.5 rounded-md text-text-muted hover:text-primary hover:bg-surface transition-colors cursor-pointer"
+                        >
+                          <Copy size={15} strokeWidth={2} />
+                        </button>
                         <Link
                           href={`/admin/dramas/${t.id}/episodes`}
                           aria-label={`Manage episodes for ${t.title}`}
@@ -575,6 +810,15 @@ function AdminTitlesContent() {
                         >
                           <Pencil size={15} strokeWidth={2} />
                         </Link>
+                        <button
+                          type="button"
+                          onClick={() => openDeleteModal(t)}
+                          aria-label={`Delete or archive ${t.title}`}
+                          title={t.hasBeenPublished || t.status === "Published" ? "Archive Drama" : "Delete Draft"}
+                          className="inline-flex p-1.5 rounded-md text-text-muted hover:text-danger hover:bg-danger-soft transition-colors cursor-pointer"
+                        >
+                          <Trash2 size={15} strokeWidth={2} />
+                        </button>
                       </div>
                     </td>
                   </tr>
@@ -605,6 +849,30 @@ function AdminTitlesContent() {
                     className="absolute top-2 left-2 h-4 w-4 accent-primary"
                   />
                   <div className="absolute top-2 right-2 flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => handlePreviewDrama(t)}
+                      disabled={actionInProgressId === t.id}
+                      aria-label={`Preview ${t.title}`}
+                      title="Preview as User"
+                      className="flex h-7 w-7 items-center justify-center rounded-full bg-black/60 text-text-light hover:bg-black/75 transition-colors cursor-pointer"
+                    >
+                      {actionInProgressId === t.id ? (
+                        <Loader2 size={13} className="animate-spin" />
+                      ) : (
+                        <Eye size={13} strokeWidth={2} />
+                      )}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleDuplicateDrama(t)}
+                      disabled={actionInProgressId === t.id}
+                      aria-label={`Duplicate ${t.title}`}
+                      title="Duplicate Drama"
+                      className="flex h-7 w-7 items-center justify-center rounded-full bg-black/60 text-text-light hover:bg-black/75 transition-colors cursor-pointer"
+                    >
+                      <Copy size={13} strokeWidth={2} />
+                    </button>
                     <Link
                       href={`/admin/dramas/${t.id}/episodes`}
                       aria-label={`Manage episodes for ${t.title}`}
@@ -621,6 +889,15 @@ function AdminTitlesContent() {
                     >
                       <Pencil size={13} strokeWidth={2} />
                     </Link>
+                    <button
+                      type="button"
+                      onClick={() => openDeleteModal(t)}
+                      aria-label={`Delete or archive ${t.title}`}
+                      title={t.hasBeenPublished || t.status === "Published" ? "Archive Drama" : "Delete Draft"}
+                      className="flex h-7 w-7 items-center justify-center rounded-full bg-black/60 text-text-light hover:bg-red-600 transition-colors cursor-pointer"
+                    >
+                      <Trash2 size={13} strokeWidth={2} />
+                    </button>
                   </div>
                 </div>
                 <div className="p-3">
@@ -847,6 +1124,159 @@ function AdminTitlesContent() {
               </button>
             </div>
           </form>
+        </Modal>
+
+        {/* Move Channel Modal */}
+        <Modal
+          open={isMoveChannelModalOpen}
+          onClose={() => setIsMoveChannelModalOpen(false)}
+          title={`Move ${selectedIds.size} Drama${selectedIds.size === 1 ? "" : "s"} to Channel`}
+        >
+          <div className="space-y-4">
+            <p className="text-sm text-text-muted">
+              Select the destination channel for all selected dramas. Their channel affiliation and codes will be updated immediately.
+            </p>
+            <div>
+              <label className="block text-xs font-semibold mb-1 text-text">
+                Target Channel
+              </label>
+              <select
+                value={targetChannelForMove}
+                onChange={(e) => setTargetChannelForMove(e.target.value)}
+                className="w-full rounded-md border border-border bg-surface text-sm text-text px-3.5 py-2.5 focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-colors"
+              >
+                {channelList.map((c) => (
+                  <option key={c.slug} value={c.name}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="flex justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setIsMoveChannelModalOpen(false)}
+                className="rounded-md border border-border bg-surface px-4 py-2 text-sm font-semibold text-text hover:bg-surface-raised transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={isBulkLoading || !targetChannelForMove}
+                onClick={handleBulkMoveChannel}
+                className="inline-flex items-center gap-1.5 rounded-md bg-primary text-text-light px-4 py-2 text-sm font-semibold hover:bg-primary-hover disabled:opacity-50 transition-colors shadow-sm cursor-pointer"
+              >
+                {isBulkLoading && <Loader2 size={14} className="animate-spin" />}
+                Move Dramas
+              </button>
+            </div>
+          </div>
+        </Modal>
+
+        {/* Delete / Archive Confirmation Modal */}
+        <Modal
+          open={isDeleteModalOpen}
+          onClose={() => {
+            if (!isDeleting) {
+              setIsDeleteModalOpen(false);
+              setDramaToDelete(null);
+            }
+          }}
+          title={
+            dramaToDelete?.hasBeenPublished || dramaToDelete?.status === "Published"
+              ? "Archive Drama"
+              : "Permanently Delete Draft"
+          }
+        >
+          {dramaToDelete && (
+            <div className="space-y-4">
+              {dramaToDelete.hasBeenPublished || dramaToDelete.status === "Published" ? (
+                <>
+                  <div className="flex items-start gap-3 rounded-lg border border-amber-300 bg-amber-50 p-3 text-amber-900 text-xs">
+                    <AlertTriangle size={18} className="shrink-0 text-amber-600 mt-0.5" />
+                    <div>
+                      <strong className="font-semibold">Published dramas cannot be permanently deleted.</strong>
+                      <p className="mt-0.5 text-amber-800">
+                        This drama has been published before. To protect user watch history, bookmarks, and transactional integrity, it must be Archived instead.
+                      </p>
+                    </div>
+                  </div>
+                  <p className="text-sm text-text">
+                    Archiving <strong>{dramaToDelete.title}</strong> will remove it from all public browsing and search pages immediately. You can restore it to Draft or Published status at any time.
+                  </p>
+                  <div className="flex justify-end gap-2 pt-2">
+                    <button
+                      type="button"
+                      disabled={isDeleting}
+                      onClick={() => {
+                        setIsDeleteModalOpen(false);
+                        setDramaToDelete(null);
+                      }}
+                      className="rounded-md border border-border bg-surface px-4 py-2 text-sm font-semibold text-text hover:bg-surface-raised transition-colors cursor-pointer"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      disabled={isDeleting}
+                      onClick={handleConfirmDelete}
+                      className="inline-flex items-center gap-1.5 rounded-md bg-amber-600 hover:bg-amber-700 text-white px-4 py-2 text-sm font-semibold transition-colors shadow-sm cursor-pointer"
+                    >
+                      {isDeleting && <Loader2 size={14} className="animate-spin" />}
+                      Archive Drama
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="flex items-start gap-3 rounded-lg border border-danger/30 bg-danger-soft p-3 text-danger text-xs">
+                    <AlertTriangle size={18} className="shrink-0 text-danger mt-0.5" />
+                    <div>
+                      <strong className="font-semibold">Permanent deletion cannot be undone.</strong>
+                      <p className="mt-0.5 text-danger/80">
+                        Because this draft has never been published, it will be completely removed from the catalog.
+                      </p>
+                    </div>
+                  </div>
+                  <div>
+                    <p className="text-xs text-text-muted mb-2">
+                      To confirm permanent deletion, please type the title below: <br />
+                      <span className="font-mono font-bold text-text select-all">{dramaToDelete.title}</span>
+                    </p>
+                    <input
+                      type="text"
+                      value={typedDeleteConfirm}
+                      onChange={(e) => setTypedDeleteConfirm(e.target.value)}
+                      placeholder={dramaToDelete.title}
+                      className="w-full rounded-md border border-border bg-surface text-sm text-text px-3.5 py-2 focus:outline-none focus:ring-2 focus:ring-danger/50 focus:border-danger transition-colors font-mono"
+                    />
+                  </div>
+                  <div className="flex justify-end gap-2 pt-2">
+                    <button
+                      type="button"
+                      disabled={isDeleting}
+                      onClick={() => {
+                        setIsDeleteModalOpen(false);
+                        setDramaToDelete(null);
+                      }}
+                      className="rounded-md border border-border bg-surface px-4 py-2 text-sm font-semibold text-text hover:bg-surface-raised transition-colors cursor-pointer"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      disabled={isDeleting || typedDeleteConfirm.trim() !== dramaToDelete.title.trim()}
+                      onClick={handleConfirmDelete}
+                      className="inline-flex items-center gap-1.5 rounded-md bg-danger hover:bg-danger-hover text-white px-4 py-2 text-sm font-semibold transition-colors shadow-sm disabled:opacity-40 cursor-pointer"
+                    >
+                      {isDeleting && <Loader2 size={14} className="animate-spin" />}
+                      Delete Permanently
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
         </Modal>
 
         <Toast message={toastMessage} />

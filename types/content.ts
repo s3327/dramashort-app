@@ -34,6 +34,7 @@ export interface Drama {
   featuredRank?: number | null;
   freeEpisodesCount?: number;
   publishAt?: string | null;
+  hasBeenPublished?: boolean;
 }
 
 /**

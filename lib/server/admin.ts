@@ -13,6 +13,8 @@ import {
 import { resolveChannelByName } from "@/lib/admin/resolve-channel";
 import { generateUniqueDramaSlug, getChannelCode } from "@/lib/slug";
 import { type Result, ok, err } from "@/lib/common/result";
+import { recordAuditLog } from "@/lib/server/audit";
+import { revalidatePath, revalidateTag } from "next/cache";
 
 export type TitleInsert = Database["public"]["Tables"]["titles"]["Insert"];
 export type TitleUpdate = Database["public"]["Tables"]["titles"]["Update"];
@@ -237,20 +239,106 @@ export async function updateDrama(
 /** Backward-compatible alias for updateDrama */
 export const updateTitle = updateDrama;
 
+export interface DeleteDramaOptions {
+  hardDelete?: boolean;
+  actor?: { id?: string | null; email?: string | null; ip?: string | null };
+}
+
 /**
- * Direct server-side database mutation: deletes a Drama by primary ID.
- * Uses getContentAdminClient() (service role) directly without internal HTTP round-trips.
+ * Direct server-side database mutation: deletes or archives a Drama by primary ID.
+ * - If hardDelete is true: allowed ONLY for never-published drafts (has_been_published !== true and status === 'Draft').
+ * - Otherwise defaults to soft delete (status = 'Archived').
  */
-export async function deleteDrama(id: string): Promise<Result<boolean, string>> {
+export async function deleteDrama(
+  id: string,
+  options?: DeleteDramaOptions
+): Promise<Result<boolean, string>> {
   if (!id) return err("Drama ID is required");
   if (!isUuid(id)) return err("Drama id must be a valid UUID");
 
   try {
     const adminClient = getContentAdminClient();
-    const { error } = await adminClient.from("titles").delete().eq("id", id);
-    if (error) {
-      return err(error.message || "Failed to delete drama");
+    const { data: drama, error: fetchErr } = await adminClient
+      .from("titles")
+      .select("*")
+      .eq("id", id)
+      .maybeSingle();
+
+    if (fetchErr) {
+      return err(fetchErr.message || "Failed to load drama");
     }
+    if (!drama) {
+      return err("Drama not found");
+    }
+
+    const isHard = options?.hardDelete === true;
+
+    if (isHard) {
+      if (drama.has_been_published || drama.status === "Published") {
+        return err("Published dramas cannot be permanently deleted. Please archive them instead.");
+      }
+
+      const { error: delErr } = await adminClient.from("titles").delete().eq("id", id);
+      if (delErr) {
+        return err(delErr.message || "Failed to delete drama");
+      }
+
+      await recordAuditLog({
+        actorId: options?.actor?.id,
+        actorEmail: options?.actor?.email,
+        action: "drama.hard_delete",
+        entityType: "drama",
+        entityId: id,
+        before: drama,
+        after: null,
+        ip: options?.actor?.ip,
+      });
+
+      try {
+        revalidateTag("titles");
+        revalidateTag("dramas");
+        revalidatePath("/");
+        revalidatePath("/browse");
+      } catch {
+        // Safe inside test contexts
+      }
+
+      return ok(true);
+    }
+
+    // Default: Soft delete (Archive)
+    const { error: archiveErr } = await adminClient
+      .from("titles")
+      .update({
+        status: "Archived",
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", id);
+
+    if (archiveErr) {
+      return err(archiveErr.message || "Failed to archive drama");
+    }
+
+    await recordAuditLog({
+      actorId: options?.actor?.id,
+      actorEmail: options?.actor?.email,
+      action: "drama.archive",
+      entityType: "drama",
+      entityId: id,
+      before: drama,
+      after: { ...drama, status: "Archived" },
+      ip: options?.actor?.ip,
+    });
+
+    try {
+      revalidateTag("titles");
+      revalidateTag("dramas");
+      revalidatePath("/");
+      revalidatePath("/browse");
+    } catch {
+      // Safe inside test contexts
+    }
+
     return ok(true);
   } catch (error) {
     return err(error instanceof Error ? error.message : "Error deleting drama");
@@ -259,6 +347,340 @@ export async function deleteDrama(id: string): Promise<Result<boolean, string>> 
 
 /** Backward-compatible alias for deleteDrama */
 export const deleteTitle = deleteDrama;
+
+/**
+ * Duplicates an existing drama (metadata only).
+ * Sets status to 'Draft', episodes_available to 0, has_been_published to false, publish_at to null.
+ * Generates a collision-safe deterministic unique slug.
+ */
+export async function duplicateDramaServer(
+  id: string,
+  actor?: { id?: string | null; email?: string | null; ip?: string | null }
+): Promise<Result<Drama, string>> {
+  if (!id) return err("Drama ID is required");
+  if (!isUuid(id)) return err("Drama id must be a valid UUID");
+
+  try {
+    const adminClient = getContentAdminClient();
+    const { data: original, error: fetchErr } = await adminClient
+      .from("titles")
+      .select("*, channels(name, slug, code)")
+      .eq("id", id)
+      .maybeSingle();
+
+    if (fetchErr) {
+      return err(fetchErr.message || "Failed to load original drama");
+    }
+    if (!original) {
+      return err("Drama not found");
+    }
+
+    const duplicateTitle = `${original.title} (Copy)`;
+    const channelCode = original.channel_code || "DS";
+    const newSlug = await generateUniqueDramaSlug(adminClient, duplicateTitle, channelCode);
+
+    const insertPayload: TitleInsert = {
+      title: duplicateTitle,
+      slug: newSlug,
+      synopsis: original.synopsis || "",
+      genre: original.genre || "Romance",
+      tags: original.tags || [],
+      channel_id: original.channel_id,
+      channel_name: original.channel_name,
+      channel_code: original.channel_code,
+      total_episodes: original.total_episodes || 1,
+      episodes_available: 0,
+      poster_url: original.poster_url || DEFAULT_POSTER_URL,
+      banner_url: original.banner_url || null,
+      status: "Draft",
+      has_been_published: false,
+      publish_at: null,
+      views_count: 0,
+      rating: 0,
+      release_year: new Date().getFullYear(),
+    };
+
+    const { data: inserted, error: insertErr } = await adminClient
+      .from("titles")
+      .insert(insertPayload)
+      .select("*, channels(name, slug, code)")
+      .single();
+
+    if (insertErr || !inserted) {
+      return err(insertErr?.message || "Failed to create duplicated drama");
+    }
+
+    await recordAuditLog({
+      actorId: actor?.id,
+      actorEmail: actor?.email,
+      action: "drama.duplicate",
+      entityType: "drama",
+      entityId: inserted.id,
+      before: { source_id: id, original_title: original.title },
+      after: inserted,
+      ip: actor?.ip,
+    });
+
+    try {
+      revalidateTag("titles");
+      revalidateTag("dramas");
+      revalidatePath("/");
+      revalidatePath("/browse");
+    } catch {
+      // Safe inside test contexts
+    }
+
+    return ok(mapDramaRowToDrama(inserted));
+  } catch (error) {
+    return err(error instanceof Error ? error.message : "Error duplicating drama");
+  }
+}
+
+export type BulkDramaAction = "publish" | "unpublish" | "archive" | "move_channel";
+
+export interface BulkDramaActionPayload {
+  action: BulkDramaAction;
+  ids: string[];
+  channelName?: string;
+  actor?: { id?: string | null; email?: string | null; ip?: string | null };
+}
+
+export interface BulkDramaActionResult {
+  action: BulkDramaAction;
+  total: number;
+  affected: number;
+  skipped: number;
+  errors: Array<{ id: string; title?: string; error: string }>;
+}
+
+/**
+ * Performs bulk lifecycle actions across selected dramas.
+ */
+export async function bulkUpdateDramasServer(
+  payload: BulkDramaActionPayload
+): Promise<Result<BulkDramaActionResult, string>> {
+  const { action, ids, channelName, actor } = payload;
+  if (!Array.isArray(ids) || ids.length === 0) {
+    return err("ids must be a non-empty array of drama UUIDs");
+  }
+  for (const id of ids) {
+    if (!isUuid(id)) {
+      return err(`Invalid drama UUID: ${id}`);
+    }
+  }
+
+  const validActions: BulkDramaAction[] = ["publish", "unpublish", "archive", "move_channel"];
+  if (!validActions.includes(action)) {
+    return err(`Invalid bulk action: ${action}. Must be one of ${validActions.join(", ")}`);
+  }
+
+  try {
+    const adminClient = getContentAdminClient();
+    const { data: dramas, error: fetchErr } = await adminClient
+      .from("titles")
+      .select("*")
+      .in("id", ids);
+
+    if (fetchErr) {
+      return err(fetchErr.message || "Failed to fetch dramas for bulk operation");
+    }
+    if (!dramas || dramas.length === 0) {
+      return err("No matching dramas found for the specified IDs");
+    }
+
+    const result: BulkDramaActionResult = {
+      action,
+      total: ids.length,
+      affected: 0,
+      skipped: 0,
+      errors: [],
+    };
+
+    if (action === "publish") {
+      const eligibleIds: string[] = [];
+
+      for (const drama of dramas) {
+        const { data: episodes, error: epErr } = await adminClient
+          .from("episodes")
+          .select("id, video_url")
+          .eq("title_id", drama.id);
+
+        if (epErr || !episodes || episodes.length === 0) {
+          result.skipped++;
+          result.errors.push({
+            id: drama.id,
+            title: drama.title,
+            error: "Cannot publish drama with 0 ready episodes",
+          });
+          continue;
+        }
+
+        const epIds = (episodes as Array<{ id: string; video_url?: string | null }>).map((e) => e.id);
+        const { data: mediaRows } = await adminClient
+          .from("episode_media")
+          .select("id, status, hls_url, mp4_url, asset_ref")
+          .in("episode_id", epIds);
+
+        const hasReadyMedia =
+          (mediaRows &&
+            mediaRows.some(
+              (m: any) =>
+                m.status === "ready" &&
+                Boolean(m.hls_url || m.mp4_url || m.asset_ref)
+            )) ||
+          episodes.some((e: any) => Boolean(e.video_url && e.video_url.trim() !== ""));
+
+        if (!hasReadyMedia) {
+          result.skipped++;
+          result.errors.push({
+            id: drama.id,
+            title: drama.title,
+            error: "Cannot publish drama with 0 ready episodes",
+          });
+          continue;
+        }
+
+        eligibleIds.push(drama.id);
+      }
+
+      if (eligibleIds.length > 0) {
+        const { error: updateErr } = await adminClient
+          .from("titles")
+          .update({
+            status: "Published",
+            has_been_published: true,
+            updated_at: new Date().toISOString(),
+          })
+          .in("id", eligibleIds);
+
+        if (updateErr) {
+          return err(updateErr.message || "Failed to publish dramas");
+        }
+
+        result.affected = eligibleIds.length;
+
+        for (const id of eligibleIds) {
+          const drama = (dramas as any[]).find((d) => d.id === id);
+          await recordAuditLog({
+            actorId: actor?.id,
+            actorEmail: actor?.email,
+            action: "drama.bulk_publish",
+            entityType: "drama",
+            entityId: id,
+            before: drama,
+            after: { ...drama, status: "Published", has_been_published: true },
+            ip: actor?.ip,
+          });
+        }
+      }
+    } else if (action === "unpublish") {
+      const { error: updateErr } = await adminClient
+        .from("titles")
+        .update({
+          status: "Draft",
+          updated_at: new Date().toISOString(),
+        })
+        .in("id", ids);
+
+      if (updateErr) {
+        return err(updateErr.message || "Failed to unpublish dramas");
+      }
+
+      result.affected = dramas.length;
+
+      for (const drama of dramas) {
+        await recordAuditLog({
+          actorId: actor?.id,
+          actorEmail: actor?.email,
+          action: "drama.bulk_unpublish",
+          entityType: "drama",
+          entityId: drama.id,
+          before: drama,
+          after: { ...drama, status: "Draft" },
+          ip: actor?.ip,
+        });
+      }
+    } else if (action === "archive") {
+      const { error: updateErr } = await adminClient
+        .from("titles")
+        .update({
+          status: "Archived",
+          updated_at: new Date().toISOString(),
+        })
+        .in("id", ids);
+
+      if (updateErr) {
+        return err(updateErr.message || "Failed to archive dramas");
+      }
+
+      result.affected = dramas.length;
+
+      for (const drama of dramas) {
+        await recordAuditLog({
+          actorId: actor?.id,
+          actorEmail: actor?.email,
+          action: "drama.bulk_archive",
+          entityType: "drama",
+          entityId: drama.id,
+          before: drama,
+          after: { ...drama, status: "Archived" },
+          ip: actor?.ip,
+        });
+      }
+    } else if (action === "move_channel") {
+      if (!channelName || !channelName.trim()) {
+        return err("channelName is required when moving dramas to another channel");
+      }
+
+      const targetChannel = await resolveChannelByName(adminClient, channelName.trim());
+      if (!targetChannel) {
+        return err(`Target channel not found: ${channelName}`);
+      }
+
+      const { error: updateErr } = await adminClient
+        .from("titles")
+        .update({
+          channel_id: targetChannel.id,
+          channel_name: targetChannel.name,
+          channel_code: targetChannel.code,
+          updated_at: new Date().toISOString(),
+        })
+        .in("id", ids);
+
+      if (updateErr) {
+        return err(updateErr.message || "Failed to update drama channels");
+      }
+
+      result.affected = dramas.length;
+
+      for (const drama of dramas) {
+        await recordAuditLog({
+          actorId: actor?.id,
+          actorEmail: actor?.email,
+          action: "drama.bulk_move_channel",
+          entityType: "drama",
+          entityId: drama.id,
+          before: { channel_name: drama.channel_name, channel_code: drama.channel_code },
+          after: { channel_name: targetChannel.name, channel_code: targetChannel.code },
+          ip: actor?.ip,
+        });
+      }
+    }
+
+    try {
+      revalidateTag("titles");
+      revalidateTag("dramas");
+      revalidatePath("/");
+      revalidatePath("/browse");
+    } catch {
+      // Safe inside test contexts
+    }
+
+    return ok(result);
+  } catch (error) {
+    return err(error instanceof Error ? error.message : "Error performing bulk drama update");
+  }
+}
 
 /**
  * Fetches a single drama by ID for administrative editing directly from Content DB.

@@ -11,6 +11,8 @@ import {
   getTitleBySlug,
   getEpisodesByTitleId,
 } from "@/lib/services/content.service";
+import { verifyPreviewToken } from "@/lib/auth/preview-token";
+import PreviewModeBanner from "@/components/PreviewModeBanner";
 
 export const revalidate = 300;
 
@@ -48,6 +50,9 @@ export default async function WatchPage({
   searchParams?: Promise<{ [key: string]: string | string[] | undefined }>;
 }) {
   const { slug } = await params;
+  const sp = searchParams ? await searchParams : {};
+  const previewToken = typeof sp?.preview === "string" ? sp.preview : undefined;
+
   const drama = await getTitleBySlug(slug);
 
   if (!drama) {
@@ -59,7 +64,16 @@ export default async function WatchPage({
     permanentRedirect(`/watch/${drama.slug}`);
   }
 
-  const sp = searchParams ? await searchParams : {};
+  // Unpublished / Lifecycle protection & signed preview token verification (Task 16.4)
+  let isPreviewMode = false;
+  if (drama.status !== "Published") {
+    const previewVerification = verifyPreviewToken(previewToken, drama.slug);
+    if (!previewVerification.valid) {
+      notFound();
+    }
+    isPreviewMode = true;
+  }
+
   const rawEp = typeof sp?.ep === "string" ? sp.ep : Array.isArray(sp?.ep) ? sp.ep[0] : undefined;
   const initialEpisode = rawEp ? Math.max(1, parseInt(rawEp, 10) || 1) : 1;
 
@@ -67,6 +81,9 @@ export default async function WatchPage({
 
   return (
     <PageShell className="min-h-screen bg-bg text-text transition-colors overflow-hidden md:overflow-visible">
+      {isPreviewMode && (
+        <PreviewModeBanner status={drama.status} dramaId={drama.id} />
+      )}
       <div className="hidden md:block">
         <Header />
       </div>

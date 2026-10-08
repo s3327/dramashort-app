@@ -2703,3 +2703,54 @@
   - Full test runner `npm test`: all 823 tests pass across 220 suites with 0 failures (100% pass rate).
   - TypeScript compiler check (`npx tsc --noEmit`): 0 type errors.
   - Next.js production build (`npm run build`): cleanly compiles 68/68 static and dynamic routes.
+
+
+---
+
+## [2026-10-09] Task 16.4: Drama Lifecycle Actions & Bulk Operations
+* **Milestone**: Phase 16 (Admin Content Operations Console) — Task 16.4
+* **Goal**: Equip the admin content operations console with resilient drama lifecycle actions and bulk operations: bulk publish, unpublish, archive, and channel reassignment with ready episode safeguards ($\ge 1$ episode with media); default soft-delete via `Archive` and strict hard-delete restrictions exclusively for never-published drafts (`has_been_published = false`) protected by typed confirmation; "Preview as user" for unpublished drafts secured by HMAC-SHA256 preview tokens; metadata duplication with collision-safe slugs; structured audit logging (`public.admin_audit_log`); and instant Next.js cache revalidation (`titles`, `dramas`, `/`, `/browse`).
+* **Implementation Steps Taken**:
+  1. **Database Schema & Audit Logging Migrations (`supabase/content/supabase/migrations/20261009140000_drama_lifecycle_and_audit.sql` & `supabase/user/supabase/migrations/20261009140000_drama_lifecycle_and_audit.sql`)**:
+     - Added `has_been_published BOOLEAN NOT NULL DEFAULT false` column to `titles` table in Content and User DBs.
+     - Backfilled existing published/completed records with `has_been_published = true`.
+     - Created `sync_title_has_been_published` trigger to automatically set `has_been_published = true` whenever a title is published.
+     - Created `public.admin_audit_log` table tracking lifecycle mutations: `id UUID`, `admin_id UUID`, `admin_email TEXT`, `action TEXT`, `target_type TEXT`, `target_id TEXT`, `metadata JSONB`, `created_at TIMESTAMPTZ`.
+     - Created indexes `idx_admin_audit_log_target`, `idx_admin_audit_log_created_at`, and `idx_admin_audit_log_admin`.
+  2. **Audit Service Infrastructure (`lib/server/audit.ts`)**:
+     - Built `recordAuditLog()` using the privileged service role client to log structured lifecycle operations (`drama.publish`, `drama.unpublish`, `drama.archive`, `drama.hard_delete`, `drama.duplicate`, `drama.bulk_move_channel`).
+  3. **HMAC-SHA256 Signed Preview Token Engine (`lib/auth/preview-token.ts`)**:
+     - Implemented URL-safe signed preview tokens with 2-hour TTL and constant-time signature verification.
+     - Guards `/drama/[slug]` and `/watch/[slug]` so public visitors receive 404 for unpublished drafts, while authorized preview links render an interactive sticky `PreviewModeBanner` (`components/PreviewModeBanner.tsx`) with status, ID, expiration countdown, and quick links back to admin.
+  4. **Server Operations Layer (`lib/server/admin.ts`, `lib/server/catalog.ts`)**:
+     - Updated `deleteDrama()`: enforces soft archive by default. If `hard=true` is requested, validates `has_been_published = false` before permanently deleting; otherwise throws descriptive conflict error.
+     - Implemented `duplicateDramaServer()`: clones title metadata, tags, and genres, generates collision-safe slug (`{slug}-copy` or `{slug}-copy-{timestamp}`), resets status to `'Draft'`, and logs audit trail.
+     - Implemented `bulkUpdateDramasServer()`: supports batch actions (`publish`, `unpublish`, `archive`, `move_channel`). Enforces ready episode requirements for `publish` action, applies database mutations, logs individual audit trail records, and triggers Next.js cache revalidation (`revalidateTag("titles")`, `revalidateTag("dramas")`, `revalidatePath("/")`, `revalidatePath("/browse")`).
+  5. **Admin API Route Handlers**:
+     - `POST /api/admin/dramas/bulk`: Processes bulk lifecycle mutations and returns `{ updatedIds, skipped }`.
+     - `POST /api/admin/dramas/[id]/duplicate`: Clones target drama and returns new draft ID and slug.
+     - `GET /api/admin/dramas/[id]/preview`: Generates signed preview token and returns `/drama/{slug}?preview_token={token}`.
+     - `DELETE /api/admin/dramas/[id]`: Honors `?hard=true` parameter guard with audit logging.
+  6. **Admin Content Operations Console UI**:
+     - `app/admin/titles/page.tsx`:
+       - Added floating Bulk Operations Toolbar with selected count indicator, select-all checkbox, and quick actions: Publish Selected, Unpublish Selected, Archive Selected, and Move Channel.
+       - Built Move Channel Modal for bulk reassigning channels.
+       - Built Action Dropdown for both table rows and card grid: "Preview as user", "Duplicate Drama", "Manage Episodes", "Edit Drama", and "Archive/Delete".
+       - Built Delete Confirmation Modal requiring exact typed title confirmation for hard deletions.
+     - `app/admin/titles/[id]/edit/page.tsx`:
+       - Added top action bar: "Preview as user", "Duplicate Drama", "Manage Episodes", and "Archive/Delete Drama".
+       - Added Delete/Archive Confirmation Modal with typed confirmation support.
+  7. **Automated Verification Test Suite (`__tests__/admin/drama-lifecycle-and-bulk.test.ts`)**:
+     - Created 10 comprehensive tests verifying:
+       - Bulk publish requiring $\ge 1$ ready episode.
+       - Bulk unpublish, archive, and channel reassignments.
+       - Hard delete prevention on previously published titles.
+       - Drama duplication resetting status to Draft with collision-safe slug.
+       - HMAC preview token generation and verification.
+       - Draft preview access vs. public 404 enforcement.
+       - Audit log persistence.
+* **Regression Analysis & Verification Record**:
+  - `__tests__/admin/drama-lifecycle-and-bulk.test.ts`: 10 / 10 tests pass (100%).
+  - Full test runner `npm test`: all 833 tests pass across 221 suites with 0 failures (100% pass rate).
+  - TypeScript compiler check (`npx tsc --noEmit`): 0 type errors.
+  - Next.js production build (`npm run build`): cleanly compiles 68/68 static and dynamic routes.

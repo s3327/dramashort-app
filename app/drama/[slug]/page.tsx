@@ -16,6 +16,8 @@ import {
   getTopTrendingTitles,
 } from "@/lib/services/content.service";
 import type { Title } from "@/types/content";
+import { verifyPreviewToken } from "@/lib/auth/preview-token";
+import PreviewModeBanner from "@/components/PreviewModeBanner";
 
 export const revalidate = 300;
 
@@ -42,10 +44,15 @@ export async function generateStaticParams() {
  */
 export default async function DramaPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ slug: string }>;
+  searchParams?: Promise<{ [key: string]: string | string[] | undefined }>;
 }) {
   const { slug } = await params;
+  const sParams = searchParams ? await searchParams : {};
+  const previewToken = typeof sParams.preview === "string" ? sParams.preview : undefined;
+
   const drama = await getTitleBySlug(slug);
 
   if (!drama) {
@@ -55,6 +62,16 @@ export default async function DramaPage({
   // Canonical redirect if accessed via legacy prefix slug (Task 11.6)
   if (drama.slug !== slug) {
     permanentRedirect(`/drama/${drama.slug}`);
+  }
+
+  // Unpublished / Lifecycle protection & signed preview token verification (Task 16.4)
+  let isPreviewMode = false;
+  if (drama.status !== "Published") {
+    const previewVerification = verifyPreviewToken(previewToken, drama.slug);
+    if (!previewVerification.valid) {
+      notFound();
+    }
+    isPreviewMode = true;
   }
 
   let related: Title[] = [];
@@ -72,6 +89,9 @@ export default async function DramaPage({
 
   return (
     <PageShell className="min-h-screen bg-bg text-text">
+      {isPreviewMode && (
+        <PreviewModeBanner status={drama.status} dramaId={drama.id} />
+      )}
       <Header />
 
       <main className="max-w-[1000px] mx-auto px-6 pt-10 pb-16">

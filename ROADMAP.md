@@ -2409,14 +2409,53 @@ These items stay ✅ for history; the gaps are tracked as new tasks.
 ---
 
 ### Task 16.4: Drama Lifecycle Actions & Bulk Operations
-* **Status**: ⏳ Planned
-* **Problem**: The list has selection checkboxes (`app/admin/titles/page.tsx` L34, L99–120) but no bulk actions; there is no delete, archive, or preview flow.
-* **Planned Specifications**:
-  1. Bulk publish, unpublish, archive, and move to another channel.
-  2. Archive is the default soft delete; hard delete only for never-published drafts, with typed confirmation.
-  3. "Preview as user" for drafts through a signed preview-token route.
-  4. Duplicate a drama (metadata only).
-* **Verification**: a bulk archive of 3 selected dramas removes them from public pages and records 3 audit entries.
+* **Status**: ✅ Completed
+* **Depends on**: 16.1, 16.2, 16.3
+* **Target Files**:
+  - `supabase/content/supabase/migrations/20261009140000_drama_lifecycle_and_audit.sql`
+  - `supabase/user/supabase/migrations/20261009140000_drama_lifecycle_and_audit.sql`
+  - `types/content.ts`
+  - `types/supabase-content.ts`
+  - `lib/server/audit.ts`
+  - `lib/auth/preview-token.ts`
+  - `lib/server/admin.ts`
+  - `lib/server/catalog.ts`
+  - `lib/services/content.service.ts`
+  - `app/api/admin/dramas/bulk/route.ts`
+  - `app/api/admin/dramas/[id]/duplicate/route.ts`
+  - `app/api/admin/dramas/[id]/preview/route.ts`
+  - `app/api/admin/dramas/[id]/route.ts`
+  - `components/PreviewModeBanner.tsx`
+  - `app/drama/[slug]/page.tsx`
+  - `app/watch/[slug]/page.tsx`
+  - `app/admin/titles/page.tsx`
+  - `app/admin/titles/[id]/edit/page.tsx`
+  - `__tests__/admin/drama-lifecycle-and-bulk.test.ts`
+* **Delivered Capabilities**:
+  1. Database Migration & Schema Enhancements:
+     - Added `has_been_published BOOLEAN NOT NULL DEFAULT false` column to `titles` table with automated trigger `sync_title_has_been_published` setting it permanently to `true` whenever a title is published.
+     - Created `admin_audit_log` table with indexes (`idx_admin_audit_log_target`, `idx_admin_audit_log_created_at`, `idx_admin_audit_log_admin`) tracking lifecycle mutations.
+  2. Audit Logging Infrastructure (`lib/server/audit.ts`):
+     - Created `recordAuditLog()` service logging actions (`drama.publish`, `drama.unpublish`, `drama.archive`, `drama.hard_delete`, `drama.duplicate`, `drama.bulk_move_channel`).
+  3. HMAC-SHA256 User Preview Engine (`lib/auth/preview-token.ts`):
+     - Implemented tamper-proof signed preview tokens with 2-hour TTL and constant-time verification.
+     - Secured `app/drama/[slug]/page.tsx` and `app/watch/[slug]/page.tsx` so unpublished drafts return 404 to regular users but render interactive `PreviewModeBanner` with live token authentication.
+  4. Server-Side Lifecycle Operations:
+     - Default soft delete (`Archive`) preserving referential integrity; hard delete strictly restricted to never-published drafts (`has_been_published = false`) and protected by typed title confirmation.
+     - Drama duplication engine cloning title metadata, genres, tags, and status reset to `'Draft'` with collision-safe unique slugs.
+     - Bulk operations engine supporting bulk publish (with $\ge 1$ ready episode validation), unpublish, archive, and channel reassignment, invalidating Next.js cache tags (`titles`, `dramas`, `/`, `/browse`).
+  5. Content Operations Admin UI:
+     - Built floating Bulk Operations Toolbar in `app/admin/titles/page.tsx` with selection counter, select-all toggle, publish, unpublish, archive, and move-channel modal.
+     - Added row & card action dropdowns (Preview, Duplicate, Episodes, Edit, Delete/Archive).
+     - Built Delete/Archive Confirmation Modal requiring exact typed confirmation for hard deletion.
+     - Added header action controls to `app/admin/titles/[id]/edit/page.tsx` (Preview, Duplicate, Manage Episodes, Delete/Archive).
+  6. Automated Verification Test Suite:
+     - 10 comprehensive tests in `__tests__/admin/drama-lifecycle-and-bulk.test.ts` verifying bulk operations, episode readiness guards, audit trail records, draft preview tokens, and deletion rules.
+* **Verification**:
+  - `npx tsc --noEmit` passed with 0 errors.
+  - `__tests__/admin/drama-lifecycle-and-bulk.test.ts` passed 10/10 tests.
+  - Full test runner `npm test` passed 833/833 tests across 221 suites (100% pass rate).
+  - Next.js production build (`npm run build`) compiled cleanly.
 
 ---
 

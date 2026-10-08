@@ -89,6 +89,7 @@ export function mapTitleRowToTitle(row: TitleRow): Title {
         ? Number(row.free_episodes_count)
         : 5,
     publishAt: row.publish_at || null,
+    hasBeenPublished: row.has_been_published ?? (row.status === "Published"),
   };
 }
 
@@ -1402,24 +1403,33 @@ export async function createDrama(
 export const createTitle = createDrama;
 
 /**
- * Deletes a Drama in the catalog via the administrative API.
+ * Deletes or archives a Drama in the catalog via the administrative API.
+ * Defaults to soft delete (Archived). Pass { hard: true } for hard deletion of never-published drafts.
  */
 export async function deleteDrama(
-  id: string
-): Promise<{ success: boolean; error?: string }> {
+  id: string,
+  options?: { hard?: boolean }
+): Promise<{ success: boolean; error?: string; hard?: boolean }> {
   try {
-    const res = await adminFetch(`/api/admin/dramas/${encodeURIComponent(id)}`, {
+    const query = options?.hard ? "?hard=true" : "";
+    const res = await adminFetch(`/api/admin/dramas/${encodeURIComponent(id)}${query}`, {
       method: "DELETE",
     });
 
-    if (!res.ok) {
+    const json = (await readJsonSafely(res)) as {
+      success?: boolean;
+      error?: { message?: string };
+      data?: { hard?: boolean };
+    };
+
+    if (!res.ok || !json?.success) {
       return {
         success: false,
-        error: `Delete failed with HTTP ${res.status}`,
+        error: getApiErrorMessage(json, `Delete failed with HTTP ${res.status}`),
       };
     }
 
-    return { success: true };
+    return { success: true, hard: json.data?.hard };
   } catch (err: unknown) {
     const msg =
       err instanceof Error ? err.message : "Network error while deleting drama";
@@ -1428,6 +1438,15 @@ export async function deleteDrama(
       error: msg,
     };
   }
+}
+
+/**
+ * Soft deletes / archives a drama.
+ */
+export async function archiveDrama(
+  id: string
+): Promise<{ success: boolean; error?: string }> {
+  return deleteDrama(id, { hard: false });
 }
 
 /**
@@ -1766,6 +1785,111 @@ export async function executeScheduledPublishing(): Promise<{
     };
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : "Network error running scheduled publishing";
+    return { success: false, error: msg };
+  }
+}
+
+export interface BulkDramasPayload {
+  action: "publish" | "unpublish" | "archive" | "move_channel";
+  ids: string[];
+  channelName?: string;
+}
+
+export interface BulkDramasResult {
+  action: string;
+  total: number;
+  affected: number;
+  skipped: number;
+  errors: Array<{ id: string; title?: string; error: string }>;
+}
+
+/**
+ * Executes a bulk operation on selected dramas (publish, unpublish, archive, move_channel).
+ */
+export async function bulkUpdateDramas(
+  payload: BulkDramasPayload
+): Promise<{ success: boolean; data?: BulkDramasResult; error?: string }> {
+  try {
+    const res = await adminFetch("/api/admin/dramas/bulk", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+
+    const json = (await readJsonSafely(res)) as {
+      success?: boolean;
+      data?: BulkDramasResult;
+      error?: any;
+    };
+
+    if (!res.ok || !json?.success) {
+      return {
+        success: false,
+        error: getApiErrorMessage(json, `Bulk operation failed (HTTP ${res.status})`),
+      };
+    }
+
+    return { success: true, data: json.data };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Network error performing bulk operation";
+    return { success: false, error: msg };
+  }
+}
+
+/**
+ * Duplicates an existing drama (metadata only) into a new Draft.
+ */
+export async function duplicateDrama(
+  id: string
+): Promise<{ success: boolean; data?: Drama; error?: string }> {
+  try {
+    const res = await adminFetch(`/api/admin/dramas/${encodeURIComponent(id)}/duplicate`, {
+      method: "POST",
+    });
+
+    const json = (await readJsonSafely(res)) as {
+      success?: boolean;
+      data?: Drama;
+      error?: any;
+    };
+
+    if (!res.ok || !json?.success) {
+      return {
+        success: false,
+        error: getApiErrorMessage(json, `Failed to duplicate drama (HTTP ${res.status})`),
+      };
+    }
+
+    return { success: true, data: json.data };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Network error duplicating drama";
+    return { success: false, error: msg };
+  }
+}
+
+/**
+ * Generates a signed preview URL for an unpublished drama.
+ */
+export async function getDramaPreviewUrl(
+  id: string
+): Promise<{ success: boolean; previewUrl?: string; token?: string; error?: string }> {
+  try {
+    const res = await adminFetch(`/api/admin/dramas/${encodeURIComponent(id)}/preview`);
+    const json = (await readJsonSafely(res)) as {
+      success?: boolean;
+      data?: { previewUrl: string; token: string };
+      error?: any;
+    };
+
+    if (!res.ok || !json?.success || !json.data?.previewUrl) {
+      return {
+        success: false,
+        error: getApiErrorMessage(json, `Failed to generate preview URL (HTTP ${res.status})`),
+      };
+    }
+
+    return { success: true, previewUrl: json.data.previewUrl, token: json.data.token };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Network error generating preview URL";
     return { success: false, error: msg };
   }
 }

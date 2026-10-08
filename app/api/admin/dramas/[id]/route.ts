@@ -276,10 +276,11 @@ export async function PATCH(
 
 /**
  * DELETE /api/admin/dramas/[id]
- * Deletes one drama by UUID from the Content DB using lib/server/admin direct mutation. Admin only.
+ * Deletes or archives one drama by UUID from the Content DB. Admin only.
+ * Defaults to soft delete (Archived). Accepts ?hard=true for permanent deletion of never-published drafts.
  */
 export async function DELETE(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const auth = await requireAdmin();
@@ -292,19 +293,35 @@ export async function DELETE(
     return apiError("INVALID_ID", "Drama id must be a UUID.", 400);
   }
 
+  const hard = request.nextUrl.searchParams.get("hard") === "true";
+
   try {
-    const res = await deleteDramaDirect(id);
+    const res = await deleteDramaDirect(id, {
+      hardDelete: hard,
+      actor: {
+        id: auth.user.id,
+        email: auth.user.email,
+        ip: request.headers.get("x-forwarded-for") || undefined,
+      },
+    });
+
     if (!res.ok) {
+      if (res.error === "Drama not found") {
+        return apiError("NOT_FOUND", "Drama not found.", 404);
+      }
+      if (res.error.includes("Published dramas cannot be permanently deleted")) {
+        return apiError("VALIDATION_ERROR", res.error, 400);
+      }
       return apiError("DATABASE_ERROR", res.error, 500);
     }
 
-    return apiSuccess({ deleted: true });
+    return apiSuccess({ deleted: true, hard });
   } catch (err) {
     console.error("[DELETE /api/admin/dramas/:id] Unexpected error:", err);
     reportError(err, {
       route: `/api/admin/dramas/${id}`,
       method: "DELETE",
-      requestId: _request?.headers?.get?.("x-request-id") || undefined,
+      requestId: request?.headers?.get?.("x-request-id") || undefined,
     });
     return apiError("DATABASE_ERROR", "Failed to delete drama.", 500);
   }

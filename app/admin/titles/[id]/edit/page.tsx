@@ -4,9 +4,22 @@ import { use, useEffect, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Save, Loader2, AlertCircle, Film, Calendar, Clock } from "lucide-react";
+import {
+  ArrowLeft,
+  Save,
+  Loader2,
+  AlertCircle,
+  Film,
+  Calendar,
+  Clock,
+  Eye,
+  Copy,
+  Trash2,
+  AlertTriangle,
+} from "lucide-react";
 import AdminSidebar from "@/components/admin/AdminSidebar";
 import { ArtworkUploader } from "@/components/admin/ArtworkUploader";
+import Modal from "@/components/Modal";
 import Breadcrumbs from "@/components/Breadcrumbs";
 import Toast from "@/components/Toast";
 import { useToast } from "@/hooks/useToast";
@@ -16,6 +29,10 @@ import {
   getDramaById,
   updateDrama,
   getChannels,
+  duplicateDrama,
+  getDramaPreviewUrl,
+  deleteDrama,
+  archiveDrama,
   type Drama,
 } from "@/lib/services/content.service";
 
@@ -41,6 +58,11 @@ export default function AdminTitleEditPage({
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [isPreviewing, setIsPreviewing] = useState(false);
+  const [isDuplicating, setIsDuplicating] = useState(false);
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [typedDeleteConfirm, setTypedDeleteConfirm] = useState("");
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const [form, setForm] = useState({
     title: "",
@@ -178,6 +200,62 @@ export default function AdminTitleEditPage({
     }
   };
 
+  const handlePreview = async () => {
+    if (!drama) return;
+    if (drama.status === "Published") {
+      window.open(`/drama/${drama.slug}`, "_blank");
+      return;
+    }
+    setIsPreviewing(true);
+    const res = await getDramaPreviewUrl(drama.id);
+    setIsPreviewing(false);
+    if (res.success && res.previewUrl) {
+      window.open(res.previewUrl, "_blank");
+    } else {
+      showToast(res.error || "Failed to generate preview URL.");
+    }
+  };
+
+  const handleDuplicate = async () => {
+    if (!drama) return;
+    setIsDuplicating(true);
+    const res = await duplicateDrama(drama.id);
+    setIsDuplicating(false);
+    if (res.success && res.data) {
+      showToast(`Duplicated '${drama.title}' successfully.`);
+      router.push(`/admin/dramas/${res.data.id}/edit`);
+    } else {
+      showToast(res.error || "Failed to duplicate drama.");
+    }
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!drama) return;
+    setIsDeleting(true);
+    if (drama.hasBeenPublished || drama.status === "Published") {
+      const res = await archiveDrama(drama.id);
+      setIsDeleting(false);
+      setIsDeleteModalOpen(false);
+      if (res.success) {
+        showToast("Drama archived successfully.");
+        setForm((prev) => ({ ...prev, status: "Archived" }));
+        setDrama((prev) => (prev ? { ...prev, status: "Archived" } : null));
+      } else {
+        showToast(res.error || "Failed to archive drama.");
+      }
+    } else {
+      const res = await deleteDrama(drama.id, { hard: true });
+      setIsDeleting(false);
+      setIsDeleteModalOpen(false);
+      if (res.success) {
+        showToast("Draft permanently deleted.");
+        router.push("/admin/dramas");
+      } else {
+        showToast(res.error || "Failed to delete draft.");
+      }
+    }
+  };
+
   // Loading skeleton state
   if (isLoading) {
     return (
@@ -263,17 +341,49 @@ export default function AdminTitleEditPage({
             </p>
           </div>
 
-          <div className="flex items-center gap-2.5">
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={handlePreview}
+              disabled={isPreviewing}
+              title="Preview drama as user"
+              className="inline-flex items-center gap-1.5 rounded-md border border-border bg-surface px-3 py-2 text-sm font-semibold text-text hover:bg-surface-raised transition-colors shadow-sm cursor-pointer"
+            >
+              {isPreviewing ? <Loader2 size={16} className="animate-spin" /> : <Eye size={16} />}
+              <span>Preview</span>
+            </button>
+            <button
+              type="button"
+              onClick={handleDuplicate}
+              disabled={isDuplicating}
+              title="Duplicate drama metadata"
+              className="inline-flex items-center gap-1.5 rounded-md border border-border bg-surface px-3 py-2 text-sm font-semibold text-text hover:bg-surface-raised transition-colors shadow-sm cursor-pointer"
+            >
+              {isDuplicating ? <Loader2 size={16} className="animate-spin" /> : <Copy size={16} />}
+              <span>Duplicate</span>
+            </button>
             <Link
               href={`/admin/dramas/${id}/episodes`}
-              className="inline-flex items-center gap-1.5 rounded-md border border-border bg-surface px-4 py-2 text-sm font-semibold text-text hover:bg-surface-raised transition-colors shadow-sm"
+              className="inline-flex items-center gap-1.5 rounded-md border border-border bg-surface px-3 py-2 text-sm font-semibold text-text hover:bg-surface-raised transition-colors shadow-sm"
             >
               <Film size={16} />
-              <span>Manage Episodes</span>
+              <span>Episodes</span>
             </Link>
+            <button
+              type="button"
+              onClick={() => {
+                setTypedDeleteConfirm("");
+                setIsDeleteModalOpen(true);
+              }}
+              title={drama.hasBeenPublished || drama.status === "Published" ? "Archive drama" : "Delete draft"}
+              className="inline-flex items-center gap-1.5 rounded-md border border-danger/30 bg-surface px-3 py-2 text-sm font-semibold text-danger hover:bg-danger-soft transition-colors shadow-sm cursor-pointer"
+            >
+              <Trash2 size={16} />
+              <span>{drama.hasBeenPublished || drama.status === "Published" ? "Archive" : "Delete"}</span>
+            </button>
             <Link
               href="/admin/dramas"
-              className="inline-flex items-center gap-1.5 rounded-md border border-border bg-surface px-4 py-2 text-sm font-semibold text-text hover:bg-surface-raised transition-colors"
+              className="inline-flex items-center gap-1.5 rounded-md border border-border bg-surface px-3 py-2 text-sm font-semibold text-text hover:bg-surface-raised transition-colors"
             >
               Cancel
             </Link>
@@ -590,6 +700,103 @@ export default function AdminTitleEditPage({
             </div>
           </div>
         </form>
+
+        {/* Delete / Archive Confirmation Modal */}
+        <Modal
+          open={isDeleteModalOpen}
+          onClose={() => {
+            if (!isDeleting) {
+              setIsDeleteModalOpen(false);
+            }
+          }}
+          title={
+            drama.hasBeenPublished || drama.status === "Published"
+              ? "Archive Drama"
+              : "Permanently Delete Draft"
+          }
+        >
+          <div className="space-y-4">
+            {drama.hasBeenPublished || drama.status === "Published" ? (
+              <>
+                <div className="flex items-start gap-3 rounded-lg border border-amber-300 bg-amber-50 p-3 text-amber-900 text-xs">
+                  <AlertTriangle size={18} className="shrink-0 text-amber-600 mt-0.5" />
+                  <div>
+                    <strong className="font-semibold">Published dramas cannot be permanently deleted.</strong>
+                    <p className="mt-0.5 text-amber-800">
+                      This drama has been published before. To protect user watch history, bookmarks, and transactional integrity, it must be Archived instead.
+                    </p>
+                  </div>
+                </div>
+                <p className="text-sm text-text">
+                  Archiving <strong>{drama.title}</strong> will remove it from all public browsing and search pages immediately. You can restore it to Draft or Published status at any time.
+                </p>
+                <div className="flex justify-end gap-2 pt-2">
+                  <button
+                    type="button"
+                    disabled={isDeleting}
+                    onClick={() => setIsDeleteModalOpen(false)}
+                    className="rounded-md border border-border bg-surface px-4 py-2 text-sm font-semibold text-text hover:bg-surface-raised transition-colors cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    disabled={isDeleting}
+                    onClick={handleConfirmDelete}
+                    className="inline-flex items-center gap-1.5 rounded-md bg-amber-600 hover:bg-amber-700 text-white px-4 py-2 text-sm font-semibold transition-colors shadow-sm cursor-pointer"
+                  >
+                    {isDeleting && <Loader2 size={14} className="animate-spin" />}
+                    Archive Drama
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="flex items-start gap-3 rounded-lg border border-danger/30 bg-danger-soft p-3 text-danger text-xs">
+                  <AlertTriangle size={18} className="shrink-0 text-danger mt-0.5" />
+                  <div>
+                    <strong className="font-semibold">Permanent deletion cannot be undone.</strong>
+                    <p className="mt-0.5 text-danger/80">
+                      Because this draft has never been published, it will be completely removed from the catalog.
+                    </p>
+                  </div>
+                </div>
+                <div>
+                  <p className="text-xs text-text-muted mb-2">
+                    To confirm permanent deletion, please type the title below: <br />
+                    <span className="font-mono font-bold text-text select-all">{drama.title}</span>
+                  </p>
+                  <input
+                    type="text"
+                    value={typedDeleteConfirm}
+                    onChange={(e) => setTypedDeleteConfirm(e.target.value)}
+                    placeholder={drama.title}
+                    className="w-full rounded-md border border-border bg-surface text-sm text-text px-3.5 py-2 focus:outline-none focus:ring-2 focus:ring-danger/50 focus:border-danger transition-colors font-mono"
+                  />
+                </div>
+                <div className="flex justify-end gap-2 pt-2">
+                  <button
+                    type="button"
+                    disabled={isDeleting}
+                    onClick={() => setIsDeleteModalOpen(false)}
+                    className="rounded-md border border-border bg-surface px-4 py-2 text-sm font-semibold text-text hover:bg-surface-raised transition-colors cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    disabled={isDeleting || typedDeleteConfirm.trim() !== drama.title.trim()}
+                    onClick={handleConfirmDelete}
+                    className="inline-flex items-center gap-1.5 rounded-md bg-danger hover:bg-danger-hover text-white px-4 py-2 text-sm font-semibold transition-colors shadow-sm disabled:opacity-40 cursor-pointer"
+                  >
+                    {isDeleting && <Loader2 size={14} className="animate-spin" />}
+                    Delete Permanently
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </Modal>
       </main>
 
       <Toast message={toastMessage} />

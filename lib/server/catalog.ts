@@ -58,6 +58,8 @@ export function mapDramaRowToDrama(row: DramaRow): Drama {
       row.featured_rank !== undefined && row.featured_rank !== null
         ? Number(row.featured_rank)
         : null,
+    publishAt: row.publish_at || null,
+    hasBeenPublished: row.has_been_published ?? (row.status === "Published"),
   };
 }
 
