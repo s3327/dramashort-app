@@ -147,6 +147,8 @@ export function getAnonId(): string {
   return id;
 }
 
+export const getAnonymousId = getAnonId;
+
 /**
  * Resolves or generates the session identifier.
  */
@@ -517,6 +519,27 @@ export function trackGuestPrompt(params: {
     payload: { trigger: params.trigger },
   });
 }
+
+/**
+ * Tracks an experiment exposure event when a user is exposed to an A/B test variant (Task 15.5).
+ */
+export function trackExperimentExposure(params: {
+  experimentId: string;
+  variantId: string;
+  metadata?: Record<string, unknown>;
+}): void {
+  trackEvent({
+    titleSlug: "platform",
+    episodeNumber: 1,
+    eventType: "experiment_exposure",
+    payload: {
+      experimentId: params.experimentId,
+      variantId: params.variantId,
+      ...(params.metadata || {}),
+    },
+  });
+}
+
 
 /**
  * Testing utilities for isolating unit tests

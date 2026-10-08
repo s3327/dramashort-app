@@ -2551,3 +2551,30 @@
   - Full test runner `npm test`: all 769 tests pass across 204 suites with 0 failures (100% pass rate).
   - TypeScript compiler check (`npx tsc --noEmit`): 0 type errors.
   - Next.js production build (`npm run build`): cleanly compiles 67/67 static/dynamic routes.
+---
+
+## [2026-10-08] Task 15.5: Experimentation Readiness
+* **Milestone**: Phase 15 (Product Analytics, Engagement Tracking & Real Trending) — Task 15.5
+* **Goal**: Establish the platform's deterministic feature flag and A/B experimentation engine with sticky hashing by subject ID, cookie/localStorage persistence, exposure telemetry logging, server/client evaluation helpers, and definition of the initial 3 production experiments.
+* **Implementation Steps Taken**:
+  1. **Deterministic Hashing & Sticky Assignment Engine (`lib/experiments/engine.ts`)**:
+     - Implemented fast 32-bit FNV-1a hash algorithm (`hashSubjectToBucket`) mapping any `(experimentId, subjectId)` pair to an integer bucket in $[0, 99]$.
+     - Guarantees 100% sticky assignment across sessions and page reloads without database writes for anonymous visitors.
+     - Supports manual URL overrides (`?exp_<id>=<variant>`) and custom weighted percentage distributions.
+  2. **Core Production Experiments Catalog (`CORE_EXPERIMENTS`)**:
+     - `landing_entry_mode` (Task 14.5): 50/50 split comparing `control` (landing gate) vs. `feed_direct` (direct discovery feed).
+     - `guest_engagement_threshold` (Task 14.8): 50/25/25 split comparing `ep3_soft` (Ep 3) vs. `ep2_early` (Ep 2) vs. `ep5_patient` (Ep 5) soft registration prompt milestones.
+     - `free_episodes_count` (Phase 8 Freemium Paywall): 50/25/25 split evaluating `5_free` vs. `3_free` vs. `7_free` episodes before coin-lock gate.
+  3. **Automated Exposure Telemetry (`lib/analytics/track.ts`)**:
+     - Added `experiment_exposure` to `PLAYBACK_EVENT_TYPES`.
+     - Created `trackExperimentExposure()` dispatching exposure events to `/api/events` once per session via `sessionStorage` deduplication.
+  4. **Universal Integration Layer (`hooks/useExperiment.ts` & `lib/experiments/server.ts`)**:
+     - `getServerExperiment(id)`: Server Component helper evaluating experiments via cookies for zero-layout-shift SSR.
+     - `useExperiment(id)`: React Client Component hook with reactivity and automated exposure logging.
+  5. **Automated Verification Test Suite (`__tests__/experiments/experimentation-readiness.test.ts`)**:
+     - Authored 7 tests verifying bucket determinism, uniform distribution across 2,000 IDs, sticky stability, weighted distribution, manual overrides, catalog configurations, and exposure tracking.
+* **Regression Analysis & Verification Record**:
+  - `__tests__/experiments/experimentation-readiness.test.ts`: 7 / 7 tests pass (100%).
+  - Full test runner `npm test`: all 776 tests pass across 204 suites with 0 failures (100% pass rate).
+  - TypeScript compiler check (`npx tsc --noEmit`): 0 type errors.
+  - Next.js production build (`npm run build`): cleanly compiles 67/67 static/dynamic routes.

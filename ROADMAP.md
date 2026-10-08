@@ -2253,11 +2253,30 @@ These items stay ✅ for history; the gaps are tracked as new tasks.
 ---
 
 ### Task 15.5: Experimentation Readiness
-* **Status**: ⏳ Planned
-* **Planned Specifications**:
-  1. Feature flags (from `app_settings` in Task 16.8, or the analytics provider) with sticky assignment by anonymous or user ID.
-  2. First experiments: landing vs. feed entry (Task 14.5), the guest-favorites prompt (Task 14.8), and Phase 8 free-episode counts.
-* **Verification**: assignment stays sticky across sessions, and every exposure is logged as an event.
+* **Status**: ✅ Completed (2026-10-08)
+* **Target Files**: `types/experiments.ts` (new), `types/analytics.ts`, `lib/experiments/engine.ts` (new), `lib/experiments/client.ts` (new), `lib/experiments/server.ts` (new), `hooks/useExperiment.ts` (new), `lib/analytics/track.ts`, `__tests__/experiments/experimentation-readiness.test.ts` (new)
+* **Delivered Capabilities**:
+  1. **Deterministic Hashing & Sticky Assignment Engine (`lib/experiments/engine.ts`)**:
+     - Fast 32-bit FNV-1a hashing algorithm (`hashSubjectToBucket`) deterministically mapping any `(experimentId, subjectId)` pair to an integer bucket in $[0, 99]$.
+     - Guarantees 100% sticky assignment across sessions and reloads without database round-trips for anonymous visitors.
+     - Supports manual URL overrides (`?exp_<id>=<variant>`) and custom weighted distributions.
+  2. **Core Production Experiments Catalog (`CORE_EXPERIMENTS`)**:
+     - `landing_entry_mode` (Task 14.5): 50/50 split comparing `control` (landing gate) vs. `feed_direct` (direct discovery feed).
+     - `guest_engagement_threshold` (Task 14.8): 50/25/25 split comparing `ep3_soft` (Ep 3) vs. `ep2_early` (Ep 2) vs. `ep5_patient` (Ep 5) soft registration prompt milestones.
+     - `free_episodes_count` (Phase 8 Freemium Paywall): 50/25/25 split evaluating `5_free` vs. `3_free` vs. `7_free` episodes before coin-lock gate.
+  3. **Automated Exposure Telemetry (`lib/analytics/track.ts`)**:
+     - Added `experiment_exposure` to `PLAYBACK_EVENT_TYPES`.
+     - Built `trackExperimentExposure()` dispatching exposure events to `/api/events` once per session via `sessionStorage` deduplication.
+  4. **Universal Integration Layer (`hooks/useExperiment.ts` & `lib/experiments/server.ts`)**:
+     - `getServerExperiment(id)`: Server Component helper evaluating experiments via cookies for zero-layout-shift SSR.
+     - `useExperiment(id)`: React Client Component hook with reactivity and automated exposure logging.
+  5. **Automated Verification Test Suite (`__tests__/experiments/experimentation-readiness.test.ts`)**:
+     - 7 unit, contract, and distribution tests verifying bucket determinism, uniform distribution across 2,000 IDs, sticky stability, weighted distribution, manual overrides, catalog configurations, and exposure tracking.
+* **Verification Results**:
+  - `__tests__/experiments/experimentation-readiness.test.ts`: 7 / 7 tests passing (100%).
+  - Clean TypeScript verification (`npx tsc --noEmit` with 0 errors).
+  - Full test runner `npm test`: all 776 tests passing with 0 failures across 204 test suites.
+  - Production build `npm run build`: cleanly compiles 67/67 static/dynamic routes.
 
 ---
 

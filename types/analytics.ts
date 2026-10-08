@@ -14,6 +14,8 @@ export const PLAYBACK_EVENT_TYPES = [
   "guest_prompt_shown",
   "guest_prompt_cta",
   "guest_prompt_dismiss",
+  // Phase 15.5 Experimentation Readiness
+  "experiment_exposure",
   // Phase 8 Paywall ready placeholders
   "paywall_view",
   "episode_unlock",
