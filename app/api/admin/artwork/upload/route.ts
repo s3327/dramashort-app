@@ -38,12 +38,12 @@ export async function POST(request: NextRequest) {
     ]);
   }
 
-  if (rawType !== "poster" && rawType !== "banner") {
+  if (rawType !== "poster" && rawType !== "banner" && rawType !== "avatar") {
     return apiError(
       "VALIDATION_ERROR",
-      "Artwork type must be 'poster' or 'banner'.",
+      "Artwork type must be 'poster', 'banner', or 'avatar'.",
       400,
-      [{ field: "type", message: "Type must be 'poster' or 'banner'." }]
+      [{ field: "type", message: "Type must be 'poster', 'banner', or 'avatar'." }]
     );
   }
 

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { ChevronDown } from "lucide-react";
-import { channels } from "@/data/channels.mock";
+import { channels as defaultChannels } from "@/data/channels.mock";
+import type { Channel } from "@/types/content";
 import type { NavLink } from "@/data/nav-links.mock";
 
 function NavLinkItem({ link, active }: { link: NavLink; active: boolean }) {
@@ -20,10 +21,12 @@ export default function DesktopNav({
   linksBeforeChannel,
   linksAfterChannel,
   pathname,
+  channels = defaultChannels,
 }: {
   linksBeforeChannel: NavLink[];
   linksAfterChannel: NavLink[];
   pathname: string;
+  channels?: Channel[];
 }) {
   return (
     <nav className="hidden md:flex flex-1 items-center justify-center gap-8">

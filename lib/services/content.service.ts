@@ -17,6 +17,9 @@ import type {
   BulkCreateEpisodesInput,
   BulkAssignMediaItem,
   UpdateEpisodeInput,
+  AdminChannel,
+  CreateChannelInput,
+  UpdateChannelInput,
 } from "@/types/content";
 import { ENABLE_MOCK_FALLBACK } from "@/lib/config";
 import { isUuid } from "@/lib/validation/drama";
@@ -40,6 +43,9 @@ export type {
   BulkCreateEpisodesInput,
   BulkAssignMediaItem,
   UpdateEpisodeInput,
+  AdminChannel,
+  CreateChannelInput,
+  UpdateChannelInput,
 };
 export type { Result };
 
@@ -96,11 +102,18 @@ export function mapTitleRowToTitle(row: TitleRow): Title {
 /** Domain entity alias for mapTitleRowToTitle */
 export const mapDramaRowToDrama = mapTitleRowToTitle;
 
-export function mapChannelRowToChannel(row: ChannelRow): Channel {
+export function mapChannelRowToChannel(row: ChannelRow & { drama_count?: number }): Channel {
   return {
     id: row.id,
     slug: row.slug,
     name: row.name,
+    code: row.code,
+    description: row.description || null,
+    avatarUrl: row.avatar_url || null,
+    bannerUrl: row.banner_url || null,
+    createdAt: row.created_at || null,
+    updatedAt: (row as any).updated_at || null,
+    dramaCount: typeof row.drama_count === "number" ? row.drama_count : undefined,
   };
 }
 
@@ -866,6 +879,20 @@ export const getNewReleaseDramas = getNewReleaseTitles;
  * Fetches all available channels.
  */
 export async function getChannels(): Promise<Channel[]> {
+  if (typeof window !== "undefined") {
+    try {
+      const res = await fetch("/api/channels");
+      if (res.ok) {
+        const body = (await readJsonSafely(res)) as { channels?: Channel[] } | null;
+        if (body?.channels && Array.isArray(body.channels) && body.channels.length > 0) {
+          return body.channels;
+        }
+      }
+    } catch {
+      // Fall through to contentClient
+    }
+  }
+
   try {
     const { data, error } = await contentClient
       .from("channels")
@@ -1890,6 +1917,131 @@ export async function getDramaPreviewUrl(
     return { success: true, previewUrl: json.data.previewUrl, token: json.data.token };
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : "Network error generating preview URL";
+    return { success: false, error: msg };
+  }
+}
+
+/**
+ * Fetches all channels with live database drama counts for administrative management.
+ */
+export async function getAdminChannels(): Promise<{
+  success: boolean;
+  data?: AdminChannel[];
+  error?: string;
+}> {
+  try {
+    const res = await adminFetch("/api/admin/channels");
+    const json = (await readJsonSafely(res)) as {
+      success?: boolean;
+      data?: { channels: AdminChannel[] };
+      error?: any;
+    };
+
+    if (!res.ok || !json?.success) {
+      return {
+        success: false,
+        error: getApiErrorMessage(json, `Failed to load channels (HTTP ${res.status})`),
+      };
+    }
+
+    return { success: true, data: json.data?.channels || [] };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Network error loading channels";
+    return { success: false, error: msg };
+  }
+}
+
+/**
+ * Creates a new channel.
+ */
+export async function createAdminChannel(
+  input: CreateChannelInput
+): Promise<{ success: boolean; data?: AdminChannel; error?: string }> {
+  try {
+    const res = await adminFetch("/api/admin/channels", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    });
+    const json = (await readJsonSafely(res)) as {
+      success?: boolean;
+      data?: AdminChannel;
+      error?: any;
+    };
+
+    if (!res.ok || !json?.success) {
+      return {
+        success: false,
+        error: getApiErrorMessage(json, `Failed to create channel (HTTP ${res.status})`),
+      };
+    }
+
+    return { success: true, data: json.data };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Network error creating channel";
+    return { success: false, error: msg };
+  }
+}
+
+/**
+ * Updates an existing channel.
+ */
+export async function updateAdminChannel(
+  id: string,
+  input: UpdateChannelInput
+): Promise<{ success: boolean; data?: AdminChannel; error?: string }> {
+  try {
+    const res = await adminFetch(`/api/admin/channels/${encodeURIComponent(id)}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    });
+    const json = (await readJsonSafely(res)) as {
+      success?: boolean;
+      data?: AdminChannel;
+      error?: any;
+    };
+
+    if (!res.ok || !json?.success) {
+      return {
+        success: false,
+        error: getApiErrorMessage(json, `Failed to update channel (HTTP ${res.status})`),
+      };
+    }
+
+    return { success: true, data: json.data };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Network error updating channel";
+    return { success: false, error: msg };
+  }
+}
+
+/**
+ * Deletes a channel. Prevents deletion if active dramas exist.
+ */
+export async function deleteAdminChannel(
+  id: string
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const res = await adminFetch(`/api/admin/channels/${encodeURIComponent(id)}`, {
+      method: "DELETE",
+    });
+    const json = (await readJsonSafely(res)) as {
+      success?: boolean;
+      data?: { deleted: boolean };
+      error?: any;
+    };
+
+    if (!res.ok || !json?.success) {
+      return {
+        success: false,
+        error: getApiErrorMessage(json, `Failed to delete channel (HTTP ${res.status})`),
+      };
+    }
+
+    return { success: true };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Network error deleting channel";
     return { success: false, error: msg };
   }
 }

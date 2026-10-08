@@ -2754,3 +2754,54 @@
   - Full test runner `npm test`: all 833 tests pass across 221 suites with 0 failures (100% pass rate).
   - TypeScript compiler check (`npx tsc --noEmit`): 0 type errors.
   - Next.js production build (`npm run build`): cleanly compiles 68/68 static and dynamic routes.
+
+---
+
+## [2026-10-09] Task 16.5: Channels Management
+* **Milestone**: Phase 16 (Admin Content Operations Console) — Task 16.5
+* **Goal**: Equip the admin content operations console with full Channels CRUD management, replace static mock datasets (`channels.mock.ts` and `adminChannelMeta.mock.ts`) with live database inventory, compute real aggregated drama counts from `titles`, implement 1:1 avatar and 16:9 banner uploads with binary dimension verification, connect public header navigation to cached database records, enforce safe deletion rules preventing removal of channels with assigned dramas, and record structured audit logs (`channel.create`, `channel.update`, `channel.delete`).
+* **Implementation Steps Taken**:
+  1. **Database Schema & Indexing Migrations (`supabase/content/supabase/migrations/20261009150000_channels_operations.sql` & `supabase/user/supabase/migrations/20261009150000_channels_operations.sql`)**:
+     - Added `updated_at TIMESTAMPTZ DEFAULT now()` to the `channels` table.
+     - Added performance indexes `idx_channels_slug` and `idx_channels_code`.
+     - Created trigger `trg_set_channels_updated_at` maintaining automated timestamp freshness.
+     - Granted table privileges to `postgres`, `service_role`, `anon`, and `authenticated`.
+  2. **Domain Models & Database Type Definitions (`types/content.ts`, `types/supabase-content.ts`)**:
+     - Extended `Channel` interface with `code?`, `description?`, `avatarUrl?`, `bannerUrl?`, `createdAt?`, `updatedAt?`, `dramaCount?`.
+     - Defined `AdminChannel`, `CreateChannelInput`, and `UpdateChannelInput`.
+     - Added `updated_at` to `channels` table in `types/supabase-content.ts`.
+     - Updated `mapChannelRowToChannel()` across `lib/server/catalog.ts` and `lib/services/content.service.ts` to map complete domain metadata.
+  3. **Channel Payload & Artwork Storage Engine (`lib/validation/channel.ts`, `lib/validation/artwork.ts`, `components/admin/ArtworkUploader.tsx`)**:
+     - Built `lib/validation/channel.ts` providing strict payload validation: required `name`, automated slug derivation, acronym `code` format check (2-10 alphanumeric characters), description length cap, and URL whitelist verification.
+     - Extended `lib/validation/artwork.ts` with `avatar` type (~1:1 square ratio, 0.75–1.33 tolerance, min 100x100px, 5MB limit, PNG/JPEG/WebP).
+     - Enhanced `app/api/admin/artwork/upload/route.ts` and `app/api/admin/artwork/signed-url/route.ts` to route avatar uploads under `avatars/` path in Supabase Storage.
+     - Upgraded `ArtworkUploader` to support `type="avatar"` with square circular previews and tailored dimension guidelines.
+  4. **Server-Side Operations Layer (`lib/server/admin-channels.ts`)**:
+     - Implemented `getAdminChannelsServer()`: queries channels ordered by name, aggregating real-time drama counts from `titles`.
+     - Implemented `getAdminChannelByIdServer()`: retrieves channel by ID or slug with drama count.
+     - Implemented `createAdminChannelServer()`: validates input, enforces unique slug and code, inserts row, logs `channel.create` audit log, and revalidates Next.js cache tags (`channels`, `/`, `/browse`).
+     - Implemented `updateAdminChannelServer()`: validates input, verifies slug/code collision defense with other channels, updates row (trigger cascades name/code to titles), logs `channel.update` audit log, and revalidates cache tags.
+     - Implemented `deleteAdminChannelServer()`: safe deletion guard preventing deletion if assigned dramas exist ($> 0$), allows deletion when 0 dramas, logs `channel.delete` audit log, and revalidates cache.
+  5. **Admin & Public API Route Handlers**:
+     - `GET /api/channels`: Public cached route (`revalidate = 300`, cache-control headers) returning active channel inventory with mock fallback for resiliency.
+     - `GET /api/admin/channels`: Protected with `requireAdmin()`, returns channel list with drama counts.
+     - `POST /api/admin/channels`: Protected with `requireAdmin()`, creates channel and returns 201 Created.
+     - `GET /api/admin/channels/[id]`: Protected with `requireAdmin()`, returns channel details.
+     - `PATCH /api/admin/channels/[id]`: Protected with `requireAdmin()`, updates channel metadata.
+     - `DELETE /api/admin/channels/[id]`: Protected with `requireAdmin()`, enforces drama assignment guard (returning 409 Conflict if active dramas exist).
+  6. **Dynamic Public Navigation Integration (`components/Header.tsx`, `DesktopNav.tsx`, `MobileMenu.tsx`)**:
+     - Upgraded `Header.tsx` to accept dynamic `channels` prop and fetch live channels from `/api/channels` on mount.
+     - Refactored `DesktopNav.tsx` and `MobileMenu.tsx` to render dynamic channel lists without hardcoded mock dependencies.
+  7. **Admin Channels Operations Console UI (`app/admin/channels/page.tsx`)**:
+     - Replaced static mock page with a dynamic management console.
+     - Features live search filtering by name, slug, or code, and total/filtered counters.
+     - Added "+ Add Channel" modal with `ArtworkUploader` for 1:1 Avatar and 16:9 Banner, auto-slug generator, and code validator.
+     - Added Edit Channel modal with instant preview and prefilled values.
+     - Added Delete Channel modal with safe deletion warnings and direct navigation to assigned dramas.
+  8. **Automated Verification Test Suite (`__tests__/admin/channels-management.test.ts`)**:
+     - Authored 10 automated unit and integration tests verifying schema migrations, payload validation, avatar aspect ratios, server operations, auth guards (401/403), conflict blocks (409), and cache revalidations.
+* **Regression Analysis & Verification Record**:
+  - `__tests__/admin/channels-management.test.ts`: 10 / 10 tests pass (100%).
+  - Full test runner `npm test`: all 843 tests pass across 222 suites with 0 failures (100% pass rate).
+  - TypeScript compiler check (`npx tsc --noEmit`): 0 type errors.
+  - Next.js production build (`npm run build`): cleanly compiles 69/69 static and dynamic routes.

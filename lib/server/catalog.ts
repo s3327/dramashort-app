@@ -66,11 +66,18 @@ export function mapDramaRowToDrama(row: DramaRow): Drama {
 /** Backward-compatible alias for mapDramaRowToDrama */
 export const mapTitleRowToTitle = mapDramaRowToDrama;
 
-export function mapChannelRowToChannel(row: ChannelRow): Channel {
+export function mapChannelRowToChannel(row: ChannelRow & { drama_count?: number }): Channel {
   return {
     id: row.id,
     slug: row.slug,
     name: row.name,
+    code: row.code,
+    description: row.description || null,
+    avatarUrl: row.avatar_url || null,
+    bannerUrl: row.banner_url || null,
+    createdAt: row.created_at || null,
+    updatedAt: (row as any).updated_at || null,
+    dramaCount: typeof row.drama_count === "number" ? row.drama_count : undefined,
   };
 }
 

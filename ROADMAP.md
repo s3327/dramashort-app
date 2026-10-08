@@ -2460,13 +2460,55 @@ These items stay ✅ for history; the gaps are tracked as new tasks.
 ---
 
 ### Task 16.5: Channels Management
-* **Status**: ⏳ Planned
-* **Problem**: `app/admin/channels/page.tsx` renders `data/channels.mock.ts` and `data/admin-channel-meta.mock.ts` with counts from mock titles. The public header dropdown (`components/header/DesktopNav.tsx` L3) also reads the mock channel list.
-* **Planned Specifications**:
-  1. Channel CRUD: name, slug, code, description, avatar and banner uploads.
-  2. Drama counts from the database.
-  3. The public channel dropdown is read from the database (cached).
-* **Verification**: a channel created in admin appears in the public header and its channel page without a deploy.
+* **Status**: ✅ Completed
+* **Depends on**: 16.1, 16.2, 16.3, 16.4
+* **Target Files**:
+  - `supabase/content/supabase/migrations/20261009150000_channels_operations.sql`
+  - `supabase/user/supabase/migrations/20261009150000_channels_operations.sql`
+  - `types/content.ts`
+  - `types/supabase-content.ts`
+  - `lib/validation/channel.ts`
+  - `lib/validation/artwork.ts`
+  - `lib/services/artwork.service.ts`
+  - `lib/server/admin-channels.ts`
+  - `lib/server/catalog.ts`
+  - `lib/services/content.service.ts`
+  - `app/api/channels/route.ts`
+  - `app/api/admin/channels/route.ts`
+  - `app/api/admin/channels/[id]/route.ts`
+  - `components/Header.tsx`
+  - `components/header/DesktopNav.tsx`
+  - `components/header/MobileMenu.tsx`
+  - `components/admin/ArtworkUploader.tsx`
+  - `app/admin/channels/page.tsx`
+  - `__tests__/admin/channels-management.test.ts`
+* **Delivered Capabilities**:
+  1. Database Schema & Indexing Migrations:
+     - Added `updated_at TIMESTAMPTZ DEFAULT now()` column to `channels` with automated trigger `trg_set_channels_updated_at`.
+     - Created performance indexes `idx_channels_slug` and `idx_channels_code`.
+     - Mirrored migrations across Content and User databases.
+  2. Channel Validation & Artwork Storage Engine:
+     - Implemented `lib/validation/channel.ts` validating name, auto-slug derivation, acronym code (2-10 chars), description, and image URLs.
+     - Extended `lib/validation/artwork.ts` and `components/admin/ArtworkUploader.tsx` with `avatar` type (~1:1 square ratio, 100x100 min, 5MB limit, PNG/JPEG/WebP) and storage routing under `avatars/`.
+  3. Server-Side Channel Operations Layer:
+     - Built `lib/server/admin-channels.ts` featuring `getAdminChannelsServer()` (with aggregated live database drama counts), `getAdminChannelByIdServer()`, `createAdminChannelServer()` (slug & code uniqueness checks), `updateAdminChannelServer()` (with title cascade sync), and `deleteAdminChannelServer()` (safe deletion guard blocking removal if active dramas exist).
+     - Recorded structured audit logs (`channel.create`, `channel.update`, `channel.delete`) in `public.admin_audit_log`.
+     - Mapped full channel domain metadata in `mapChannelRowToChannel()` across client and server layers.
+  4. Public & Admin API Route Handlers:
+     - `GET /api/channels`: Public cached route (`revalidate = 300`) returning active channel inventory.
+     - `GET & POST /api/admin/channels`: Protected admin listing and creation with audit trail.
+     - `GET, PATCH & DELETE /api/admin/channels/[id]`: Protected admin single channel details, updates, and safe deletion (returning 409 Conflict if assigned dramas exist).
+  5. Dynamic Public Navigation Integration:
+     - Refactored `components/Header.tsx`, `DesktopNav.tsx`, and `MobileMenu.tsx` to accept dynamic channel inventory and fetch live database channels without site redeploy.
+  6. Admin Channels Operations Console UI:
+     - Built comprehensive admin console at `app/admin/channels/page.tsx` with search filtering, "+ Add Channel" modal with 1:1 Avatar and 16:9 Banner uploaders, Edit Channel modal, and Delete Channel modal with safe drama count warnings.
+  7. Automated Verification Test Suite:
+     - 10 automated unit and integration tests in `__tests__/admin/channels-management.test.ts` verifying migrations, payload validation, avatar aspect ratios, server operations, auth guards (401/403), conflict blocks (409), and cache revalidations.
+* **Verification**:
+  - `npx tsc --noEmit` passed with 0 errors.
+  - `__tests__/admin/channels-management.test.ts` passed 10/10 tests.
+  - Full test runner `npm test` passed 843/843 tests across 222 suites (100% pass rate).
+  - Next.js production build (`npm run build`) compiled cleanly.
 
 ---
 

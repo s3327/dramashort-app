@@ -118,6 +118,29 @@ export async function validateClientImage(
           });
           return;
         }
+      } else if (type === "avatar") {
+        const spec = ARTWORK_LIMITS.avatar;
+        if (width < spec.minWidth || height < spec.minHeight) {
+          resolve({
+            valid: false,
+            width,
+            height,
+            aspectRatio,
+            error: `Avatar is too small (${width}x${height}px). Minimum required is ${spec.minWidth}x${spec.minHeight}px.`,
+          });
+          return;
+        }
+
+        if (aspectRatio < spec.minRatio || aspectRatio > spec.maxRatio) {
+          resolve({
+            valid: false,
+            width,
+            height,
+            aspectRatio,
+            error: `Avatar aspect ratio must be ~1:1 square (current: ${aspectRatio.toFixed(2)} [${width}x${height}px]).`,
+          });
+          return;
+        }
       }
 
       resolve({

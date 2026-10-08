@@ -46,6 +46,37 @@ export interface Channel {
   id?: string;
   slug: string;
   name: string;
+  code?: string;
+  description?: string | null;
+  avatarUrl?: string | null;
+  bannerUrl?: string | null;
+  createdAt?: string | null;
+  updatedAt?: string | null;
+  dramaCount?: number;
+}
+
+export interface AdminChannel extends Channel {
+  id: string;
+  code: string;
+  dramaCount: number;
+}
+
+export interface CreateChannelInput {
+  name: string;
+  slug?: string;
+  code: string;
+  description?: string | null;
+  avatarUrl?: string | null;
+  bannerUrl?: string | null;
+}
+
+export interface UpdateChannelInput {
+  name?: string;
+  slug?: string;
+  code?: string;
+  description?: string | null;
+  avatarUrl?: string | null;
+  bannerUrl?: string | null;
 }
 
 export interface Episode {

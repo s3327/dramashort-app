@@ -3,7 +3,8 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { ChevronDown } from "lucide-react";
-import { channels } from "@/data/channels.mock";
+import { channels as defaultChannels } from "@/data/channels.mock";
+import type { Channel } from "@/types/content";
 import type { NavLink } from "@/data/nav-links.mock";
 
 export default function MobileMenu({
@@ -12,12 +13,14 @@ export default function MobileMenu({
   linksBeforeChannel,
   linksAfterChannel,
   pathname,
+  channels = defaultChannels,
 }: {
   open: boolean;
   onClose: () => void;
   linksBeforeChannel: NavLink[];
   linksAfterChannel: NavLink[];
   pathname: string;
+  channels?: Channel[];
 }) {
   const [isChannelOpen, setIsChannelOpen] = useState(false);
 

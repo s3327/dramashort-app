@@ -6,16 +6,47 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Menu, X } from "lucide-react";
 import { navLinks } from "@/data/nav-links.mock";
+import { channels as defaultChannels } from "@/data/channels.mock";
 import icon from "@/public/brand/dramashort-icon-circle.png";
 import { useAuth } from "@/contexts/AuthContext";
 import DesktopNav from "@/components/header/DesktopNav";
 import MobileMenu from "@/components/header/MobileMenu";
 import HeaderActions from "@/components/header/HeaderActions";
+import type { Channel } from "@/types/content";
 
-export default function Header() {
+export default function Header({
+  channels: initialChannels,
+}: {
+  channels?: Channel[];
+} = {}) {
   const pathname = usePathname();
   const { isLoggedIn } = useAuth();
   const [open, setOpen] = useState(false);
+  const [channels, setChannels] = useState<Channel[]>(
+    initialChannels && initialChannels.length > 0 ? initialChannels : defaultChannels
+  );
+
+  // Fetch live database channels on client mount if not pre-provided
+  useEffect(() => {
+    if (initialChannels && initialChannels.length > 0) {
+      setChannels(initialChannels);
+      return;
+    }
+
+    let active = true;
+    fetch("/api/channels")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (active && data?.channels && Array.isArray(data.channels) && data.channels.length > 0) {
+          setChannels(data.channels);
+        }
+      })
+      .catch(() => {});
+
+    return () => {
+      active = false;
+    };
+  }, [initialChannels]);
 
   // "Channel" isn't a plain link — it needs a dropdown — so it's injected
   // between "New Release" and "My List" rather than living in navLinks.
@@ -51,6 +82,7 @@ export default function Header() {
           linksBeforeChannel={linksBeforeChannel}
           linksAfterChannel={linksAfterChannel}
           pathname={pathname}
+          channels={channels}
         />
 
         {/* Mobile: menu toggle, centered */}
@@ -75,6 +107,7 @@ export default function Header() {
         linksBeforeChannel={linksBeforeChannel}
         linksAfterChannel={linksAfterChannel}
         pathname={pathname}
+        channels={channels}
       />
     </header>
   );

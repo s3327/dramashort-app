@@ -35,12 +35,12 @@ export async function POST(request: NextRequest) {
 
   const { type, filename, mimeType, fileSize } = body;
 
-  if (type !== "poster" && type !== "banner") {
+  if (type !== "poster" && type !== "banner" && type !== "avatar") {
     return apiError(
       "VALIDATION_ERROR",
-      "Artwork type must be 'poster' or 'banner'.",
+      "Artwork type must be 'poster', 'banner', or 'avatar'.",
       400,
-      [{ field: "type", message: "Type must be 'poster' or 'banner'." }]
+      [{ field: "type", message: "Type must be 'poster', 'banner', or 'avatar'." }]
     );
   }
 

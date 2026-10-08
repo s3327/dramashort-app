@@ -20,9 +20,16 @@ export const ARTWORK_LIMITS = {
     minWidth: 640,
     minHeight: 360,
   },
+  avatar: {
+    targetRatio: 1, // ~1.0 square
+    minRatio: 0.75,
+    maxRatio: 1.33,
+    minWidth: 100,
+    minHeight: 100,
+  },
 } as const;
 
-export type ArtworkType = "poster" | "banner";
+export type ArtworkType = "poster" | "banner" | "avatar";
 export type AllowedMimeType = (typeof ARTWORK_LIMITS.allowedMimeTypes)[number];
 
 export interface ImageDimensions {
@@ -225,10 +232,25 @@ export function validateArtworkFile(
         error: `Invalid banner aspect ratio. Banners must have approximately a 16:9 landscape aspect ratio (uploaded ratio: ${aspectRatio.toFixed(2)} [${width}x${height}px]).`,
       };
     }
+  } else if (artworkType === "avatar") {
+    const spec = ARTWORK_LIMITS.avatar;
+    if (width < spec.minWidth || height < spec.minHeight) {
+      return {
+        ok: false,
+        error: `Avatar image is too small (${width}x${height}px). Minimum required dimensions are ${spec.minWidth}x${spec.minHeight}px.`,
+      };
+    }
+
+    if (aspectRatio < spec.minRatio || aspectRatio > spec.maxRatio) {
+      return {
+        ok: false,
+        error: `Invalid avatar aspect ratio. Avatars must be approximately square (~1:1) (uploaded ratio: ${aspectRatio.toFixed(2)} [${width}x${height}px]).`,
+      };
+    }
   } else {
     return {
       ok: false,
-      error: `Unknown artwork type '${String(artworkType)}'. Must be 'poster' or 'banner'.`,
+      error: `Unknown artwork type '${String(artworkType)}'. Must be 'poster', 'banner', or 'avatar'.`,
     };
   }
 

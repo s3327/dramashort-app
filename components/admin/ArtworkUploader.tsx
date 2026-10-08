@@ -46,9 +46,22 @@ export function ArtworkUploader({
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const isPoster = type === "poster";
-  const defaultLabel = isPoster ? "Poster Artwork (2:3)" : "Banner Artwork (16:9)";
-  const spec = isPoster ? ARTWORK_LIMITS.poster : ARTWORK_LIMITS.banner;
-  const ratioLabel = isPoster ? "2:3 Portrait" : "16:9 Landscape";
+  const isAvatar = type === "avatar";
+  const defaultLabel = isPoster
+    ? "Poster Artwork (2:3)"
+    : isAvatar
+    ? "Channel Avatar (1:1)"
+    : "Banner Artwork (16:9)";
+  const spec = isPoster
+    ? ARTWORK_LIMITS.poster
+    : isAvatar
+    ? ARTWORK_LIMITS.avatar
+    : ARTWORK_LIMITS.banner;
+  const ratioLabel = isPoster
+    ? "2:3 Portrait"
+    : isAvatar
+    ? "1:1 Square"
+    : "16:9 Landscape";
   const minDimLabel = `${spec.minWidth}×${spec.minHeight}px`;
 
   const handleProcessFile = useCallback(
@@ -202,15 +215,19 @@ export function ArtworkUploader({
             <div className="rounded-lg border border-border bg-surface p-3.5 flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
               <div className="flex items-center gap-3.5 min-w-0">
                 <div
-                  className={`relative overflow-hidden rounded-md border border-border bg-bg shrink-0 ${
-                    isPoster ? "w-16 aspect-[2/3]" : "w-28 aspect-[16/9]"
+                  className={`relative overflow-hidden border border-border bg-bg shrink-0 ${
+                    isPoster
+                      ? "w-16 aspect-[2/3] rounded-md"
+                      : isAvatar
+                      ? "w-16 aspect-square rounded-full"
+                      : "w-28 aspect-[16/9] rounded-md"
                   }`}
                 >
                   <Image
                     src={value}
                     alt={label || defaultLabel}
                     fill
-                    sizes={isPoster ? "64px" : "112px"}
+                    sizes={isPoster || isAvatar ? "64px" : "112px"}
                     className="object-cover"
                     unoptimized
                   />
@@ -219,7 +236,7 @@ export function ArtworkUploader({
                 <div className="min-w-0">
                   <div className="flex items-center gap-1.5 text-xs font-semibold text-text">
                     <CheckCircle2 size={14} className="text-emerald-500 shrink-0" />
-                    <span className="truncate">Active {isPoster ? "Poster" : "Banner"}</span>
+                    <span className="truncate">Active {isPoster ? "Poster" : isAvatar ? "Avatar" : "Banner"}</span>
                   </div>
 
                   <p className="text-[11px] font-mono text-text-muted truncate max-w-xs sm:max-w-md mt-0.5">
