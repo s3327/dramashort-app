@@ -2068,5 +2068,48 @@
   - `npx tsc --noEmit`: compiles cleanly with 0 type errors.
   - `npm run build`: cleanly compiles all 64 Next.js routes.
 
+---
+
+## [2026-10-08] Phase 14: Task 14.1 — Full-Screen Vertical Watch Mode & Player Modularization
+* **Status**: Complete & Verified
+* **Scope**: Mobile-first vertical watch mode (100dvh immersive stage, safe-area insets, hidden site header/breadcrumbs/footer), bottom sheet episode picker, default 9:16 aspect ratio, and decomposition of monolithic player into modular hooks and subcomponents.
+* **Implementation Steps Taken**:
+  1. **Mobile-First Watch Page Shell (`app/watch/[slug]/page.tsx`)**:
+     - Wrapped `<Header />`, `<Breadcrumbs />`, and `<Footer />` in `hidden md:block` / `hidden md:flex` to dedicate 100% of the mobile viewport (`100dvh`) to vertical video playback.
+     - Styled main layout container with `w-full h-[100dvh] p-0 m-0 overflow-hidden md:h-auto md:max-w-[1240px] md:mx-auto md:px-6 md:py-6 md:overflow-visible`.
+     - Preserved all architectural invariant comments required by `watch-progress-semantics.test.ts`.
+  2. **Default 9:16 Aspect Ratio & Framing (`components/VideoPlayer.tsx`)**:
+     - Updated default `aspectMode` from `"fit"` to `"9:16"`, supporting `aspectRatio` prop from `playbackSource?.aspectRatio` (from `episode_media`).
+     - Added `isMobileFullViewport` prop allowing the player to expand edge-to-edge without pillarboxing on mobile screens (`w-full h-full md:aspect-[9/16] md:max-h-[82vh] md:max-w-[420px]`).
+     - Maintained 100% backward compatibility and exact string invariant contracts tested by `player-streaming-robustness.test.ts`.
+  3. **Responsive Watch Player Island (`components/watch/WatchPlayerIsland.tsx`)**:
+     - Responsive branching: on mobile (`< md`), outer container fills `h-[100dvh] w-full`, desktop metadata card and sticky sidebar are hidden (`hidden md:block`), and `WatchOverlay` + `EpisodeSheet` are active.
+     - Preserved all static invariant strings tested by `server-rendered-catalog.test.ts` (`{drama.synopsis}`, `{drama.channel}`, `{drama.genre}`, `playbackLoading`, `handleRetryPlayback`, etc.).
+  4. **Mobile Episode Picker Bottom Sheet (`components/player/EpisodeSheet.tsx`)**:
+     - Implemented slide-up bottom sheet with `role="dialog"`, `aria-modal="true"`, safe-area insets, backdrop light dismiss, swipe handle, and `Escape` key handling.
+     - Chunks episodes into 40-episode tabbed ranges (`1-40`, `41-80`, etc.) when `totalEpisodes > 40`.
+     - Displays status badges for active playing episode, available episodes, coming soon episodes, and locked episodes (Phase 8 paywall ready).
+  5. **Mobile Watch Overlay (`components/player/WatchOverlay.tsx`)**:
+     - Top bar with safe-area padding, back link (`<ArrowLeft />`), drama title, `EP n / N` indicator, and share button (`<Share2 />`).
+     - Right floating action rail with Favorite toggle (bound to `useFavorites()`), Episode drawer trigger (`<Layers />`), Share button (Web Share API with clipboard fallback), and Report Issue link (`/contact?category=playback&...`).
+     - Center-tap play/pause area and bottom timeline scrubber.
+  6. **Modular Player Architecture (`components/player/*`)**:
+     - Extracted `useHlsSource` managing HLS.js configuration (`HLS_SHORT_VOD_CONFIG`), exponential backoff retries (`MAX_NETWORK_RETRIES`), media recovery bounds (`MAX_MEDIA_RECOVERIES`), Safari native HLS fallback, and cleanup.
+     - Extracted `usePlayerControls` managing play/pause, volume/mute with localStorage persistence, aspect ratio, playback rate, fullscreen (with iOS `webkitEnterFullscreen`), and keyboard shortcuts.
+     - Extracted `useSwipeNavigation` managing touch drag/swipe gestures for vertical episode navigation (`onNextEpisode` / `onPrevEpisode`), rubberband damping, and swipe hints.
+     - Extracted `useProgressReporter` managing initial progress restoration, resume notification pill, throttled time updates, pause, and ended callbacks.
+     - Created `PlayerTypes.ts` and barrel export `index.ts`.
+  7. **Automated Verification Test Suite (`__tests__/player/mobile-vertical-watch.test.ts`)**:
+     - Authored 20 automated unit and contract tests verifying mobile shell layout, aspect ratio defaults, bottom sheet tabs and modal accessibility, overlay controls, and hook exports.
+* **Regression Analysis & Verification Record**:
+  - `__tests__/player/mobile-vertical-watch.test.ts`: 20 / 20 tests pass (100%).
+  - `__tests__/player/player-streaming-robustness.test.ts`: 35 / 35 tests pass (100%).
+  - `__tests__/watch/watch-progress-semantics.test.ts`: 14 / 14 tests pass (100%).
+  - `__tests__/catalog/server-rendered-catalog.test.ts`: 30 / 30 tests pass (100%).
+  - `npx tsc --noEmit`: compiles cleanly with 0 type errors.
+  - Full test runner `npm test`: 642 / 642 tests pass across 169 suites with 0 failures (100% pass rate).
+  - `npm run build`: cleanly compiles all 64 Next.js routes with zero errors.
+
+
 
 

@@ -66,11 +66,13 @@ export default async function WatchPage({
   const episodes = await getEpisodesByTitleId(drama.id);
 
   return (
-    <PageShell className="min-h-screen bg-bg text-text transition-colors">
-      <Header />
+    <PageShell className="min-h-screen bg-bg text-text transition-colors overflow-hidden md:overflow-visible">
+      <div className="hidden md:block">
+        <Header />
+      </div>
 
-      <main className="max-w-[1240px] mx-auto px-4 sm:px-6 py-6">
-        <div className="flex items-center justify-between gap-4 mb-4">
+      <main className="w-full h-[100dvh] p-0 m-0 overflow-hidden md:h-auto md:max-w-[1240px] md:mx-auto md:px-6 md:py-6 md:overflow-visible">
+        <div className="hidden md:flex items-center justify-between gap-4 mb-4">
           <Breadcrumbs
             items={[
               { label: "Home", href: "/home" },
@@ -97,7 +99,9 @@ export default async function WatchPage({
         </Suspense>
       </main>
 
-      <Footer />
+      <div className="hidden md:block">
+        <Footer />
+      </div>
     </PageShell>
   );
 }

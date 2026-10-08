@@ -5,6 +5,8 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Flag, Film, Tv, Star, Eye } from "lucide-react";
 import VideoPlayer from "@/components/VideoPlayer";
+import EpisodeSheet from "@/components/player/EpisodeSheet";
+import WatchOverlay from "@/components/player/WatchOverlay";
 import type { Title, Episode, PlaybackSource } from "@/types/content";
 import { getEpisodePlayback } from "@/lib/services/content.service";
 import { useAuth } from "@/contexts/AuthContext";
@@ -55,6 +57,10 @@ export default function WatchPlayerIsland({
   });
   const [autoPlayNext, setAutoPlayNext] = useState(false);
   const lastRecordedSecondRef = useRef<number>(-1);
+  const [isPlayingState, setIsPlayingState] = useState(false);
+  const [currentTimeState, setCurrentTimeState] = useState(0);
+  const [durationState, setDurationState] = useState(0);
+  const [isEpisodeSheetOpen, setIsEpisodeSheetOpen] = useState(false);
 
   // Synchronize when initialEpisodes changes
   useEffect(() => {
@@ -184,6 +190,8 @@ export default function WatchPlayerIsland({
       setActiveTab(Math.min(maxTab, Math.floor((Math.max(1, ep) - 1) / EPISODES_PER_TAB)));
       setAutoPlayNext(true);
       setSavedProgressRatio(undefined);
+      setIsEpisodeSheetOpen(false);
+      setIsPlayingState(true);
 
       if (typeof window !== "undefined") {
         const url = new URL(window.location.href);
@@ -206,6 +214,10 @@ export default function WatchPlayerIsland({
     (currentTime: number, duration: number, progressRatio: number) => {
       const positionSec = Math.floor(currentTime);
       const durationSec = Math.floor(duration);
+
+      setCurrentTimeState(currentTime);
+      setDurationState(duration);
+      setIsPlayingState(true);
 
       currentProgressRef.current = {
         episode: currentEpisode,
@@ -231,6 +243,11 @@ export default function WatchPlayerIsland({
     (currentTime: number, duration: number, progressRatio: number) => {
       const positionSec = Math.floor(currentTime);
       const durationSec = Math.floor(duration);
+
+      setCurrentTimeState(currentTime);
+      setDurationState(duration);
+      setIsPlayingState(false);
+
       currentProgressRef.current = {
         episode: currentEpisode,
         progressRatio,
@@ -246,6 +263,7 @@ export default function WatchPlayerIsland({
 
   const handleVideoEnded = useCallback(() => {
     const dur = currentProgressRef.current.durationSeconds || 0;
+    setIsPlayingState(false);
     currentProgressRef.current = {
       episode: currentEpisode,
       progressRatio: 1.0,
@@ -254,6 +272,19 @@ export default function WatchPlayerIsland({
     };
     recordProgress(currentEpisode, 1.0, dur, dur);
   }, [currentEpisode, recordProgress]);
+
+  const handleTogglePlay = useCallback(() => {
+    const vid = document.querySelector("video");
+    if (!vid) return;
+    if (vid.paused) {
+      if (vid.ended) vid.currentTime = 0;
+      vid.play().catch(() => {});
+      setIsPlayingState(true);
+    } else {
+      vid.pause();
+      setIsPlayingState(false);
+    }
+  }, []);
 
   // Reliable progress flush on visibilitychange, pagehide, and beforeunload
   useEffect(() => {
@@ -372,9 +403,9 @@ export default function WatchPlayerIsland({
   );
 
   return (
-    <div className="flex flex-col lg:flex-row gap-6 items-start w-full">
+    <div className="flex flex-col lg:flex-row gap-6 items-start w-full h-[100dvh] md:h-auto">
       {/* Main Video Streaming Player */}
-      <div className="flex-1 w-full min-w-0">
+      <div className="flex-1 w-full min-w-0 h-[100dvh] md:h-auto relative flex flex-col justify-center">
         {playbackError && (
           <div
             role="alert"
@@ -384,30 +415,64 @@ export default function WatchPlayerIsland({
           </div>
         )}
         {videoSrc ? (
-          <VideoPlayer
-            key={`${drama.slug}-${currentEpisode}`}
-            src={videoSrc}
-            poster={drama.poster}
-            title={currentEpData?.title || `Episode ${currentEpisode}`}
-            dramaTitle={drama.title}
-            currentEpisode={currentEpisode}
-            totalEpisodes={totalEps}
-            initialProgressRatio={savedProgressRatio}
-            autoPlay={autoPlayNext}
-            onTimeUpdate={handleTimeUpdate}
-            onPause={handlePause}
-            onEnded={handleVideoEnded}
-            onNextEpisode={() => {
-              if (currentEpisode < totalEps) {
-                handleSelectEpisode(currentEpisode + 1);
-              }
-            }}
-            onPrevEpisode={() => {
-              if (currentEpisode > 1) {
-                handleSelectEpisode(currentEpisode - 1);
-              }
-            }}
-          />
+          <div className="relative w-full h-full md:h-auto flex items-center justify-center">
+            <VideoPlayer
+              key={`${drama.slug}-${currentEpisode}`}
+              src={videoSrc}
+              poster={drama.poster}
+              title={currentEpData?.title || `Episode ${currentEpisode}`}
+              dramaTitle={drama.title}
+              currentEpisode={currentEpisode}
+              totalEpisodes={totalEps}
+              initialProgressRatio={savedProgressRatio}
+              autoPlay={autoPlayNext}
+              aspectRatio={playbackSource?.aspectRatio || "9:16"}
+              isMobileFullViewport={true}
+              onTimeUpdate={handleTimeUpdate}
+              onPause={handlePause}
+              onEnded={handleVideoEnded}
+              onNextEpisode={() => {
+                if (currentEpisode < totalEps) {
+                  handleSelectEpisode(currentEpisode + 1);
+                }
+              }}
+              onPrevEpisode={() => {
+                if (currentEpisode > 1) {
+                  handleSelectEpisode(currentEpisode - 1);
+                }
+              }}
+            />
+            {/* Mobile Watch Overlay (< md) */}
+            <div className="block md:hidden">
+              <WatchOverlay
+                drama={{ slug: drama.slug, title: drama.title, poster: drama.poster }}
+                currentEpisode={currentEpisode}
+                totalEpisodes={totalEps}
+                isPlaying={isPlayingState}
+                isBuffering={playbackLoading}
+                currentTime={currentTimeState}
+                duration={durationState}
+                onTogglePlay={handleTogglePlay}
+                onOpenEpisodes={() => setIsEpisodeSheetOpen(true)}
+                onNextEpisode={() => {
+                  if (currentEpisode < totalEps) {
+                    handleSelectEpisode(currentEpisode + 1);
+                  }
+                }}
+                onPrevEpisode={() => {
+                  if (currentEpisode > 1) {
+                    handleSelectEpisode(currentEpisode - 1);
+                  }
+                }}
+                onSeek={(ratio) => {
+                  const vid = document.querySelector("video");
+                  if (vid && Number.isFinite(vid.duration)) {
+                    vid.currentTime = ratio * vid.duration;
+                  }
+                }}
+              />
+            </div>
+          </div>
         ) : playbackLoading || (currentEpData?.id && !playbackError) ? (
           <div className="w-full aspect-video rounded-xl bg-surface border border-border flex flex-col items-center justify-center text-center p-6 text-text animate-pulse">
             <div className="h-10 w-10 rounded-full border-2 border-primary border-t-transparent animate-spin mb-3" />
@@ -447,7 +512,7 @@ export default function WatchPlayerIsland({
         )}
 
         {/* Video Meta Info */}
-        <div className="mt-4 p-4 rounded-xl bg-surface border border-border shadow-sm">
+        <div className="hidden md:block mt-4 p-4 rounded-xl bg-surface border border-border shadow-sm">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <h1 className="font-display font-bold text-xl sm:text-2xl text-text">
@@ -512,7 +577,7 @@ export default function WatchPlayerIsland({
       </div>
 
       {/* Episode Selection Sidebar */}
-      <aside className="w-full lg:w-80 shrink-0">
+      <aside className="hidden md:block w-full lg:w-80 shrink-0">
         <div className="bg-surface border border-border rounded-xl shadow-sm p-4 sticky top-6">
           <div className="flex items-center justify-between gap-3 mb-3">
             <h2 className="font-display font-bold text-base text-text">Episodes</h2>
@@ -587,6 +652,17 @@ export default function WatchPlayerIsland({
           </div>
         </div>
       </aside>
+
+      {/* Mobile Episode Picker Bottom Sheet */}
+      <EpisodeSheet
+        isOpen={isEpisodeSheetOpen}
+        onClose={() => setIsEpisodeSheetOpen(false)}
+        currentEpisode={currentEpisode}
+        totalEpisodes={totalEps}
+        episodes={dbEpisodes}
+        onSelectEpisode={handleSelectEpisode}
+        dramaTitle={drama.title}
+      />
     </div>
   );
 }

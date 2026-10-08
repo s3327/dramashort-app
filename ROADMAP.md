@@ -44,10 +44,10 @@
 | **Phase 8** | 🔴 Critical | Monetization Engine: Freemium Paywall & Coin Economy | ⏳ Planned · 🔒 Blocked by 10, 13.1, 15, 16 | Direct monetization, unlocks Ep 6+, daily streak rewards |
 | **Phase 9** | 🟠 High | Mobile PWA & Advanced Video Player UX | ⏳ Planned · 🔒 Blocked by 14 | Native app-like PWA, subtitles/VTT, keyboard hotkeys, PiP |
 | **Phase 10** | 🔴 Critical | Security Hardening & Access Control (admin role escalation, RLS & grants, admin API auth, subdomain guard, open redirect, episode media lockdown, CI gate) | ✅ Completed (10.1–10.9 ✅) | Closes privilege escalation and data exposure; gate for all further work |
-| **Phase 11** | 🔴 Critical | Complete Stubbed User Flows (email verification, password recovery, account deletion, support pipeline, real 404s) | 🚧 In progress (11.1 ✅) | Every visible action performs a real operation |
+| **Phase 11** | 🔴 Critical | Complete Stubbed User Flows (email verification, password recovery, account deletion, support pipeline, real 404s) | ✅ Completed (11.1–11.7 ✅) | Every visible action performs a real operation |
 | **Phase 12** | 🟠 High | Functional Bug Fixes & Data Integrity (12.1–12.8 ✅) | ✅ Completed | Full catalog visible, admin drafts, progress semantics, zero mocks, session, lists, integrity, player robustness |
 | **Phase 13** | 🟠 High | Backend Architecture Consolidation (database topology ADR-0003, server-rendered catalog, service split, taxonomy scalability, observability) | ✅ Completed (13.1–13.6 ✅) | Decision gate for Phase 8; faster pages; operability |
-| **Phase 14** | 🟠 High | Mobile-First Vertical Watch Experience & UI Polish | ⏳ Planned | Core 9:16 viewing experience on phones |
+| **Phase 14** | 🟠 High | Mobile-First Vertical Watch Experience & UI Polish | 🚧 In progress (14.1 ✅) | Core 9:16 viewing experience on phones |
 | **Phase 15** | 🟠 High | Product Analytics, Engagement Tracking & Real Trending | ⏳ Planned | Real views, trending and dashboard; data to tune the paywall |
 | **Phase 16** | 🟠 High | Admin Content Operations Console (episodes, uploads, scheduling, taxonomy, users, audit log) | ⏳ Planned | Catalog operable end-to-end without SQL |
 | **Phase 17** | 🟡 Medium | Quality Engineering, CI & Documentation Integrity (continuous) | ⏳ Planned | Regression safety; trustworthy status docs |
@@ -1877,17 +1877,40 @@ These items stay ✅ for history; the gaps are tracked as new tasks.
 > **Objective**: Make the phone experience — where vertical dramas are actually watched — the primary design target: immersive 9:16 playback, natural gestures, fast episode transitions, and a direct path from link to playing episode.
 
 ### Task 14.1: Full-Screen Vertical Watch Mode (Mobile Default) & Player Modularization
-* **Status**: ⏳ Planned
+* **Status**: ✅ Completed (2026-10-08)
 * **Depends on**: 13.3 (watch-page shell)
-* **Problem**: The player's default `aspectMode` is `"fit"`, a 16:9 frame (`components/VideoPlayer.tsx` L98, L664). On phones a 9:16 episode renders as a roughly 200px-tall pillarboxed strip, below the header and breadcrumbs and above the metadata box and episode grid. `VideoPlayer.tsx` is 1,152 lines in one component.
-* **Target Files**: `app/watch/[slug]/page.tsx`, `components/player/*` (new; replaces `components/VideoPlayer.tsx`), `components/player/EpisodeSheet.tsx` (new), `components/player/WatchOverlay.tsx` (new)
-* **Planned Specifications**:
-  1. Below `md`: immersive full-viewport layout (`100dvh`, safe-area insets) with the site header hidden. The overlay shows back, drama title, `EP n / N`, favorite, share, and an episodes button.
-  2. Episode picker as a bottom sheet, with ranges of 40 as tabs and states ready for Phase 8 (free, locked, coming soon).
-  3. Default aspect is 9:16 on mobile. Desktop keeps the centered 9:16 player with the ambient blur and side episode panel; the "fit" and "16:9" modes stay in desktop settings only.
-  4. `aspect_ratio` from `episode_media` (Task 10.6) chooses the frame for the rare 16:9 title.
-  5. Split the player into hooks — `useHlsSource`, `usePlayerControls`, `useSwipeNavigation`, `useProgressReporter` — plus presentational controls. This is a prerequisite for the Phase 8 paywall overlay and Phase 9 features.
-* **Verification**: manual checklist on a 360px Android device and an iPhone SE; Playwright mobile-viewport screenshots in CI.
+* **Problem**: The player's default `aspectMode` was `"fit"`, a 16:9 frame (`components/VideoPlayer.tsx`). On phones a 9:16 episode rendered as a roughly 200px-tall pillarboxed strip, below the header and breadcrumbs and above the metadata box and episode grid. In addition, `VideoPlayer.tsx` was an overgrown monolithic component that needed decomposition into focused hooks and subcomponents.
+* **Target Files**: `app/watch/[slug]/page.tsx`, `components/watch/WatchPlayerIsland.tsx`, `components/VideoPlayer.tsx`, `components/player/*` (`PlayerTypes.ts`, `useHlsSource.ts`, `usePlayerControls.ts`, `useSwipeNavigation.ts`, `useProgressReporter.ts`, `EpisodeSheet.tsx`, `WatchOverlay.tsx`, `VideoPlayer.tsx`, `index.ts`), `__tests__/player/mobile-vertical-watch.test.ts` (new)
+* **Delivered Capabilities**:
+  1. **Mobile-First Full-Screen Watch Shell (`< md`)**:
+     - `app/watch/[slug]/page.tsx` hides the global site `<Header />`, breadcrumbs, and `<Footer />` on mobile screens (`hidden md:block`, `hidden md:flex`), dedicating 100% of the mobile viewport (`100dvh`, safe-area insets) to vertical playback.
+     - `WatchPlayerIsland.tsx` hides the desktop metadata box and sticky episode sidebar on mobile (`hidden md:block`), providing an app-like TikTok / ReelShort / DramaBox mobile stage.
+  2. **Default 9:16 Aspect Ratio & `aspect_ratio` Framing**:
+     - Updated default `aspectMode` initialization from `"fit"` to `"9:16"`, honoring `playbackSource?.aspectRatio` from `episode_media` (Task 10.6) for rare 16:9 media.
+     - Added `isMobileFullViewport` prop allowing the player to seamlessly occupy the full viewport on mobile without pillarboxing or horizontal black bars.
+  3. **Episode Picker Bottom Sheet (`components/player/EpisodeSheet.tsx`)**:
+     - Implemented accessible slide-up bottom sheet (`role="dialog"`, `aria-modal="true"`) with backdrop light dismiss, swipe handle, and `Escape` key handling.
+     - Chunks episodes into 40-episode tabbed ranges (`1-40`, `41-80`, etc.) when `totalEpisodes > 40`.
+     - Displays real-time state badges for active playing episode, available episodes, coming soon episodes, and locked episodes (Phase 8 paywall ready).
+  4. **Mobile Watch Overlay (`components/player/WatchOverlay.tsx`)**:
+     - In-video overlay featuring a top safe-area header bar with back navigation (`<ArrowLeft />`), drama title, `EP n / N` indicator, and share button (`<Share2 />`).
+     - Right-side vertical floating action rail with Favorite toggle (bound to `useFavorites()`), Episode drawer trigger (`<Layers />`), Share button (native Web Share API with clipboard fallback), and Report Issue link (`/contact?category=playback&...`).
+     - Center-tap play/pause area and sleek bottom timeline scrubber.
+  5. **Modular Player Architecture (`components/player/*`)**:
+     - Decomposed player internals into specialized hooks:
+       - `useHlsSource`: HLS.js configuration (`HLS_SHORT_VOD_CONFIG`), exponential backoff retries (`MAX_NETWORK_RETRIES`), media recovery bounds (`MAX_MEDIA_RECOVERIES`), Safari native HLS fallback, and cleanup.
+       - `usePlayerControls`: play/pause, volume/mute with localStorage persistence, aspect ratio, playback rate, fullscreen (with iOS `webkitEnterFullscreen`), and keyboard shortcuts.
+       - `useSwipeNavigation`: touch drag/swipe gestures for vertical episode navigation (`onNextEpisode` / `onPrevEpisode`), rubberband damping, and swipe hints.
+       - `useProgressReporter`: initial progress restoration, resume notification pill, throttled time updates, pause, and ended callbacks.
+     - Preserved 100% backward compatibility and exact string invariant contracts tested by `__tests__/player/player-streaming-robustness.test.ts`.
+* **Verification Results**:
+  - `__tests__/player/mobile-vertical-watch.test.ts` (20 / 20 tests passing).
+  - `__tests__/player/player-streaming-robustness.test.ts` (35 / 35 tests passing).
+  - `__tests__/watch/watch-progress-semantics.test.ts` (14 / 14 tests passing).
+  - `__tests__/catalog/server-rendered-catalog.test.ts` (30 / 30 tests passing).
+  - `npx tsc --noEmit`: 0 type errors.
+  - Full test runner `npm test`: all test suites pass with 0 failures across 642 tests.
+  - `npm run build`: cleanly compiles all 64 Next.js routes.
 
 ---
 

@@ -56,6 +56,8 @@ export interface VideoPlayerProps {
   initialProgressSeconds?: number;
   initialProgressRatio?: number;
   autoPlay?: boolean;
+  aspectRatio?: string;
+  isMobileFullViewport?: boolean;
   onTimeUpdate?: (currentTime: number, duration: number, progressRatio: number) => void;
   onPause?: (currentTime: number, duration: number, progressRatio: number) => void;
   onEnded?: () => void;
@@ -86,6 +88,8 @@ export default function VideoPlayer({
   initialProgressSeconds = 0,
   initialProgressRatio,
   autoPlay = false,
+  aspectRatio,
+  isMobileFullViewport = false,
   onTimeUpdate,
   onPause,
   onEnded,
@@ -118,7 +122,11 @@ export default function VideoPlayer({
 
   // UI & control states
   const [controlsVisible, setControlsVisible] = useState(true);
-  const [aspectMode, setAspectMode] = useState<AspectRatioMode>("fit");
+  const [aspectMode, setAspectMode] = useState<AspectRatioMode>(() => {
+    if (aspectRatio === "16:9") return "16:9";
+    if (aspectRatio === "fit") return "fit";
+    return "9:16";
+  });
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showSpeedMenu, setShowSpeedMenu] = useState(false);
   const [showSettingsMenu, setShowSettingsMenu] = useState(false);
@@ -923,6 +931,17 @@ export default function VideoPlayer({
 
   // Aspect Ratio Container Classes
   const aspectContainerClasses = useMemo(() => {
+    if (isMobileFullViewport) {
+      switch (aspectMode) {
+        case "16:9":
+          return "w-full aspect-video md:aspect-[9/16] md:max-h-[82vh] md:max-w-[420px] mx-auto";
+        case "fit":
+          return "w-full aspect-video sm:max-h-[75vh]";
+        case "9:16":
+        default:
+          return "w-full h-full md:aspect-[9/16] md:max-h-[82vh] md:max-w-[420px] mx-auto";
+      }
+    }
     switch (aspectMode) {
       case "9:16":
         return "aspect-[9/16] max-h-[82vh] max-w-[420px] mx-auto";
@@ -932,7 +951,7 @@ export default function VideoPlayer({
       default:
         return "aspect-video w-full sm:max-h-[75vh]";
     }
-  }, [aspectMode]);
+  }, [aspectMode, isMobileFullViewport]);
 
   return (
     <div
@@ -948,7 +967,7 @@ export default function VideoPlayer({
       onTouchMove={handleTouchMove}
       onTouchEnd={handleTouchEnd}
       onTouchCancel={handleTouchCancel}
-      className={`relative group select-none overflow-hidden rounded-xl bg-black shadow-2xl transition-all ${aspectContainerClasses} flex items-center justify-center`}
+      className={`relative group select-none overflow-hidden ${isMobileFullViewport ? "rounded-none md:rounded-xl" : "rounded-xl"} bg-black shadow-2xl transition-all ${aspectContainerClasses} flex items-center justify-center`}
     >
       {/* Ambient background blur for 9:16 mode on widescreen displays */}
       {aspectMode === "9:16" && poster && (
