@@ -22,6 +22,8 @@ export type AdminPermission =
   | "settings:read"
   | "settings:write"
   | "audit:read"
+  | "support:read"
+  | "support:write"
   | "wallet:write";
 
 /**
@@ -55,6 +57,8 @@ export const ROLE_PERMISSIONS: Record<Role, readonly AdminPermission[]> = {
     "settings:read",
     "settings:write",
     "audit:read",
+    "support:read",
+    "support:write",
     "wallet:write",
   ],
 } as const;

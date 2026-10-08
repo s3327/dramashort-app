@@ -14,10 +14,12 @@ export default function SidebarNavList({
   items,
   iconSize = 18,
   itemClassName = "",
+  onItemClick,
 }: {
   items: SidebarNavItem[];
   iconSize?: number;
   itemClassName?: string;
+  onItemClick?: () => void;
 }) {
   const pathname = usePathname();
 
@@ -34,6 +36,7 @@ export default function SidebarNavList({
           <Link
             key={href}
             href={href}
+            onClick={onItemClick}
             aria-current={active ? "page" : undefined}
             className={`flex items-center gap-3 rounded-md px-3.5 py-2.5 text-sm font-semibold transition-colors ${
               active

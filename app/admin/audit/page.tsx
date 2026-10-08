@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import type { AuditLogItem } from "@/types/audit";
 import { computeAuditDiff } from "@/lib/validation/audit";
+import AdminSidebar from "@/components/admin/AdminSidebar";
 
 const ENTITY_OPTIONS = [
   { value: "all", label: "All Entities" },
@@ -165,8 +166,11 @@ export default function AdminAuditPage() {
   }, [selectedLog]);
 
   return (
-    <div className="space-y-6 pb-12">
-      {/* Header */}
+    <div data-theme="light" className="min-h-screen bg-bg text-text flex flex-col md:flex-row">
+      <AdminSidebar />
+      <main className="flex-1 px-6 sm:px-8 py-8 pt-16 md:pt-8 max-w-[1400px]">
+        <div className="space-y-6 pb-12">
+          {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-border pb-5">
         <div>
           <div className="flex items-center gap-2.5">
@@ -585,6 +589,8 @@ export default function AdminAuditPage() {
           </div>
         </div>
       )}
+        </div>
+      </main>
     </div>
   );
 }

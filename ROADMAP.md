@@ -49,7 +49,7 @@
 | **Phase 13** | 🟠 High | Backend Architecture Consolidation (database topology ADR-0003, server-rendered catalog, service split, taxonomy scalability, observability) | ✅ Completed (13.1–13.6 ✅) | Decision gate for Phase 8; faster pages; operability |
 | **Phase 14** | 🟠 High | Mobile-First Vertical Watch Experience & UI Polish | ✅ Completed (14.1–14.9 ✅) | Core 9:16 viewing experience on phones |
 | **Phase 15** | 🟠 High | Product Analytics, Engagement Tracking & Real Trending | ✅ Completed (15.1–15.5 ✅) | Real views, trending and dashboard; data to tune the paywall |
-| **Phase 16** | 🟠 High | Admin Content Operations Console (episodes, uploads, scheduling, taxonomy, users, audit log) | 🚧 In progress (16.1–16.9 ✅) | Catalog operable end-to-end without SQL |
+| **Phase 16** | 🟠 High | Admin Content Operations Console (episodes, uploads, scheduling, taxonomy, users, audit log, support inbox) | 🚧 In progress (16.1–16.10 ✅) | Catalog operable end-to-end without SQL |
 | **Phase 17** | 🟡 Medium | Quality Engineering, CI & Documentation Integrity (continuous) | ⏳ Planned | Regression safety; trustworthy status docs |
 
 > **Execution order (set by the 2026-10-04 platform audit)**: Phase numbers are stable identifiers, not a sequence. Remaining work executes as **10 → 11 → 12 → 13 → 14 → 15 → 16 → 8 → 9**, with Phase 17 running continuously alongside. Gates and dependencies are defined in [§12](#12-platform-audit-remediation-track-phases-1017).
@@ -2725,12 +2725,64 @@ These items stay ✅ for history; the gaps are tracked as new tasks.
 ---
 
 ### Task 16.10: Support Inbox & Admin Responsiveness
-* **Status**: ⏳ Planned
-* **Problem**: Support tickets from Task 11.4 need a place to be handled. The admin sidebar is `hidden md:flex` with no mobile alternative (`components/admin/AdminSidebar.tsx` L40).
-* **Planned Specifications**:
-  1. Inbox for `support_tickets`: filter by category and status, assign, reply by email, link to the drama/episode context.
-  2. Admin navigation drawer for small screens.
-* **Verification**: a ticket submitted from "Report Issue" appears in the inbox with its drama and episode context.
+* **Status**: ✅ Completed
+* **Depends on**: 11.4, 16.7, 16.9
+* **Target Files**:
+  - `supabase/user/supabase/migrations/20261009200000_support_inbox_and_admin_features.sql`
+  - `supabase/content/supabase/migrations/20261009200000_support_inbox_and_admin_features.sql`
+  - `types/support.ts`
+  - `lib/auth/permissions.ts`
+  - `lib/validation/support.ts`
+  - `lib/server/admin-support.ts`
+  - `app/api/admin/support/route.ts`
+  - `app/api/admin/support/[id]/route.ts`
+  - `app/api/admin/support/[id]/reply/route.ts`
+  - `components/admin/AdminSidebar.tsx`
+  - `components/SidebarNavList.tsx`
+  - `app/admin/support/page.tsx`
+  - `app/admin/audit/page.tsx`
+  - `__tests__/admin/support-inbox.test.ts`
+* **Delivered Capabilities**:
+  1. Support Tickets Schema & Workflow Enhancement:
+     - Authored `20261009200000_support_inbox_and_admin_features.sql` across User and Content databases.
+     - Added ticket workflow columns: `assigned_to UUID REFERENCES auth.users(id) ON DELETE SET NULL`, `assigned_email TEXT`, `priority TEXT NOT NULL DEFAULT 'normal' CHECK (priority IN ('low', 'normal', 'high', 'urgent'))`, `admin_notes TEXT`, `resolved_at TIMESTAMPTZ`, `resolved_by UUID REFERENCES auth.users(id) ON DELETE SET NULL`, and `updated_at TIMESTAMPTZ NOT NULL DEFAULT now()`.
+     - Created automated trigger `trg_support_tickets_updated_at` and performance indexes: `idx_support_tickets_assigned_to`, `idx_support_tickets_priority`, `idx_support_tickets_updated_at`.
+     - Retained strict RLS and service-role privilege access.
+  2. Domain Modeling & RBAC Permissions Matrix:
+     - Created `types/support.ts` with typed interfaces: `SupportCategory`, `SupportStatus`, `SupportPriority`, `SupportTicketContext`, `SupportTicketItem`, `SupportTicketCounts`, `GetSupportTicketsQuery`, `PaginatedSupportTicketsResult`, `UpdateSupportTicketInput`, `ReplySupportTicketInput`.
+     - Integrated `support:read` and `support:write` in `lib/auth/permissions.ts`, granting access to `admin` and strictly forbidding `editor` to protect user contact PII.
+  3. Validation Engine:
+     - Implemented `lib/validation/support.ts` with `parseSupportTicketsQueryParams` (normalizing pagination, status, category, priority, and search keyword) and payload validators `validateUpdateSupportTicket` and `validateReplySupportTicket`.
+  4. Server Operations Layer (`lib/server/admin-support.ts`):
+     - `getAdminSupportTicketsServer`: server-side filtering, keyword search across email/subject/message, pagination, and real-time status counts aggregation (`open`, `in_progress`, `resolved`, `total`).
+     - `getAdminSupportTicketByIdServer`: single ticket lookup with parsed diagnostic and player context.
+     - `updateAdminSupportTicketServer`: updates status, priority, assignment, admin notes, automatic `resolved_at` stamping, and audit log generation (`support.update`, `support.resolve`).
+     - `replyAdminSupportTicketServer`: records replies in ticket activity log, auto-advances open tickets to `in_progress`, and records audit log (`support.reply`).
+  5. Secured Admin REST APIs:
+     - `GET /api/admin/support`: list tickets with filtering and counts.
+     - `GET /api/admin/support/[id]`: ticket detail with context.
+     - `PATCH /api/admin/support/[id]`: update ticket state.
+     - `POST /api/admin/support/[id]/reply`: reply logger.
+     - Guarded by `requireAdmin` enforcing `support:read` and `support:write`.
+  6. Admin Responsive Navigation & Mobile Drawer:
+     - Added "Support" navigation item with `Headphones` icon pointing to `/admin/support`.
+     - Upgraded `components/admin/AdminSidebar.tsx` with mobile top navigation bar (`md:hidden`) featuring brand logo, quick logout, and hamburger menu toggle (`Menu`).
+     - Built mobile slide-over navigation drawer modal (`role="dialog"`, `aria-modal="true"`) with backdrop blur, smooth slide-in animation, escape key listener, and click-away dismissal.
+     - Upgraded `components/SidebarNavList.tsx` with `onItemClick` callback to auto-close drawer on route navigation.
+     - Updated `app/admin/audit/page.tsx` with standard layout container and `AdminSidebar`.
+  7. Support Inbox Operations Console UI (`app/admin/support/page.tsx`):
+     - Real-time status tabs (All, Open, In Progress, Resolved) with dynamic counter pills.
+     - 300ms debounced search bar and category / priority dropdown filters.
+     - Interactive table and card views with relative timestamps, email badges, priority badges, and status pills.
+     - **Linked Drama and Episode Context**: automatically detects `titleSlug`, `titleName`, and `episodeNumber` from tickets submitted via "Report Issue" or watch page, displaying direct clickable links to `/drama/[slug]` and `/watch/[slug]?ep=[number]`.
+     - Interactive Ticket Inspector Drawer with diagnostic details (playback position, error details), status / priority selectors, internal staff notes with save action, and "Reply via Email" mailto client trigger.
+  8. Automated Verification Test Suite (`__tests__/admin/support-inbox.test.ts`):
+     - 15 automated unit, integration, and UI contract tests verifying migration schema, validation rules, permissions matrix security, server operations with mock client, context linking, and mobile navigation contracts.
+* **Verification**:
+  - `npx tsc --noEmit` passed with 0 errors.
+  - `__tests__/admin/support-inbox.test.ts` passed 15/15 tests (100%).
+  - Full test runner `npm test` passed 934/934 tests across 251 suites with 0 failures (100% pass rate).
+  - Next.js production build (`npm run build`) compiled all 84 routes cleanly including `/admin/support` and `/api/admin/support/*`.
 
 ---
 

@@ -2999,3 +2999,50 @@
   - Full test runner `npm test`: all 919 tests pass across 245 suites with 0 failures (100% pass rate).
   - TypeScript compiler check (`npx tsc --noEmit`): 0 type errors.
   - Next.js production build (`npm run build`): cleanly compiles all 82 static and dynamic routes.
+---
+
+## [2026-10-09] Task 16.10: Support Inbox & Admin Responsiveness
+* **Milestone**: Phase 16 (Admin Content Operations Console) — Task 16.10
+* **Goal**: Deliver a full-featured Support Inbox operations console for handling user feedback, tickets, and playback bug reports from Task 11.4 with automatic linked drama/episode context; expand `support_tickets` schema with assignment, priority, and resolution workflow; restrict support access strictly to administrators via granular permissions (`support:read`, `support:write`); and upgrade `AdminSidebar` with mobile top navigation and a responsive slide-over drawer modal.
+* **Implementation Steps Taken**:
+  1. **Dual Database Schema Migrations (`supabase/user/supabase/migrations/20261009200000_support_inbox_and_admin_features.sql` & `supabase/content/supabase/migrations/20261009200000_support_inbox_and_admin_features.sql`)**:
+     - Added workflow columns to `public.support_tickets`: `assigned_to UUID REFERENCES auth.users(id) ON DELETE SET NULL`, `assigned_email TEXT`, `priority TEXT NOT NULL DEFAULT 'normal' CHECK (priority IN ('low', 'normal', 'high', 'urgent'))`, `admin_notes TEXT`, `resolved_at TIMESTAMPTZ`, `resolved_by UUID REFERENCES auth.users(id) ON DELETE SET NULL`, and `updated_at TIMESTAMPTZ NOT NULL DEFAULT now()`.
+     - Built automated update trigger `trg_support_tickets_updated_at` firing `BEFORE UPDATE`.
+     - Created performance indexes: `idx_support_tickets_assigned_to`, `idx_support_tickets_priority`, and `idx_support_tickets_updated_at`.
+     - Configured RLS and service-role privilege access across both databases.
+  2. **Domain Models & Granular RBAC Permissions (`types/support.ts`, `lib/auth/permissions.ts`)**:
+     - Defined domain interfaces: `SupportCategory`, `SupportStatus`, `SupportPriority`, `SupportTicketContext`, `SupportTicketItem`, `SupportTicketCounts`, `GetSupportTicketsQuery`, `PaginatedSupportTicketsResult`, `UpdateSupportTicketInput`, `ReplySupportTicketInput`.
+     - Added `support:read` and `support:write` permissions to `AdminPermission`.
+     - Formalized role boundaries: `admin` granted full access; `editor` strictly forbidden to safeguard user contact info and communication PII.
+  3. **Validation Engine (`lib/validation/support.ts`)**:
+     - Built `parseSupportTicketsQueryParams()` safely parsing and clamping pagination bounds, status, category, priority, and search keywords.
+     - Built `validateUpdateSupportTicket()` and `validateReplySupportTicket()`.
+  4. **Server Operations Engine (`lib/server/admin-support.ts`)**:
+     - Implemented `getAdminSupportTicketsServer()` with multi-field search, status/category/priority filtering, pagination, and real-time status counts aggregation (`open`, `in_progress`, `resolved`, `total`).
+     - Implemented `getAdminSupportTicketByIdServer()` returning mapped tickets with parsed JSON diagnostic and playback context.
+     - Implemented `updateAdminSupportTicketServer()` updating status, priority, assignment, admin notes, automatically stamping `resolved_at` and `resolved_by`, and logging structured audit entries (`support.update`, `support.resolve`).
+     - Implemented `replyAdminSupportTicketServer()` recording admin replies in ticket activity log, auto-advancing open tickets to `in_progress`, and logging audit records (`support.reply`).
+  5. **Secured Admin REST APIs (`app/api/admin/support/route.ts`, `app/api/admin/support/[id]/route.ts`, `app/api/admin/support/[id]/reply/route.ts`)**:
+     - `GET /api/admin/support`: Paginated ticket query with summary statistics counters. Guarded by `requireAdmin` with `support:read`.
+     - `GET /api/admin/support/[id]`: Ticket detail with full diagnostic context. Guarded by `requireAdmin` with `support:read`.
+     - `PATCH /api/admin/support/[id]`: State mutation (status, priority, notes, assignment). Guarded by `requireAdmin` with `support:write`.
+     - `POST /api/admin/support/[id]/reply`: Reply recorder. Guarded by `requireAdmin` with `support:write`.
+  6. **Admin Responsive Navigation & Mobile Drawer (`components/admin/AdminSidebar.tsx`, `components/SidebarNavList.tsx`)**:
+     - Added "Support" navigation item with `Headphones` icon pointing to `/admin/support`.
+     - Built integrated mobile top navigation bar (`md:hidden`) with branding, quick logout, and hamburger menu toggle (`Menu`).
+     - Built slide-over navigation drawer modal (`role="dialog"`, `aria-modal="true"`) with backdrop blur, keyboard escape listener, and click-away dismissal.
+     - Enhanced `components/SidebarNavList.tsx` with `onItemClick` callback to auto-close drawer on navigation.
+     - Wrapped `app/admin/audit/page.tsx` in unified layout container with `AdminSidebar`.
+  7. **Support Inbox Console UI (`app/admin/support/page.tsx`)**:
+     - Real-time status tabs (All, Open, In Progress, Resolved) with dynamic counter pills.
+     - 300ms debounced search bar and category / priority dropdown filters.
+     - Interactive table and card views with relative timestamps, email badges, priority badges, and status pills.
+     - **Linked Drama and Episode Context**: automatically detects `titleSlug`, `titleName`, and `episodeNumber` from tickets submitted via "Report Issue" or watch page, displaying direct clickable links to `/drama/[slug]` and `/watch/[slug]?ep=[number]`.
+     - Interactive Ticket Inspector Drawer with diagnostic details (playback position, error details), status / priority selectors, internal staff notes with save action, and "Reply via Email" mailto client trigger.
+  8. **Automated Verification Test Suite (`__tests__/admin/support-inbox.test.ts`)**:
+     - Authored 15 automated unit, integration, and UI contract tests verifying migration SQL invariants, validation logic, permissions matrix security, server operations with client injection, context linking contracts, and mobile navigation responsive contracts.
+* **Regression Analysis & Verification Record**:
+  - `__tests__/admin/support-inbox.test.ts`: 15 / 15 tests pass (100%).
+  - Full test runner `npm test`: all 934 tests pass across 251 suites with 0 failures (100% pass rate).
+  - TypeScript compiler check (`npx tsc --noEmit`): 0 type errors.
+  - Next.js production build (`npm run build`): cleanly compiles all 84 static and dynamic routes.
