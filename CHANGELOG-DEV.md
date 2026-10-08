@@ -2412,3 +2412,42 @@
   - Full test runner `npm test`: all 728 tests pass across 194 suites with 0 failures (100% pass rate).
   - TypeScript compiler check (`npx tsc --noEmit`): 0 type errors.
   - Next.js production build (`npm run build`): cleanly compiles all 64 routes with static/dynamic optimization.
+---
+
+## [2026-10-08] Task 15.1: Event Model & Ingestion Endpoint
+* **Milestone**: Phase 15 (Product Analytics, Engagement Tracking & Real Trending) — Task 15.1
+* **Goal**: Establish the platform's core playback analytics foundation: dual-database migration for `public.playback_events`, typed analytics domain models, service-role ingestion layer, high-throughput `POST /api/events` endpoint supporting batch payloads and `navigator.sendBeacon`, sliding-window rate limiting, and zero raw IP persistence for privacy and GDPR compliance.
+* **Implementation Steps Taken**:
+  1. **Dual DB Architecture & Migration (`supabase/user/supabase/migrations/20261008170000_playback_events.sql`)**:
+     - Defined `public.playback_events` table in User DB (Supabase B) with schema: `id bigserial PRIMARY KEY`, `occurred_at timestamptz DEFAULT now()`, `user_id uuid REFERENCES auth.users(id) ON DELETE SET NULL`, `anon_id uuid NOT NULL`, `session_id text NOT NULL`, `title_slug text NOT NULL`, `episode_number integer`, `event_type text NOT NULL`, `platform text NOT NULL`, `position_seconds numeric(10,2)`, `duration_seconds numeric(10,2)`, `utm jsonb`, `payload jsonb`, `created_at timestamptz DEFAULT now()`.
+     - Enabled strict Row Level Security (RLS) with default deny policy (`FOR ALL USING (false)`) preventing client-side direct queries; ingestion occurs exclusively via service-role client.
+     - Created compound and single-column performance indexes: `(title_slug, occurred_at DESC)`, `(event_type, occurred_at DESC)`, `(user_id, occurred_at DESC)`, `(anon_id, occurred_at DESC)`, and `(occurred_at DESC)` for efficient SQL rollups and trending aggregations.
+  2. **Analytics Domain Types (`types/analytics.ts`)**:
+     - Declared 13 playback event types: `episode_start`, `episode_progress_25`, `episode_progress_50`, `episode_progress_75`, `episode_complete`, `episode_skip`, `share`, `favorite_add`, `paywall_view`, `unlock`, `guest_prompt_shown`, `guest_prompt_cta_click`, `guest_prompt_dismiss`.
+     - Supported platform tags: `web`, `pwa`, `tma`, `mobile_web`.
+     - Exported type definitions: `PlaybackEventType`, `PlaybackPlatform`, `PlaybackEventInput`, `IngestEventsRequest`, `IngestEventsResponse`, and `PlaybackEventRecord`.
+  3. **Analytics Service Layer (`lib/services/analytics.service.ts`)**:
+     - Created `insertPlaybackEvents` utilizing `createUserServiceRoleClient()` to safely batch-insert records into `playback_events`.
+     - Resilient error handling and logging returning inserted count and success indicator.
+  4. **Rate Limiting Profile & Error Taxonomy Expansion**:
+     - Updated `RATE_LIMIT_POLICIES` in `lib/security/rate-limiter.ts` adding `events: { maxRequests: 120, windowMs: 60 * 1000 }` sliding-window profile.
+     - Updated `lib/api/responses.ts` adding `"EMPTY_PAYLOAD" | "BATCH_TOO_LARGE"` to `ApiErrorCode`.
+  5. **High-Throughput Ingestion Route (`app/api/events/route.ts`)**:
+     - Designed `POST /api/events` to handle batches from 1 to 50 events.
+     - Seamlessly decodes JSON payloads from both standard `application/json` and `navigator.sendBeacon` (`text/plain` content type).
+     - Resolves anonymous device identity via `dramashort_anon_id` cookie, generating a persistent UUID cookie with `Set-Cookie` header if not present.
+     - Rejects batches exceeding 50 events (`BATCH_TOO_LARGE`, HTTP 400) or empty payloads (`EMPTY_PAYLOAD`, HTTP 400).
+     - Privacy & GDPR compliance: client IP address is used solely in-memory for sliding-window rate limiting (`120 req/min`) and is never persisted into the analytics database.
+  6. **Automated Verification Test Suite (`__tests__/analytics/event-ingestion.test.ts`)**:
+     - Authored 6 automated tests validating:
+       - Single event payload ingestion and UUID anon ID assignment.
+       - Batch ingestion of multiple events within allowed limits ($\le 50$).
+       - `navigator.sendBeacon` compatible `text/plain` JSON payload decoding.
+       - Rejection of oversized batches (>50 events) with `BATCH_TOO_LARGE`.
+       - Rejection of empty payloads with `EMPTY_PAYLOAD`.
+       - Sliding-window rate limiting enforcement returning HTTP 429 upon quota exhaustion.
+* **Regression Analysis & Verification Record**:
+  - `__tests__/analytics/event-ingestion.test.ts`: 6 / 6 tests pass (100%).
+  - Full test runner `npm test`: all 734 tests pass across 194 suites with 0 failures (100% pass rate).
+  - TypeScript compiler check (`npx tsc --noEmit`): 0 type errors.
+  - Next.js production build (`npm run build`): cleanly compiles 65/65 routes (including new `ƒ /api/events`).

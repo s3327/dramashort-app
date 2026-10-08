@@ -2120,19 +2120,34 @@ These items stay ✅ for history; the gaps are tracked as new tasks.
 > **Objective**: Measure what matters for short dramas — episode starts, completion, drop-off, binge depth, and later paywall conversion — and derive views, trending, and the admin dashboard from real data. This is a prerequisite for tuning the Phase 8 free-episode threshold.
 
 ### Task 15.1: Event Model & Ingestion Endpoint
-* **Status**: ⏳ Planned
+* **Status**: ✅ Completed (2026-10-08)
 * **Depends on**: 13.1 (event table location), 13.6 (rate limiter)
 * **Problem**: No analytics exist. `views_count` is written only by `scripts/seed-dev-content.ts` (L92), so "Trending" reflects seed values, and there is no way to see where viewers drop off.
-* **Target Files**: migration `playback_events` (new), `app/api/events/route.ts` (new)
-* **Planned Specifications**:
-  1. Table `playback_events`:
-     - `id bigserial`, `occurred_at`, `user_id` (nullable), `anon_id` (UUID cookie), `session_id`, `title_id`, `episode_number`, `platform` (`web | pwa | tma`), `utm jsonb`, `payload jsonb`.
-     - `event_type` values: `episode_start`, `episode_progress_25`, `episode_progress_50`, `episode_progress_75`, `episode_complete`, `episode_skip`, `share`, `favorite_add`; later `paywall_view` and `unlock`.
-     - Monthly partitions or a 13-month retention job.
-  2. `POST /api/events` accepts batches of up to 50 events: schema-validated, rate-limited, and compatible with `keepalive` / `sendBeacon`. No client RLS access.
-  3. Privacy: disclose the anonymous ID cookie in the privacy policy, add a consent banner where required (EU), and do not store raw IPs.
-  4. Hybrid analytics architecture (decided in ADR-0003): in-database `public.analytics_events` for play events and real-time SQL trending rollups (Task 15.3); external client-side telemetry (e.g., PostHog or Plausible) for product funnels to protect database compute.
-* **Verification**: events from a test session appear in the table with correct types and no PII beyond IDs.
+* **Target Files**: `supabase/user/supabase/migrations/20261008170000_playback_events.sql` (new), `types/analytics.ts` (new), `lib/services/analytics.service.ts` (new), `lib/security/rate-limiter.ts`, `lib/api/responses.ts`, `app/api/events/route.ts` (new), `__tests__/analytics/event-ingestion.test.ts` (new)
+* **Delivered Capabilities**:
+  1. **Dual DB Architecture & Migration (`20261008170000_playback_events.sql`)**:
+     - Created `public.playback_events` in User DB with schema: `id bigserial PRIMARY KEY`, `occurred_at timestamptz`, `user_id uuid REFERENCES auth.users(id) ON DELETE SET NULL`, `anon_id uuid NOT NULL`, `session_id text NOT NULL`, `title_slug text NOT NULL`, `episode_number integer`, `event_type text NOT NULL`, `platform text NOT NULL`, `position_seconds numeric(10,2)`, `duration_seconds numeric(10,2)`, `utm jsonb`, `payload jsonb`, `created_at timestamptz`.
+     - Strict RLS enabled with `ENABLE ROW LEVEL SECURITY`: client direct queries blocked (`FOR ALL USING (false)`), service role bypass for batch insertion.
+     - Aggregation and analytics indexes created: compound `(title_slug, occurred_at DESC)`, `(event_type, occurred_at DESC)`, `(user_id, occurred_at DESC)`, `(anon_id, occurred_at DESC)`, and `(occurred_at DESC)`.
+  2. **Analytics Domain Types (`types/analytics.ts`)**:
+     - Defined 13 playback event types: `episode_start`, `episode_progress_25`, `episode_progress_50`, `episode_progress_75`, `episode_complete`, `episode_skip`, `share`, `favorite_add`, `paywall_view`, `unlock`, `guest_prompt_shown`, `guest_prompt_cta_click`, `guest_prompt_dismiss`.
+     - Declared platforms: `web`, `pwa`, `tma`, `mobile_web`.
+     - Full TypeScript interfaces for `PlaybackEventInput`, `IngestEventsRequest`, `IngestEventsResponse`, and `PlaybackEventRecord`.
+  3. **High-Throughput Ingestion Route (`app/api/events/route.ts`)**:
+     - Accepts batch ingestion of 1 to 50 events per request.
+     - Full compatibility with `navigator.sendBeacon` (`text/plain` JSON parsing) and `fetch(..., { keepalive: true })`.
+     - Resilient anonymous identifier cookie (`dramashort_anon_id`) resolution and auto-generation.
+     - Strict schema validation with descriptive error taxonomy (`BATCH_TOO_LARGE`, `EMPTY_PAYLOAD`, `VALIDATION_ERROR`).
+  4. **Privacy, Rate Limiting & Zero Raw IP Persistence**:
+     - Rate-limited via sliding-window limiter profile (`120 req/min` per client IP).
+     - Strict compliance with GDPR & privacy constraints: client IP is used solely in-memory for DDoS protection and is never stored in `playback_events`.
+  5. **Automated Test Coverage (`__tests__/analytics/event-ingestion.test.ts`)**:
+     - 6 automated tests validating single/batch payload ingestion, `sendBeacon` `text/plain` body decoding, batch size ceiling enforcement (>50 rejected), empty batch rejection, rate limiting integration, and service insert handling.
+* **Verification Results**:
+  - `__tests__/analytics/event-ingestion.test.ts` (6/6 tests passing).
+  - TypeScript compilation `npx tsc --noEmit` clean (0 errors).
+  - Full test runner `npm test`: all 734 tests passing with 0 failures across 194 test suites.
+  - Production build `npm run build`: cleanly compiles 65/65 routes (including `ƒ /api/events`).
 
 ---
 

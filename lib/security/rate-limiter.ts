@@ -22,6 +22,7 @@ export const RATE_LIMIT_POLICIES = {
   progress: { maxRequests: 60, windowMs: 60 * 1000 },    // 60 req / min
   playback: { maxRequests: 30, windowMs: 60 * 1000 },    // 30 req / min
   auth: { maxRequests: 10, windowMs: 60 * 1000 },        // 10 req / min
+  events: { maxRequests: 120, windowMs: 60 * 1000 },      // 120 req / min (Task 15.1)
   generalApi: { maxRequests: 120, windowMs: 60 * 1000 }, // 120 req / min
 } as const;
 

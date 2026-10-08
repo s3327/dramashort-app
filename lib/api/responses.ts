@@ -26,6 +26,8 @@ export type ApiErrorCode =
   | "INVALID_CREDENTIALS"
   | "TOO_MANY_REQUESTS"
   | "RATE_LIMITED"
+  | "EMPTY_PAYLOAD"
+  | "BATCH_TOO_LARGE"
   | "INTERNAL_ERROR";
 
 export interface ApiErrorBody {
