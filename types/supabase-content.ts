@@ -217,7 +217,55 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      get_distinct_genres: {
+        Args: Record<PropertyKey, never>
+        Returns: string[]
+      }
+      get_popular_tags: {
+        Args: {
+          limit_count?: number
+        }
+        Returns: {
+          tag: string
+          count: number
+        }[]
+      }
+      get_taxonomy_counts: {
+        Args: Record<PropertyKey, never>
+        Returns: Json
+      }
+      search_dramas: {
+        Args: {
+          query_text?: string | null
+          filter_genre?: string | null
+          filter_channel_id?: string | null
+          filter_tags?: string[] | null
+          sort_by?: string | null
+          page_offset?: number | null
+          page_limit?: number | null
+        }
+        Returns: {
+          channel_code: string
+          channel_id: string | null
+          channel_name: string
+          created_at: string | null
+          episodes_available: number
+          genre: string
+          id: string
+          poster_url: string
+          rating: number | null
+          release_year: number | null
+          slug: string
+          status: string
+          synopsis: string
+          tags: string[] | null
+          title: string
+          total_count: number
+          total_episodes: number
+          updated_at: string | null
+          views_count: number | null
+        }[]
+      }
     }
     Enums: {
       [_ in never]: never

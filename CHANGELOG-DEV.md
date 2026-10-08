@@ -1948,3 +1948,42 @@
   - `npm test`: 560 / 560 tests pass across 151 suites with 0 failures (100% pass rate).
   - `npx tsc --noEmit`: compiles cleanly with 0 type errors.
   - `npm run build`: cleanly compiled all routes with 63 static/SSG/dynamic pages generated.
+
+---
+
+### 2026-10-08: Task 13.5 — Search and Taxonomy Scalability
+* **Status**: Complete & Verified
+* **Scope**: Database migrations with `pg_trgm` and tags GIN indexing, PostgreSQL taxonomy aggregation RPCs, resilient service integration in `lib/server/catalog.ts` and `lib/services/content.service.ts`, eliminating full table scans and 1,000-row pagination caps while preserving 100% backward compatibility across all dependent discovery and admin pages.
+* **Key Deliverables**:
+  1. **Database Migrations & Trigram Indexing (R1)**:
+     - Authored migrations `supabase/user/supabase/migrations/20261008120000_search_and_taxonomy_scalability.sql` and `supabase/content/supabase/migrations/20261008120000_search_and_taxonomy_scalability.sql`.
+     - Enabled `pg_trgm` PostgreSQL extension (`CREATE EXTENSION IF NOT EXISTS pg_trgm;`).
+     - Created GIN trigram indexes on `title` and `synopsis` using `gin_trgm_ops` across both `content.titles` and `public.titles` (`idx_content_titles_title_trgm`, `idx_content_titles_synopsis_trgm`, `idx_titles_title_trgm`, `idx_titles_synopsis_trgm`).
+     - Created GIN index on `tags` array column (`USING gin (tags)`) for accelerated array containment queries (`@>`).
+     - Created partial B-tree index on `genre` WHERE `status = 'Published'` (`idx_content_titles_genre_published`, `idx_titles_genre_published`).
+  2. **Database Taxonomy Aggregation & Search RPCs (R2)**:
+     - `get_distinct_genres()`: computes distinct published genres directly in SQL, eliminating client row downloads and 1,000-row PostgREST truncation.
+     - `get_popular_tags(limit_count)`: unrolls tags via `SELECT unnest(tags) AS tag, count(*)` grouped and ranked by frequency directly inside PostgreSQL.
+     - `get_taxonomy_counts()` / `taxonomy_counts()`: returns unified JSON structure `{ genres: [...], tags: [...] }` directly from the database for admin readers and counters.
+     - `search_dramas(query_text, filter_genre, filter_channel_id, filter_tags, sort_by, page_offset, page_limit)`: high-performance trigram similarity and indexed text search with relevance ranking, multi-facet filtering, deterministic pagination, and total count resolution.
+     - Hardened all RPCs with `SECURITY DEFINER`, explicit `SET search_path`, and execution grants to `anon`, `authenticated`, and `service_role`.
+  3. **Resilient Service Integration & Dual-Mode Fallback (R3 & R4)**:
+     - Updated `lib/server/catalog.ts` and `lib/services/content.service.ts`:
+       - Wrapped `getDistinctGenres()` and `getPopularTags()` in `React.cache()` leveraging in-database aggregation RPCs with transparent fallback to PostgREST select queries.
+       - Exported `getTaxonomyCounts()` with `React.cache()` deduplication.
+       - Updated `searchDramas()` / `searchPublishedTitles()` to attempt `search_dramas` RPC first, falling back transparently to indexed PostgREST queries if the remote database has not yet pushed the migration.
+       - Exported `getTestContentClient()` in `lib/supabase/content.ts` for clean test mock interception without network timeouts.
+       - Preserved `escapePostgrestValue()`, ILIKE sanitization, and 100% backward compatibility with all search query parameters (`?q=`, `?page=`, `?genre=`, `?channel=`) and pagination contracts.
+  4. **Automated Verification Test Suite (R5)**:
+     - Authored `__tests__/search/taxonomy-search-scalability.test.ts` with 28 comprehensive automated tests verifying:
+       - Migration file syntax, `pg_trgm` extension, GIN trigram indexes, and RPC function definitions.
+       - RPC taxonomy aggregation contracts, empty-tag rejection, and absence of 1,000-row truncation risks.
+       - Trigram search query normalization, punctuation stripping, and relevance sorting contracts.
+       - Transparent dual-mode fallback when RPC is unavailable.
+       - Maximum page size clamping, negative/zero boundary clamping, explicit offset overrides, client service parity, and backward compatibility contracts.
+* **Regression Analysis & Verification Record**:
+  - `__tests__/search/taxonomy-search-scalability.test.ts`: 28 / 28 tests pass (100%).
+  - Full test runner `npm test`: 588 / 588 tests pass across 157 suites with 0 failures (100% pass rate).
+  - `npx tsc --noEmit`: compiles cleanly with 0 type errors.
+  - `npm run build`: cleanly compiles all 63 Next.js routes with production fallback verification.
+

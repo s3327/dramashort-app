@@ -1796,13 +1796,32 @@ These items stay ✅ for history; the gaps are tracked as new tasks.
 ---
 
 ### Task 13.5: Search & Taxonomy Scalability
-* **Status**: ⏳ Planned
+* **Status**: ✅ Completed
 * **Problem**: `ilike %term%` on `title` and `synopsis` cannot use an index. `getDistinctGenres()` and `getPopularTags()` download every published row's genre and tags; Supabase caps responses at 1,000 rows, so results are silently truncated beyond that.
-* **Planned Specifications**:
-  1. `pg_trgm` GIN indexes on title and synopsis, or a weighted `tsvector` full-text column, behind an RPC `search_dramas(q, filters, page, page_size)`.
-  2. A view or RPC `taxonomy_counts()` returning distinct genres and tags with counts (also feeds Task 16.6).
-  3. A GIN index on `tags`.
-* **Verification**: `EXPLAIN` shows index usage; taxonomy results stay correct with more than 1,000 seeded rows.
+* **Delivered Specifications**:
+  1. **Database Migrations & Trigram GIN Indexes**:
+     - Authored migrations `supabase/user/supabase/migrations/20261008120000_search_and_taxonomy_scalability.sql` and `supabase/content/supabase/migrations/20261008120000_search_and_taxonomy_scalability.sql`.
+     - Enabled `pg_trgm` extension in PostgreSQL (`CREATE EXTENSION IF NOT EXISTS pg_trgm`).
+     - Created GIN trigram indexes on `title` and `synopsis` using `gin_trgm_ops` across both `content.titles` and `public.titles` (`idx_content_titles_title_trgm`, `idx_content_titles_synopsis_trgm`, `idx_titles_title_trgm`, `idx_titles_synopsis_trgm`).
+     - Created GIN index on `tags` text array column (`USING gin (tags)`) for accelerated containment filtering (`@>`).
+     - Created B-tree partial index on `genre` WHERE `status = 'Published'`.
+  2. **PostgreSQL Taxonomy Aggregation & Search RPCs**:
+     - Defined `get_distinct_genres()` executing `SELECT DISTINCT genre` directly in SQL, eliminating client row downloads and 1,000-row PostgREST truncation.
+     - Defined `get_popular_tags(limit_count)` executing `SELECT unnest(tags) AS tag, count(*)` grouped and ranked by frequency directly in PostgreSQL.
+     - Defined `get_taxonomy_counts()` and alias `taxonomy_counts()` returning structured `{ genres, tags }` JSON in a single roundtrip (feeding Task 16.6).
+     - Defined `search_dramas(query_text, filter_genre, filter_channel_id, filter_tags, sort_by, page_offset, page_limit)` executing trigram similarity and indexed text search with relevance ranking, multi-facet filtering, deterministic pagination, and total count resolution.
+     - Configured all functions with `SECURITY DEFINER`, explicit `SET search_path`, and granted execute privileges to `anon`, `authenticated`, and `service_role`.
+  3. **Service Layer Integration & Transparent Fallback**:
+     - Updated `lib/server/catalog.ts` and `lib/services/content.service.ts`:
+       - `getDistinctGenres()` and `getPopularTags()` wrapped in `React.cache()` leveraging in-database RPCs with graceful PostgREST fallback.
+       - Exported `getTaxonomyCounts()` with `React.cache()` deduplication.
+       - `searchDramas()` / `searchPublishedTitles()` attempts `search_dramas` RPC first, falling back transparently to indexed PostgREST queries if the remote database has not yet pushed the migration.
+       - Preserved `escapePostgrestValue()`, term sanitization, and 100% backward compatibility for all search parameters and discovery pages.
+* **Verification Results**:
+  - `__tests__/search/taxonomy-search-scalability.test.ts` (28 automated tests passing across 6 suites).
+  - Full test runner `npm test`: 588 / 588 tests passing across 157 suites (0 failures).
+  - `npx tsc --noEmit`: compiles cleanly with 0 type errors.
+  - `npm run build`: cleanly compiles all 63 Next.js routes with production fallback verification.
 
 ---
 

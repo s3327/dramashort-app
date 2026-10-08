@@ -101,6 +101,13 @@ export function setTestContentClient(client: any) {
 }
 
 /**
+ * Test hook returning currently injected mock Content DB client.
+ */
+export function getTestContentClient() {
+  return testContentClient;
+}
+
+/**
  * Factory creating a fresh Supabase client configured for the content schema or dual fallback.
  */
 export function createContentClient(customEnv?: Record<string, string | undefined>): ReturnType<typeof createClient<Database>> {
@@ -139,12 +146,15 @@ export const contentClient: ReturnType<typeof createClient<Database>> = new Prox
   {} as any,
   {
     get(_target, prop, receiver) {
-      if (testContentClient && prop in testContentClient) {
-        const val = testContentClient[prop];
-        if (typeof val === "function") {
-          return val.bind(testContentClient);
+      if (testContentClient) {
+        if (prop in testContentClient) {
+          const val = testContentClient[prop];
+          if (typeof val === "function") {
+            return val.bind(testContentClient);
+          }
+          return val;
         }
-        return val;
+        return undefined;
       }
       const client = getClientInstance();
       const val = Reflect.get(client, prop, client);
@@ -152,6 +162,13 @@ export const contentClient: ReturnType<typeof createClient<Database>> = new Prox
         return val.bind(client);
       }
       return val;
+    },
+    has(_target, prop) {
+      if (testContentClient) {
+        return prop in testContentClient;
+      }
+      const client = getClientInstance();
+      return prop in client;
     },
   }
 );

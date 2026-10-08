@@ -1,5 +1,5 @@
 import { cache } from "react";
-import { contentClient, getContentAdminClient } from "@/lib/supabase/content";
+import { contentClient, getContentAdminClient, getTestContentClient } from "@/lib/supabase/content";
 import type { Database } from "@/types/supabase-content";
 import type {
   Title,
@@ -12,6 +12,7 @@ import type {
   PlaybackSource,
 } from "@/types/content";
 import { ENABLE_MOCK_FALLBACK } from "@/lib/config";
+import { isUuid } from "@/lib/validation/drama";
 import { type Result, ok, err } from "@/types/result";
 import { getApiErrorMessage, readJsonSafely } from "@/lib/api/error-message";
 import { adminFetch } from "@/lib/api/admin-fetch";
@@ -114,6 +115,8 @@ export type PaginatedDramasResult = PaginatedTitlesResult;
 
 /**
  * Executes a server-side search and filtering query over the titles database with pagination.
+ * Attempts high-performance `search_dramas` RPC (with GIN trigram indexing and total_count aggregation),
+ * falling back transparently to indexed PostgREST queries if the remote database has not yet pushed the migration.
  */
 export async function searchPublishedTitles(
   options?: TitleQueryOptions
@@ -131,52 +134,159 @@ export async function searchPublishedTitles(
   const to = from + pageSize - 1;
 
   try {
+    const rawSearch = (options?.query || options?.search || "").trim();
+    const cleanTerm = rawSearch ? rawSearch.replace(/[,()]/g, " ").trim() : "";
+    const rawGenre = options?.genre ? options.genre.trim() : "";
+    const cleanGenre =
+      rawGenre &&
+      rawGenre !== "All" &&
+      rawGenre !== "All Genres"
+        ? rawGenre
+        : null;
+
+    const cleanTags = options?.tags
+      ? options.tags
+          .map((t) => (typeof t === "string" ? t.trim() : ""))
+          .filter(Boolean)
+      : [];
+
+    // Channel resolution & validation
+    let resolvedChannelId: string | null = options?.channelId || null;
+    let channelFilterActive = Boolean(options?.channelId);
+
+    if (!resolvedChannelId && options?.channelSlug) {
+      channelFilterActive = true;
+      const { data: ch } = await contentClient
+        .from("channels")
+        .select("id")
+        .eq("slug", options.channelSlug.toLowerCase().trim())
+        .maybeSingle();
+      if (ch?.id) {
+        resolvedChannelId = ch.id;
+      } else {
+        if (ENABLE_MOCK_FALLBACK) {
+          return await filterMockTitles(options, page, pageSize);
+        }
+        return { items: [], total: 0, page, pageSize, totalPages: 1 };
+      }
+    } else if (
+      !resolvedChannelId &&
+      options?.channelName &&
+      options.channelName.trim() !== "All" &&
+      options.channelName.trim() !== "All Channels"
+    ) {
+      channelFilterActive = true;
+      const { data: ch } = await contentClient
+        .from("channels")
+        .select("id")
+        .eq("name", options.channelName.trim())
+        .maybeSingle();
+      if (ch?.id) {
+        resolvedChannelId = ch.id;
+      }
+    }
+
+    // Check if test client or standard client supports RPC
+    const testClient = getTestContentClient();
+    const shouldAttemptRpc = testClient
+      ? typeof testClient.rpc === "function"
+      : typeof (contentClient as any).rpc === "function";
+
+    // Only attempt RPC if channel resolution succeeded (or no channel was requested),
+    // and if resolvedChannelId is a valid UUID (PostgreSQL search_dramas requires UUID).
+    const isValidRpcChannelId = !resolvedChannelId || isUuid(resolvedChannelId);
+    const canAttemptRpc =
+      shouldAttemptRpc &&
+      (!channelFilterActive || (resolvedChannelId !== null && isValidRpcChannelId));
+
+    if (canAttemptRpc) {
+      try {
+        const { data, count, error } = await (contentClient as any).rpc(
+          "search_dramas",
+          {
+            query_text: cleanTerm || null,
+            filter_genre: cleanGenre,
+            filter_channel_id: resolvedChannelId,
+            filter_tags: cleanTags.length > 0 ? cleanTags : null,
+            sort_by: options?.sort || (cleanTerm ? "relevance" : "trending"),
+            page_offset: from,
+            page_limit: pageSize,
+          },
+          { count: "exact" }
+        );
+
+        if (!error && data !== null && data !== undefined) {
+          let rawRows: any[] = [];
+          let totalCount = 0;
+
+          if (Array.isArray(data)) {
+            rawRows = data;
+            totalCount =
+              rawRows.length > 0 && rawRows[0].total_count !== undefined
+                ? Number(rawRows[0].total_count)
+                : count !== null && count !== undefined
+                ? count
+                : rawRows.length;
+          } else if (typeof data === "object") {
+            if (Array.isArray((data as any).items)) {
+              rawRows = (data as any).items;
+              totalCount =
+                typeof (data as any).total === "number"
+                  ? (data as any).total
+                  : rawRows.length;
+            }
+          }
+
+          const items = rawRows.map(mapTitleRowToTitle);
+          const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
+
+          return {
+            items,
+            total: totalCount,
+            page,
+            pageSize,
+            totalPages,
+          };
+        }
+        if (error) {
+          console.warn("search_dramas RPC unavailable, falling back to PostgREST:", error.message);
+        }
+      } catch (rpcErr) {
+        console.warn("search_dramas RPC failed, falling back to PostgREST:", rpcErr);
+      }
+    }
+
+    // Transparent fallback to PostgREST query
     let query = contentClient
       .from("titles")
       .select("*, channels(name, slug, code)", { count: "exact" })
       .eq("status", "Published");
 
     // Search query (matches title or synopsis)
-    const rawSearch = (options?.query || options?.search || "").trim();
-    if (rawSearch) {
-      const cleanTerm = rawSearch.replace(/[,()]/g, " ").trim();
-      if (cleanTerm) {
-        query = query.or(
-          `title.ilike.%${cleanTerm}%,synopsis.ilike.%${cleanTerm}%`
-        );
-      }
+    if (cleanTerm) {
+      const escaped = escapePostgrestValue(cleanTerm);
+      query = query.or(
+        `title.ilike.%${escaped}%,synopsis.ilike.%${escaped}%`
+      );
     }
 
-    // Channel filtering: prioritize channelId, then channelSlug, then channelName
-    if (options?.channelId) {
-      query = query.eq("channel_id", options.channelId);
-    } else if (options?.channelSlug) {
-      const { data: ch } = await contentClient
-        .from("channels")
-        .select("id")
-        .eq("slug", options.channelSlug)
-        .maybeSingle();
-      if (ch?.id) {
-        query = query.eq("channel_id", ch.id);
-      }
+    // Channel filtering
+    if (resolvedChannelId) {
+      query = query.eq("channel_id", resolvedChannelId);
     } else if (
       options?.channelName &&
-      options.channelName !== "All" &&
-      options.channelName !== "All Channels"
+      options.channelName.trim() !== "All" &&
+      options.channelName.trim() !== "All Channels"
     ) {
-      query = query.eq("channel_name", options.channelName);
+      query = query.eq("channel_name", options.channelName.trim());
     }
 
-    if (
-      options?.genre &&
-      options.genre !== "All" &&
-      options.genre !== "All Genres"
-    ) {
-      query = query.eq("genre", options.genre);
+    if (cleanGenre) {
+      query = query.eq("genre", cleanGenre);
     }
 
-    if (options?.tags && options.tags.length > 0) {
-      query = query.contains("tags", options.tags);
+    if (cleanTags.length > 0) {
+      query = query.contains("tags", cleanTags);
     }
 
     // Deterministic sort order with ID as stable tie-breaker
@@ -254,6 +364,9 @@ export async function searchPublishedTitlesResult(
   }
   return ok(res);
 }
+
+/** Canonical domain alias for searchPublishedTitlesResult */
+export const searchDramasResult = searchPublishedTitlesResult;
 
 /**
  * In-memory fallback filtering for mock data during offline development.
@@ -350,15 +463,44 @@ export const getPublishedDramas = getPublishedTitles;
 /**
  * Fetches distinct available genres across all published dramas.
  * Wrapped in React.cache() for per-request query deduplication across layouts and pages.
+ * Leverages PostgreSQL `get_distinct_genres` RPC for in-database aggregation, eliminating client row downloads and 1,000-row limits.
  */
 export const getDistinctGenres = cache(async function getDistinctGenres(): Promise<string[]> {
+  const testClient = getTestContentClient();
+  const shouldAttemptRpc = testClient
+    ? typeof testClient.rpc === "function"
+    : typeof (contentClient as any).rpc === "function";
+
+  if (shouldAttemptRpc) {
+    try {
+      const { data, error } = await (contentClient as any).rpc("get_distinct_genres");
+      if (!error && Array.isArray(data) && data.length > 0) {
+        const genres = data
+          .map((item: any) =>
+            typeof item === "string" ? item.trim() : item?.genre?.trim()
+          )
+          .filter(Boolean);
+        return Array.from(new Set(genres)).sort();
+      }
+      if (error) {
+        console.warn("get_distinct_genres RPC unavailable, falling back:", error.message);
+      }
+    } catch (rpcErr) {
+      console.warn("get_distinct_genres RPC failed, falling back:", rpcErr);
+    }
+  }
+
   try {
     const { data, error } = await contentClient
       .from("titles")
       .select("genre")
       .eq("status", "Published");
     if (!error && data && data.length > 0) {
-      const set = new Set(data.map((r) => r.genre).filter(Boolean));
+      const set = new Set(
+        data
+          .map((r: any) => (typeof r.genre === "string" ? r.genre.trim() : ""))
+          .filter(Boolean)
+      );
       return Array.from(set).sort();
     }
   } catch (err) {
@@ -382,16 +524,52 @@ export const getDistinctGenres = cache(async function getDistinctGenres(): Promi
 
 /**
  * Fetches popular taxonomy tags / tropes across all published dramas.
+ * Wrapped in React.cache() for per-request query deduplication across layouts and pages.
+ * Leverages PostgreSQL `get_popular_tags` RPC for in-database frequency aggregation, eliminating client row downloads and 1,000-row limits.
  */
-export async function getPopularTags(): Promise<string[]> {
+export const getPopularTags = cache(async function getPopularTags(
+  limit = 50
+): Promise<string[]> {
+  const limitCount = Math.max(1, Math.min(200, limit || 50));
+  const testClient = getTestContentClient();
+  const shouldAttemptRpc = testClient
+    ? typeof testClient.rpc === "function"
+    : typeof (contentClient as any).rpc === "function";
+
+  if (shouldAttemptRpc) {
+    try {
+      const { data, error } = await (contentClient as any).rpc("get_popular_tags", {
+        limit_count: limitCount,
+      });
+      if (!error && Array.isArray(data) && data.length > 0) {
+        const tags = data
+          .map((item: any) =>
+            typeof item === "string" ? item.trim() : item?.tag?.trim()
+          )
+          .filter(Boolean);
+        return Array.from(new Set(tags));
+      }
+      if (error) {
+        console.warn("get_popular_tags RPC unavailable, falling back:", error.message);
+      }
+    } catch (rpcErr) {
+      console.warn("get_popular_tags RPC failed, falling back:", rpcErr);
+    }
+  }
+
   try {
     const { data, error } = await contentClient
       .from("titles")
       .select("tags")
       .eq("status", "Published");
     if (!error && data && data.length > 0) {
-      const set = new Set(data.flatMap((r) => r.tags || []).filter(Boolean));
-      return Array.from(set).sort();
+      const set = new Set(
+        data
+          .flatMap((r: any) => (Array.isArray(r.tags) ? r.tags : []))
+          .map((t: any) => (typeof t === "string" ? t.trim() : ""))
+          .filter(Boolean)
+      );
+      return Array.from(set).sort().slice(0, limitCount);
     }
   } catch (err) {
     console.warn("Failed to fetch popular tags:", err);
@@ -408,10 +586,83 @@ export async function getPopularTags(): Promise<string[]> {
       "Billionaire",
       "Villain",
       "Fantasy",
-    ];
+    ].slice(0, limitCount);
   }
   return [];
+});
+
+export interface TaxonomyCountsResult {
+  genres: Array<{ genre: string; count: number }>;
+  tags: Array<{ tag: string; count: number }>;
 }
+
+/**
+ * Fetches unified taxonomy counts (genres and tags) computed directly inside PostgreSQL.
+ * Wrapped in React.cache() for per-request query deduplication.
+ */
+export const getTaxonomyCounts = cache(async function getTaxonomyCounts(): Promise<TaxonomyCountsResult> {
+  const testClient = getTestContentClient();
+  const shouldAttemptRpc = testClient
+    ? typeof testClient.rpc === "function"
+    : typeof (contentClient as any).rpc === "function";
+
+  if (shouldAttemptRpc) {
+    try {
+      const { data, error } = await (contentClient as any).rpc("get_taxonomy_counts");
+      if (!error && data) {
+        const rawGenres = Array.isArray((data as any).genres) ? (data as any).genres : [];
+        const rawTags = Array.isArray((data as any).tags) ? (data as any).tags : [];
+        return {
+          genres: rawGenres.map((g: any) => ({
+            genre: typeof g.genre === "string" ? g.genre.trim() : String(g.genre || ""),
+            count: Number(g.count || 0),
+          })),
+          tags: rawTags.map((t: any) => ({
+            tag: typeof t.tag === "string" ? t.tag.trim() : String(t.tag || ""),
+            count: Number(t.count || 0),
+          })),
+        };
+      }
+      if (error) {
+        console.warn("get_taxonomy_counts RPC unavailable:", error.message);
+      }
+    } catch (err) {
+      console.warn("get_taxonomy_counts RPC failed:", err);
+    }
+  }
+
+  if (ENABLE_MOCK_FALLBACK) {
+    try {
+      const { titles: mockTitles } = await import("@/data/titles.mock");
+      const genreMap = new Map<string, number>();
+      const tagMap = new Map<string, number>();
+      for (const t of mockTitles) {
+        if (t.status === "Published" && t.genre) {
+          const g = t.genre.trim();
+          if (g) genreMap.set(g, (genreMap.get(g) || 0) + 1);
+        }
+        if (t.status === "Published" && Array.isArray(t.tags)) {
+          for (const rawTag of t.tags) {
+            const tag = typeof rawTag === "string" ? rawTag.trim() : "";
+            if (tag) tagMap.set(tag, (tagMap.get(tag) || 0) + 1);
+          }
+        }
+      }
+      return {
+        genres: Array.from(genreMap.entries())
+          .map(([genre, count]) => ({ genre, count }))
+          .sort((a, b) => b.count - a.count || a.genre.localeCompare(b.genre)),
+        tags: Array.from(tagMap.entries())
+          .map(([tag, count]) => ({ tag, count }))
+          .sort((a, b) => b.count - a.count || a.tag.localeCompare(b.tag)),
+      };
+    } catch {
+      // Mock import failure, return empty arrays
+    }
+  }
+
+  return { genres: [], tags: [] };
+});
 
 /**
  * Fetches a single title by its unique slug (e.g. "the-ceos-secret-wife-ds").
