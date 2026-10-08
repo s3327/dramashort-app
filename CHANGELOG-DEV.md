@@ -2805,3 +2805,61 @@
   - Full test runner `npm test`: all 843 tests pass across 222 suites with 0 failures (100% pass rate).
   - TypeScript compiler check (`npx tsc --noEmit`): 0 type errors.
   - Next.js production build (`npm run build`): cleanly compiles 69/69 static and dynamic routes.
+---
+
+## [2026-10-09] Task 16.6: Genres & Tags Taxonomy Management
+* **Milestone**: Phase 16 (Admin Content Operations Console) — Task 16.6
+* **Goal**: Equip the admin content operations console with centralized Genres & Tags taxonomy management, replace static mock titles in `app/admin/genres/page.tsx` with live database records, build database tables `genres` and `tags` with `titles.genre_id` foreign key relationships, implement automatic catalog backfills and updated triggers, implement server operations for renaming propagation across drama titles, build safe deletion guards preventing orphan titles, implement tag merging mechanics, log structured audit trail entries, and wire dynamic genres to public catalog pages and admin drama creation/editing forms.
+* **Implementation Steps Taken**:
+  1. **Database Schema & Indexing Migrations (`supabase/content/supabase/migrations/20261009160000_taxonomy_management.sql` & `supabase/user/supabase/migrations/20261009160000_taxonomy_management.sql`)**:
+     - Created `public.genres` table with columns: `id UUID`, `name TEXT NOT NULL UNIQUE`, `slug TEXT NOT NULL UNIQUE`, `sort_order INT NOT NULL DEFAULT 0`, `is_visible BOOLEAN NOT NULL DEFAULT true`, `created_at TIMESTAMPTZ`, and `updated_at TIMESTAMPTZ`.
+     - Created `public.tags` table with columns: `id UUID`, `name TEXT NOT NULL UNIQUE`, `slug TEXT NOT NULL UNIQUE`, `created_at TIMESTAMPTZ`, and `updated_at TIMESTAMPTZ`.
+     - Altered `public.titles` table adding `genre_id UUID REFERENCES public.genres(id) ON DELETE SET NULL` and created index `idx_titles_genre_id`.
+     - Automatically backfilled initial genres and tags from distinct values across catalog `titles`, linking `titles.genre_id`.
+     - Configured automated `updated_at` trigger functions `trg_set_genres_updated_at` and `trg_set_tags_updated_at`.
+     - Established RLS policies and table grants for `postgres`, `service_role`, `authenticated`, and `anon`.
+     - Enhanced `get_distinct_genres()` RPC to query visible database genres ordered by `sort_order ASC, name ASC` with fallback to catalog titles.
+  2. **Domain Models & Database Type Definitions (`types/content.ts`, `types/supabase-content.ts`)**:
+     - Defined domain interfaces: `Genre`, `AdminGenre`, `CreateGenreInput`, `UpdateGenreInput`, `Tag`, `AdminTag`, `CreateTagInput`, `UpdateTagInput`, and `MergeTagsInput`.
+     - Added `genreId?: string | null` to `Drama` interface.
+     - Added `genres` and `tags` tables, and `genre_id?: string | null` to `titles` in `types/supabase-content.ts`.
+  3. **Taxonomy Payload Validation Engine (`lib/validation/taxonomy.ts`)**:
+     - Implemented `slugifyTaxonomy(input)` for URL-safe lowercase slug generation.
+     - Implemented `validateGenrePayload(payload, mode)` enforcing non-empty names, auto-slug derivation, non-negative sort order, and visibility flags.
+     - Implemented `validateTagPayload(payload, mode)` with name validation and auto-slug derivation.
+     - Implemented `validateMergeTagsPayload(payload)` ensuring valid distinct source and target tag IDs.
+  4. **Server Operations & Renaming Propagation Layer (`lib/server/admin-taxonomy.ts`)**:
+     - Implemented `getAdminGenresServer()`: returns genres ordered by `sort_order ASC, name ASC` with live aggregated drama counts from `titles`.
+     - Implemented `getAdminGenreByIdServer(id)`: retrieves single genre with drama count.
+     - Implemented `createAdminGenreServer(input, actor)`: prevents duplicate names and slugs (case-insensitive), writes to database, logs `taxonomy.genre_create` in audit log, and invalidates cache tags.
+     - Implemented `updateAdminGenreServer(id, input, actor)`: updates genre metadata and **propagates renaming** across all `titles.genre` and `titles.genre_id` matching the genre. Records audit log with before/after diff.
+     - Implemented `deleteAdminGenreServer(id, actor, options)`: blocks deletion with `409 Conflict` if any dramas are assigned, unless `force: true` is requested.
+     - Implemented `getAdminTagsServer()`: calculates usage counts from `titles.tags` text array.
+     - Implemented `createAdminTagServer(input, actor)`: checks uniqueness and creates tag.
+     - Implemented `updateAdminTagServer(id, input, actor)`: updates tag metadata and **propagates renaming** across all `titles.tags` arrays.
+     - Implemented `mergeTagsServer(input, actor)`: migrates all titles with `sourceTag` to `targetTag` (deduplicating arrays), deletes `sourceTag` from `tags` table, and logs `taxonomy.tag_merge`.
+     - Implemented `deleteAdminTagServer(id, actor, options)`: deletes tag with optional `removeFromTitles` scrubbing.
+     - Integrated structured audit logging (`recordAuditLog`) and cache invalidation tags (`genres`, `tags`, `taxonomy`, `titles`, `/genres`, `/browse`).
+  5. **Client Services & Public Catalog Integration (`lib/server/catalog.ts`, `lib/services/content.service.ts`)**:
+     - Enhanced `getDistinctGenres()` fallback in `catalog.ts` and `content.service.ts` to check `public.genres` table before raw titles.
+     - Exported client service methods: `getAdminGenres`, `createAdminGenre`, `updateAdminGenre`, `deleteAdminGenre`, `getAdminTags`, `createAdminTag`, `updateAdminTag`, `mergeAdminTags`, and `deleteAdminTag`.
+  6. **Admin API Route Handlers**:
+     - `GET & POST /api/admin/taxonomy/genres`: Protected with `requireAdmin()`, lists genres and creates genres.
+     - `GET, PATCH & DELETE /api/admin/taxonomy/genres/[id]`: Protected with `requireAdmin()`, single genre operations with 409 Conflict guard on assigned dramas.
+     - `GET & POST /api/admin/taxonomy/tags`: Protected with `requireAdmin()`, lists and creates tags.
+     - `GET, PATCH & DELETE /api/admin/taxonomy/tags/[id]`: Protected with `requireAdmin()`, updates with titles propagation and deletes tags.
+     - `POST /api/admin/taxonomy/tags/merge`: Protected with `requireAdmin()`, merges source tag into target tag.
+  7. **Admin Console UI Overhaul (`app/admin/genres/page.tsx`, `app/admin/titles/page.tsx`, `app/admin/titles/[id]/edit/page.tsx`)**:
+     - Completely overhauled `app/admin/genres/page.tsx` into an interactive taxonomy console.
+     - Features live search filtering across genre and tag names.
+     - Genres Section: displays sort order badge, visibility toggle (Eye/EyeOff), drama count pill, Add Genre modal, Edit Genre modal, and Delete Genre modal with active drama warning.
+     - Tags Section: displays usage count, Add Tag modal, Edit Tag modal, Merge Tag modal (selecting target tag), and Delete Tag modal with title scrubbing toggle.
+     - Wired dynamic database genres to Add Drama modal (`app/admin/titles/page.tsx`) and Edit Drama page (`app/admin/titles/[id]/edit/page.tsx`) using datalists and dynamic select options.
+  8. **Automated Verification Test Suite (`__tests__/admin/taxonomy-management.test.ts`)**:
+     - Authored 16 automated unit and integration tests verifying schema migrations, validation, server CRUD, genre rename propagation to titles, safe deletion guards (409 Conflict), tag merge mechanics, titles scrubbing, and audit logging.
+* **Regression Analysis & Verification Record**:
+  - `__tests__/admin/taxonomy-management.test.ts`: 16 / 16 tests pass (100%).
+  - `__tests__/search/taxonomy-search-scalability.test.ts`: 28 / 28 tests pass (100%).
+  - Full test runner `npm test`: all 859 tests pass across 227 suites with 0 failures (100% pass rate).
+  - TypeScript compiler check (`npx tsc --noEmit`): 0 type errors.
+  - Next.js production build (`npm run build`): cleanly compiles all 74 static and dynamic routes.

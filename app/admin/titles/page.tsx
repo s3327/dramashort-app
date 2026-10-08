@@ -33,6 +33,7 @@ import { ENABLE_MOCK_FALLBACK } from "@/lib/config";
 import {
   getAdminDramas,
   getChannels,
+  getDistinctGenres,
   createDrama,
   executeScheduledPublishing,
   bulkUpdateDramas,
@@ -108,17 +109,25 @@ function AdminTitlesContent() {
   const [isDeleting, setIsDeleting] = useState(false);
   const [actionInProgressId, setActionInProgressId] = useState<string | null>(null);
 
-  // Load distinct channels from Content DB
+  const [genreList, setGenreList] = useState<string[]>([]);
+
+  // Load distinct channels and genres from Content DB
   useEffect(() => {
     let mounted = true;
-    async function loadChannels() {
+    async function loadChannelsAndTaxonomy() {
       try {
-        const dbChannels = await getChannels();
+        const [dbChannels, dbGenres] = await Promise.all([
+          getChannels(),
+          getDistinctGenres(),
+        ]);
         if (mounted && dbChannels && dbChannels.length > 0) {
           setChannelList(dbChannels);
         } else if (mounted && ENABLE_MOCK_FALLBACK) {
           const { channels } = await import("@/data/channels.mock");
           setChannelList(channels);
+        }
+        if (mounted && dbGenres && dbGenres.length > 0) {
+          setGenreList(dbGenres);
         }
       } catch {
         if (mounted && ENABLE_MOCK_FALLBACK) {
@@ -127,7 +136,7 @@ function AdminTitlesContent() {
         }
       }
     }
-    loadChannels();
+    loadChannelsAndTaxonomy();
     return () => {
       mounted = false;
     };
@@ -978,16 +987,14 @@ function AdminTitlesContent() {
                   onChange={(e) => setNewDrama({ ...newDrama, genre: e.target.value })}
                   className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm text-text focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-colors"
                 >
-                  <option value="Romance">Romance</option>
-                  <option value="CEO">CEO</option>
-                  <option value="Revenge">Revenge</option>
-                  <option value="Werewolf">Werewolf</option>
-                  <option value="Urban">Urban</option>
-                  <option value="Fantasy">Fantasy</option>
-                  <option value="Drama">Drama</option>
-                  <option value="Action">Action</option>
-                  <option value="Thriller">Thriller</option>
-                  <option value="Comedy">Comedy</option>
+                  {(genreList.length > 0
+                    ? genreList
+                    : ["Romance", "CEO", "Revenge", "Werewolf", "Urban", "Fantasy", "Drama", "Action", "Thriller", "Comedy"]
+                  ).map((g) => (
+                    <option key={g} value={g}>
+                      {g}
+                    </option>
+                  ))}
                 </select>
               </div>
 

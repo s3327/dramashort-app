@@ -513,6 +513,25 @@ export const getDistinctGenres = cache(async function getDistinctGenres(): Promi
     }
   }
 
+  // Check genres table if RPC not available
+  try {
+    const { data: genreTableData, error: genreTableErr } = await (contentClient as any)
+      .from("genres")
+      .select("name")
+      .eq("is_visible", true)
+      .order("sort_order", { ascending: true })
+      .order("name", { ascending: true });
+
+    if (!genreTableErr && Array.isArray(genreTableData) && genreTableData.length > 0) {
+      const names = genreTableData
+        .map((r: any) => (typeof r.name === "string" ? r.name.trim() : ""))
+        .filter(Boolean);
+      if (names.length > 0) {
+        return names;
+      }
+    }
+  } catch {}
+
   try {
     const { data, error } = await contentClient
       .from("titles")

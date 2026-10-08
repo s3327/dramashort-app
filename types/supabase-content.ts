@@ -50,6 +50,60 @@ export type Database = {
         }
         Relationships: []
       }
+      genres: {
+        Row: {
+          created_at: string | null
+          id: string
+          is_visible: boolean
+          name: string
+          slug: string
+          sort_order: number
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          is_visible?: boolean
+          name: string
+          slug: string
+          sort_order?: number
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          is_visible?: boolean
+          name?: string
+          slug?: string
+          sort_order?: number
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      tags: {
+        Row: {
+          created_at: string | null
+          id: string
+          name: string
+          slug: string
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          name: string
+          slug: string
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          name?: string
+          slug?: string
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       episodes: {
         Row: {
           created_at: string | null
@@ -154,6 +208,7 @@ export type Database = {
           channel_name: string
           created_at: string | null
           genre: string
+          genre_id?: string | null
           id: string
           poster_url: string
           rating: number | null
@@ -180,6 +235,7 @@ export type Database = {
           channel_name: string
           created_at?: string | null
           genre: string
+          genre_id?: string | null
           id?: string
           poster_url: string
           rating?: number | null
@@ -206,6 +262,7 @@ export type Database = {
           channel_name?: string
           created_at?: string | null
           genre?: string
+          genre_id?: string | null
           id?: string
           poster_url?: string
           rating?: number | null

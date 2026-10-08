@@ -49,7 +49,7 @@
 | **Phase 13** | 🟠 High | Backend Architecture Consolidation (database topology ADR-0003, server-rendered catalog, service split, taxonomy scalability, observability) | ✅ Completed (13.1–13.6 ✅) | Decision gate for Phase 8; faster pages; operability |
 | **Phase 14** | 🟠 High | Mobile-First Vertical Watch Experience & UI Polish | ✅ Completed (14.1–14.9 ✅) | Core 9:16 viewing experience on phones |
 | **Phase 15** | 🟠 High | Product Analytics, Engagement Tracking & Real Trending | ✅ Completed (15.1–15.5 ✅) | Real views, trending and dashboard; data to tune the paywall |
-| **Phase 16** | 🟠 High | Admin Content Operations Console (episodes, uploads, scheduling, taxonomy, users, audit log) | 🚧 In progress (16.1 ✅) | Catalog operable end-to-end without SQL |
+| **Phase 16** | 🟠 High | Admin Content Operations Console (episodes, uploads, scheduling, taxonomy, users, audit log) | 🚧 In progress (16.1–16.6 ✅) | Catalog operable end-to-end without SQL |
 | **Phase 17** | 🟡 Medium | Quality Engineering, CI & Documentation Integrity (continuous) | ⏳ Planned | Regression safety; trustworthy status docs |
 
 > **Execution order (set by the 2026-10-04 platform audit)**: Phase numbers are stable identifiers, not a sequence. Remaining work executes as **10 → 11 → 12 → 13 → 14 → 15 → 16 → 8 → 9**, with Phase 17 running continuously alongside. Gates and dependencies are defined in [§12](#12-platform-audit-remediation-track-phases-1017).
@@ -2513,14 +2513,65 @@ These items stay ✅ for history; the gaps are tracked as new tasks.
 ---
 
 ### Task 16.6: Genres & Tags Taxonomy Management
-* **Status**: ⏳ Planned
-* **Problem**: `app/admin/genres/page.tsx` derives its lists from mock titles, and "Add" only updates local state (L47 TODO).
-* **Planned Specifications**:
-  1. Tables `genres(id, slug, name, sort_order, is_visible)` and `tags(id, slug, name)`.
-  2. Dramas reference `genre_id` (migrated from the text column); tags use a join table or validated `text[]`.
-  3. Renames propagate everywhere; duplicate tags can be merged.
-  4. Usage counts come from the Task 13.5 RPC.
-* **Verification**: renaming a genre updates the public genre chips and drama pages.
+* **Status**: ✅ Completed
+* **Depends on**: 13.5, 16.1, 16.4, 16.5
+* **Target Files**:
+  - `supabase/content/supabase/migrations/20261009160000_taxonomy_management.sql`
+  - `supabase/user/supabase/migrations/20261009160000_taxonomy_management.sql`
+  - `types/content.ts`
+  - `types/supabase-content.ts`
+  - `lib/validation/taxonomy.ts`
+  - `lib/server/admin-taxonomy.ts`
+  - `lib/server/catalog.ts`
+  - `lib/services/content.service.ts`
+  - `app/api/admin/taxonomy/genres/route.ts`
+  - `app/api/admin/taxonomy/genres/[id]/route.ts`
+  - `app/api/admin/taxonomy/tags/route.ts`
+  - `app/api/admin/taxonomy/tags/[id]/route.ts`
+  - `app/api/admin/taxonomy/tags/merge/route.ts`
+  - `app/admin/genres/page.tsx`
+  - `app/admin/titles/page.tsx`
+  - `app/admin/titles/[id]/edit/page.tsx`
+  - `__tests__/admin/taxonomy-management.test.ts`
+* **Delivered Capabilities**:
+  1. Database Schema & Migration Layer:
+     - Authored `20261009160000_taxonomy_management.sql` (mirrored across content and user DBs).
+     - Created `public.genres (id, slug, name, sort_order, is_visible, created_at, updated_at)` with unique constraints and indexes.
+     - Created `public.tags (id, slug, name, created_at, updated_at)` with unique constraints and indexes.
+     - Altered `titles` with `genre_id UUID REFERENCES public.genres(id) ON DELETE SET NULL` and `idx_titles_genre_id`.
+     - Automatically backfilled existing distinct genres and tags from catalog `titles`, linking `titles.genre_id`.
+     - Established automated `updated_at` triggers, RLS policies, and enhanced `get_distinct_genres()` RPC.
+  2. Domain Modeling & Validation:
+     - Declared interfaces in `types/content.ts`: `Genre`, `AdminGenre`, `CreateGenreInput`, `UpdateGenreInput`, `Tag`, `AdminTag`, `CreateTagInput`, `UpdateTagInput`, `MergeTagsInput`.
+     - Implemented `lib/validation/taxonomy.ts` validating names, auto-deriving slugs with `slugifyTaxonomy`, handling sort order, visibility, and tag merge payload validation.
+  3. Server Operations & Renaming Propagation Layer:
+     - Built `lib/server/admin-taxonomy.ts`:
+       - `getAdminGenresServer()`: queries all genres with computed live drama counts from `titles`.
+       - `createAdminGenreServer()`: duplicate name and slug collision defense.
+       - `updateAdminGenreServer()`: updates metadata and **propagates renaming** across `titles.genre` and `titles.genre_id`.
+       - `deleteAdminGenreServer()`: safe deletion guard blocking deletion with `409 Conflict` if any dramas are assigned, unless forced.
+       - `getAdminTagsServer()`: calculates usage frequency across `titles.tags` arrays.
+       - `createAdminTagServer()`: creates new tags with slug validation.
+       - `updateAdminTagServer()`: updates tag and **propagates renaming** across `titles.tags` text array column.
+       - `mergeTagsServer()`: migrates all titles with source tag to target tag, deduplicates arrays, and deletes source tag.
+       - `deleteAdminTagServer()`: deletes tag with optional titles scrubbing.
+     - Recorded structured audit logs (`taxonomy.genre_create`, `taxonomy.genre_update`, `taxonomy.genre_delete`, `taxonomy.tag_create`, `taxonomy.tag_update`, `taxonomy.tag_merge`) in `public.admin_audit_log`.
+     - Revalidates Next.js cache tags (`genres`, `tags`, `taxonomy`, `titles`, `/genres`, `/browse`).
+  4. Public Catalog & Admin REST Endpoints:
+     - Enhanced `getDistinctGenres()` in `lib/server/catalog.ts` and `lib/services/content.service.ts` to consume dynamic database genres with RPC and title fallbacks.
+     - Created admin endpoints: `GET/POST /api/admin/taxonomy/genres`, `GET/PATCH/DELETE /api/admin/taxonomy/genres/[id]`, `GET/POST /api/admin/taxonomy/tags`, `GET/PATCH/DELETE /api/admin/taxonomy/tags/[id]`, and `POST /api/admin/taxonomy/tags/merge`.
+  5. Interactive Admin Console UI:
+     - Overhauled `app/admin/genres/page.tsx` replacing mock imports with live database hydration.
+     - Genres console: search filtering, sort order badge, visibility toggle (Eye/EyeOff), Add Genre modal, Edit Genre modal, and Delete Genre modal with active drama count warning.
+     - Tags console: search filtering, usage count badge, Add Tag modal, Edit Tag modal, Merge Tag modal (select target tag to merge into), and Delete Tag modal.
+     - Wired dynamic database genres to Add Drama (`app/admin/titles/page.tsx`) and Edit Drama (`app/admin/titles/[id]/edit/page.tsx`) with autocomplete datalists.
+  6. Automated Verification Test Suite:
+     - Authored 16 unit and integration tests in `__tests__/admin/taxonomy-management.test.ts` verifying migrations, validation, server CRUD, genre renaming propagation, conflict guards (409), tag merge mechanics, titles scrubbing, and audit logs.
+* **Verification**:
+  - `npx tsc --noEmit` passed with 0 errors.
+  - `__tests__/admin/taxonomy-management.test.ts` passed 16/16 tests (100%).
+  - Full test runner `npm test` passed 859/859 tests across 227 suites with 0 failures (100% pass rate).
+  - Next.js production build (`npm run build`) compiled all 74 static and dynamic routes cleanly.
 
 ---
 

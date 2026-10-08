@@ -20,6 +20,15 @@ import type {
   AdminChannel,
   CreateChannelInput,
   UpdateChannelInput,
+  Genre,
+  AdminGenre,
+  CreateGenreInput,
+  UpdateGenreInput,
+  Tag,
+  AdminTag,
+  CreateTagInput,
+  UpdateTagInput,
+  MergeTagsInput,
 } from "@/types/content";
 import { ENABLE_MOCK_FALLBACK } from "@/lib/config";
 import { isUuid } from "@/lib/validation/drama";
@@ -46,6 +55,15 @@ export type {
   AdminChannel,
   CreateChannelInput,
   UpdateChannelInput,
+  Genre,
+  AdminGenre,
+  CreateGenreInput,
+  UpdateGenreInput,
+  Tag,
+  AdminTag,
+  CreateTagInput,
+  UpdateTagInput,
+  MergeTagsInput,
 };
 export type { Result };
 
@@ -538,6 +556,25 @@ export const getDistinctGenres = cache(async function getDistinctGenres(): Promi
       console.warn("get_distinct_genres RPC failed, falling back:", rpcErr);
     }
   }
+
+  // Check genres table if RPC not available
+  try {
+    const { data: genreTableData, error: genreTableErr } = await (contentClient as any)
+      .from("genres")
+      .select("name")
+      .eq("is_visible", true)
+      .order("sort_order", { ascending: true })
+      .order("name", { ascending: true });
+
+    if (!genreTableErr && Array.isArray(genreTableData) && genreTableData.length > 0) {
+      const names = genreTableData
+        .map((r: any) => (typeof r.name === "string" ? r.name.trim() : ""))
+        .filter(Boolean);
+      if (names.length > 0) {
+        return names;
+      }
+    }
+  } catch {}
 
   try {
     const { data, error } = await contentClient
@@ -2045,6 +2082,275 @@ export async function deleteAdminChannel(
     return { success: false, error: msg };
   }
 }
+
+// ============================================================================
+// ADMIN TAXONOMY (GENRES & TAGS) API CLIENT METHODS (Task 16.6)
+// ============================================================================
+
+/**
+ * Fetches all admin genres with drama counts.
+ */
+export async function getAdminGenres(): Promise<AdminGenre[]> {
+  try {
+    const res = await adminFetch("/api/admin/taxonomy/genres");
+    const json = (await readJsonSafely(res)) as {
+      success?: boolean;
+      data?: AdminGenre[];
+      error?: any;
+    };
+    if (res.ok && json?.success && Array.isArray(json.data)) {
+      return json.data;
+    }
+  } catch (err) {
+    console.warn("[getAdminGenres] Failed to fetch genres:", err);
+  }
+  return [];
+}
+
+/**
+ * Creates a new genre.
+ */
+export async function createAdminGenre(
+  input: CreateGenreInput
+): Promise<{ success: boolean; data?: AdminGenre; error?: string }> {
+  try {
+    const res = await adminFetch("/api/admin/taxonomy/genres", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    });
+    const json = (await readJsonSafely(res)) as {
+      success?: boolean;
+      data?: AdminGenre;
+      error?: any;
+    };
+
+    if (!res.ok || !json?.success) {
+      return {
+        success: false,
+        error: getApiErrorMessage(json, `Failed to create genre (HTTP ${res.status})`),
+      };
+    }
+
+    return { success: true, data: json.data };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Network error creating genre";
+    return { success: false, error: msg };
+  }
+}
+
+/**
+ * Updates an existing genre (propagates rename across titles).
+ */
+export async function updateAdminGenre(
+  id: string,
+  input: UpdateGenreInput
+): Promise<{ success: boolean; data?: AdminGenre; error?: string }> {
+  try {
+    const res = await adminFetch(`/api/admin/taxonomy/genres/${encodeURIComponent(id)}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    });
+    const json = (await readJsonSafely(res)) as {
+      success?: boolean;
+      data?: AdminGenre;
+      error?: any;
+    };
+
+    if (!res.ok || !json?.success) {
+      return {
+        success: false,
+        error: getApiErrorMessage(json, `Failed to update genre (HTTP ${res.status})`),
+      };
+    }
+
+    return { success: true, data: json.data };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Network error updating genre";
+    return { success: false, error: msg };
+  }
+}
+
+/**
+ * Deletes a genre. Safe guard prevents deletion if dramas assigned.
+ */
+export async function deleteAdminGenre(
+  id: string,
+  options?: { force?: boolean }
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const query = options?.force ? "?force=true" : "";
+    const res = await adminFetch(`/api/admin/taxonomy/genres/${encodeURIComponent(id)}${query}`, {
+      method: "DELETE",
+    });
+    const json = (await readJsonSafely(res)) as {
+      success?: boolean;
+      error?: any;
+    };
+
+    if (!res.ok || !json?.success) {
+      return {
+        success: false,
+        error: getApiErrorMessage(json, `Failed to delete genre (HTTP ${res.status})`),
+      };
+    }
+
+    return { success: true };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Network error deleting genre";
+    return { success: false, error: msg };
+  }
+}
+
+/**
+ * Fetches all admin tags with usage counts.
+ */
+export async function getAdminTags(): Promise<AdminTag[]> {
+  try {
+    const res = await adminFetch("/api/admin/taxonomy/tags");
+    const json = (await readJsonSafely(res)) as {
+      success?: boolean;
+      data?: AdminTag[];
+      error?: any;
+    };
+    if (res.ok && json?.success && Array.isArray(json.data)) {
+      return json.data;
+    }
+  } catch (err) {
+    console.warn("[getAdminTags] Failed to fetch tags:", err);
+  }
+  return [];
+}
+
+/**
+ * Creates a new tag.
+ */
+export async function createAdminTag(
+  input: CreateTagInput
+): Promise<{ success: boolean; data?: AdminTag; error?: string }> {
+  try {
+    const res = await adminFetch("/api/admin/taxonomy/tags", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    });
+    const json = (await readJsonSafely(res)) as {
+      success?: boolean;
+      data?: AdminTag;
+      error?: any;
+    };
+
+    if (!res.ok || !json?.success) {
+      return {
+        success: false,
+        error: getApiErrorMessage(json, `Failed to create tag (HTTP ${res.status})`),
+      };
+    }
+
+    return { success: true, data: json.data };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Network error creating tag";
+    return { success: false, error: msg };
+  }
+}
+
+/**
+ * Updates an existing tag (propagates rename across titles).
+ */
+export async function updateAdminTag(
+  id: string,
+  input: UpdateTagInput
+): Promise<{ success: boolean; data?: AdminTag; error?: string }> {
+  try {
+    const res = await adminFetch(`/api/admin/taxonomy/tags/${encodeURIComponent(id)}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    });
+    const json = (await readJsonSafely(res)) as {
+      success?: boolean;
+      data?: AdminTag;
+      error?: any;
+    };
+
+    if (!res.ok || !json?.success) {
+      return {
+        success: false,
+        error: getApiErrorMessage(json, `Failed to update tag (HTTP ${res.status})`),
+      };
+    }
+
+    return { success: true, data: json.data };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Network error updating tag";
+    return { success: false, error: msg };
+  }
+}
+
+/**
+ * Merges source tag into target tag.
+ */
+export async function mergeAdminTags(
+  input: MergeTagsInput
+): Promise<{ success: boolean; data?: { mergedInto: AdminTag; affectedTitlesCount: number }; error?: string }> {
+  try {
+    const res = await adminFetch("/api/admin/taxonomy/tags/merge", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    });
+    const json = (await readJsonSafely(res)) as {
+      success?: boolean;
+      data?: { mergedInto: AdminTag; affectedTitlesCount: number };
+      error?: any;
+    };
+
+    if (!res.ok || !json?.success) {
+      return {
+        success: false,
+        error: getApiErrorMessage(json, `Failed to merge tags (HTTP ${res.status})`),
+      };
+    }
+
+    return { success: true, data: json.data };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Network error merging tags";
+    return { success: false, error: msg };
+  }
+}
+
+/**
+ * Deletes a tag.
+ */
+export async function deleteAdminTag(
+  id: string,
+  options?: { removeFromTitles?: boolean }
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const query = options?.removeFromTitles ? "?removeFromTitles=true" : "";
+    const res = await adminFetch(`/api/admin/taxonomy/tags/${encodeURIComponent(id)}${query}`, {
+      method: "DELETE",
+    });
+    const json = (await readJsonSafely(res)) as {
+      success?: boolean;
+      error?: any;
+    };
+
+    if (!res.ok || !json?.success) {
+      return {
+        success: false,
+        error: getApiErrorMessage(json, `Failed to delete tag (HTTP ${res.status})`),
+      };
+    }
+
+    return { success: true };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Network error deleting tag";
+    return { success: false, error: msg };
+  }
+}
+
 
 
 

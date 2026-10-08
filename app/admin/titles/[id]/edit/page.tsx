@@ -29,6 +29,7 @@ import {
   getDramaById,
   updateDrama,
   getChannels,
+  getDistinctGenres,
   duplicateDrama,
   getDramaPreviewUrl,
   deleteDrama,
@@ -55,6 +56,7 @@ export default function AdminTitleEditPage({
 
   const [drama, setDrama] = useState<Drama | null>(null);
   const [channelsList, setChannelsList] = useState<Channel[]>([]);
+  const [genreList, setGenreList] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -86,7 +88,7 @@ export default function AdminTitleEditPage({
       setErrorMessage(null);
 
       try {
-        const [dramaData, fetchedChannels] = await Promise.all([
+        const [dramaData, fetchedChannels, fetchedGenres] = await Promise.all([
           getDramaById(id),
           getChannels().catch(async () => {
             if (ENABLE_MOCK_FALLBACK) {
@@ -95,12 +97,17 @@ export default function AdminTitleEditPage({
             }
             return [];
           }),
+          getDistinctGenres().catch(() => []),
         ]);
 
         if (!mounted) return;
 
         if (fetchedChannels && fetchedChannels.length > 0) {
           setChannelsList(fetchedChannels);
+        }
+
+        if (fetchedGenres && fetchedGenres.length > 0) {
+          setGenreList(fetchedGenres);
         }
 
         if (dramaData) {
@@ -509,12 +516,18 @@ export default function AdminTitleEditPage({
                 <input
                   id="genre"
                   type="text"
+                  list="genre-datalist"
                   value={form.genre}
                   onChange={(e) => setForm((prev) => ({ ...prev, genre: e.target.value }))}
                   disabled={isSubmitting}
                   placeholder="Romance, Fantasy, Revenge..."
                   className="w-full rounded-md border border-border bg-bg px-3.5 py-2.5 text-sm text-text focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-colors disabled:opacity-60"
                 />
+                <datalist id="genre-datalist">
+                  {genreList.map((g) => (
+                    <option key={g} value={g} />
+                  ))}
+                </datalist>
               </div>
 
               <div>

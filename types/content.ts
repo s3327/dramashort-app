@@ -21,6 +21,7 @@ export interface Drama {
   synopsis: string;
   channel: string;
   genre: string;
+  genreId?: string | null;
   tags: string[];
   totalEpisodes: number;
   episodesAvailable?: number;
@@ -203,3 +204,61 @@ export interface PlaybackSource {
   aspectRatio: string;
   durationSeconds: number;
 }
+
+export interface Genre {
+  id: string;
+  name: string;
+  slug: string;
+  sortOrder?: number;
+  isVisible?: boolean;
+  createdAt?: string | null;
+  updatedAt?: string | null;
+  dramaCount?: number;
+}
+
+export interface AdminGenre extends Genre {
+  dramaCount: number;
+}
+
+export interface CreateGenreInput {
+  name: string;
+  slug?: string;
+  sortOrder?: number;
+  isVisible?: boolean;
+}
+
+export interface UpdateGenreInput {
+  name?: string;
+  slug?: string;
+  sortOrder?: number;
+  isVisible?: boolean;
+}
+
+export interface Tag {
+  id: string;
+  name: string;
+  slug: string;
+  createdAt?: string | null;
+  updatedAt?: string | null;
+  dramaCount?: number;
+}
+
+export interface AdminTag extends Tag {
+  dramaCount: number;
+}
+
+export interface CreateTagInput {
+  name: string;
+  slug?: string;
+}
+
+export interface UpdateTagInput {
+  name?: string;
+  slug?: string;
+}
+
+export interface MergeTagsInput {
+  sourceTagId: string;
+  targetTagId: string;
+}
+
