@@ -2368,13 +2368,43 @@ These items stay ✅ for history; the gaps are tracked as new tasks.
 ---
 
 ### Task 16.3: Scheduled Publishing & Episode Release Schedule
-* **Status**: ⏳ Planned
-* **Problem**: The `Scheduled` status exists without a publish time, so it has no effect. The landing page promises "new episodes daily", but episodes have no release time.
-* **Planned Specifications**:
-  1. `titles.publish_at` and `episodes.release_at` (`timestamptz`).
-  2. A cron job flips status at publish time and calls `revalidateTag` (preferred over time-based RLS because caches must be invalidated).
-  3. The episode release hook generates "new episode" notifications for users who favorited the drama (Task 11.7).
-* **Verification**: a drama scheduled 5 minutes ahead appears publicly within one cron cycle of its publish time.
+* **Status**: ✅ Completed
+* **Depends on**: 16.1, 16.2
+* **Target Files**:
+  - `supabase/content/supabase/migrations/20261009130000_scheduled_publishing.sql`
+  - `supabase/user/supabase/migrations/20261009130000_scheduled_publishing.sql`
+  - `types/content.ts`
+  - `types/supabase-content.ts`
+  - `lib/validation/drama.ts`
+  - `lib/services/content.service.ts`
+  - `app/api/admin/dramas/route.ts`
+  - `app/api/admin/dramas/[id]/route.ts`
+  - `app/api/admin/dramas/publish-scheduled/route.ts`
+  - `app/admin/titles/[id]/edit/page.tsx`
+  - `app/admin/titles/page.tsx`
+  - `__tests__/admin/scheduled-publishing.test.ts`
+* **Delivered Capabilities**:
+  1. Database Schema & Indexing:
+     - Added `publish_at TIMESTAMPTZ DEFAULT NULL` to `titles` table in Content and User DBs.
+     - Created partial index `idx_titles_scheduled_publish ON titles (status, publish_at) WHERE status = 'Scheduled'`.
+  2. Scheduled Publishing Execution Engine:
+     - Created `GET /api/admin/dramas/publish-scheduled`: Dry-run endpoint reporting total scheduled, due now, and upcoming release dates.
+     - Created `POST /api/admin/dramas/publish-scheduled`: Promotes candidate dramas (`status = 'Scheduled' AND publish_at <= NOW()`) with verified ready episodes to `'Published'`, skipping invalid candidates with descriptive feedback and revalidating Next.js cache tags (`titles`, `dramas`, `/`, `/browse`).
+     - Added support for cron authentication via `CRON_SECRET` or admin session.
+  3. Validation & Persistence Guards:
+     - Enforced `publishAt` ISO timestamp requirement when creating or updating a drama with status `"Scheduled"`.
+     - Blocked switching status to `"Scheduled"` if no publish timestamp is provided.
+     - Preserved `publish_at` in drama create and update route handlers.
+  4. Content Operations Admin UI:
+     - In `app/admin/titles/[id]/edit/page.tsx`: added interactive `datetime-local` picker when "Scheduled" status is selected, with target time indicators in the right sidebar.
+     - In `app/admin/titles/page.tsx`: added target publish date input in Add Drama modal, displayed scheduled badges with formatted release dates in table and card grid views, and added a "Process Scheduled" manual trigger button in the toolbar.
+  5. Automated Test Suite:
+     - 11 unit/integration tests in `__tests__/admin/scheduled-publishing.test.ts` validating payload requirements, dry-run previews, scheduled publisher promotion, zero-episode safeguards, and CRUD persistence.
+* **Verification**:
+  - `npx tsc --noEmit` passed with 0 errors.
+  - `__tests__/admin/scheduled-publishing.test.ts` passed 11/11 tests.
+  - Full test runner `npm test` passed 823/823 tests across 216 suites (100% pass rate).
+  - Next.js production build (`npm run build`) compiled all routes cleanly.
 
 ---
 

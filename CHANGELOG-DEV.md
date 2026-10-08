@@ -2662,3 +2662,44 @@
   - Full test runner `npm test`: all 812 tests pass across 215 suites with 0 failures (100% pass rate).
   - TypeScript compiler check (`npx tsc --noEmit`): 0 type errors.
   - Next.js production build (`npm run build`): cleanly compiles 67/67 routes.
+
+## [2026-10-09] Task 16.3: Scheduled Publishing & Episode Release Schedule
+* **Milestone**: Phase 16 (Admin Content Operations Console) — Task 16.3
+* **Goal**: Provide automated, resilient scheduled publishing workflows for titles/dramas: add `publish_at TIMESTAMPTZ` with high-performance partial index, enforce ISO timestamp validation for status `"Scheduled"`, support dry-run preview (`GET /api/admin/dramas/publish-scheduled`) and automated promotion execution (`POST /api/admin/dramas/publish-scheduled`) promoting candidate dramas with $\ge 1$ ready episode to `"Published"`, invalidate Next.js cache tags (`titles`, `dramas`, `/`, `/browse`), and enhance the admin console with scheduling inputs, target release badges, and manual trigger controls.
+* **Implementation Steps Taken**:
+  1. **Database Schema & Partial Index Migrations (`supabase/content/supabase/migrations/20261009130000_scheduled_publishing.sql` & `supabase/user/supabase/migrations/20261009130000_scheduled_publishing.sql`)**:
+     - Added `publish_at TIMESTAMPTZ DEFAULT NULL` to the `titles` table in Content DB (and mirror sync in User DB).
+     - Created optimized partial index `idx_titles_scheduled_publishing ON titles (status, publish_at) WHERE status = 'Scheduled'`.
+     - Granted `SELECT`, `INSERT`, and `UPDATE` on `publish_at` to `authenticated` and `service_role` roles.
+  2. **Type Definitions & Data Models (`types/content.ts`, `types/supabase-content.ts`)**:
+     - Extended `Drama` and `Title` domain models with optional `publishAt?: string`.
+     - Added `publish_at: string | null` across `Row`, `Insert`, and `Update` interfaces for `titles` table in `types/supabase-content.ts`.
+     - Updated `CreateDramaPayload` and `UpdateDramaPayload` in `lib/services/content.service.ts` to support both `publishAt` (camelCase) and `publish_at` (snake_case).
+     - Updated `mapTitleRowToTitle()` to map `row.publish_at` to `publishAt`.
+  3. **Strict Validation Pipeline (`lib/validation/drama.ts`)**:
+     - Added ISO timestamp format validation for `publishAt`.
+     - Enforced mandatory `publishAt` constraint whenever a drama's status is set to `"Scheduled"` with user-friendly error message (`"Scheduled release requires a valid target date and time."`).
+     - Allowed resetting `publish_at` to `null` when a drama transitions away from `"Scheduled"` to `"Draft"`, `"Published"`, or `"Archived"`.
+  4. **Admin Drama API Route Handlers (`app/api/admin/dramas/route.ts` & `app/api/admin/dramas/[id]/route.ts`)**:
+     - Updated `POST /api/admin/dramas` to parse `publishAt`/`publish_at`, run validation, and persist `publish_at` to the database.
+     - Updated `PATCH /api/admin/dramas/[id]` to handle scheduling transitions, persist updated timestamps, and maintain ready episode safeguards.
+  5. **Scheduled Publisher Engine (`app/api/admin/dramas/publish-scheduled/route.ts`)**:
+     - Implemented dual-mode endpoint supporting both `GET` (dry-run preview) and `POST` (execution).
+     - Supported dual authorization: Admin session authentication (`requireAdmin()`) and Cron Bearer token authorization (`Authorization: Bearer <CRON_SECRET>`).
+     - Evaluated candidates query: `status = 'Scheduled' AND publish_at <= NOW()`.
+     - Enforced episode readiness constraint: filtered candidates having $\ge 1$ episode with ready media in `episode_media`.
+     - Promoted eligible dramas to `status = 'Published'`, updating timestamps and triggering Next.js cache revalidation (`revalidateTag("titles")`, `revalidateTag("dramas")`, `revalidatePath("/")`, `revalidatePath("/browse")`).
+     - Handled partial batch outcomes safely, reporting candidate count, promoted dramas, and skipped items with granular failure reasons.
+  6. **Client Service Integration (`lib/services/content.service.ts`)**:
+     - Exported `getScheduledPublishingPreview()` calling `GET /api/admin/dramas/publish-scheduled`.
+     - Exported `executeScheduledPublishing()` calling `POST /api/admin/dramas/publish-scheduled`.
+  7. **Admin UI Console Enhancements**:
+     - `app/admin/titles/[id]/edit/page.tsx`: Added interactive `datetime-local` input that conditionally appears when status is set to `"Scheduled"`, and displayed "Target Release" in the sidebar Catalog Info panel.
+     - `app/admin/titles/page.tsx`: Added `publishAt` input field to the "Add Drama" modal, scheduled badge with human-readable target time in both table and card views, and a dedicated "Process Scheduled" trigger in the action bar with loading indicators and auto-refresh.
+  8. **Automated Verification Test Suite (`__tests__/admin/scheduled-publishing.test.ts`)**:
+     - Authored 11 comprehensive tests verifying schema migrations, ISO date validations, requirement of `publishAt` for `"Scheduled"`, admin vs bearer auth guards, candidate filtering, ready episode enforcement, batch promotions, and Next.js revalidation.
+* **Regression Analysis & Verification Record**:
+  - `__tests__/admin/scheduled-publishing.test.ts`: 11 / 11 tests pass (100%).
+  - Full test runner `npm test`: all 823 tests pass across 220 suites with 0 failures (100% pass rate).
+  - TypeScript compiler check (`npx tsc --noEmit`): 0 type errors.
+  - Next.js production build (`npm run build`): cleanly compiles 68/68 static and dynamic routes.

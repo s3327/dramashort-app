@@ -162,6 +162,7 @@ export async function POST(request: NextRequest) {
       poster_url: input.posterUrl ?? DEFAULT_POSTER_URL,
       banner_url: input.bannerUrl ?? null,
       status: input.status ?? "Draft",
+      publish_at: input.publishAt ?? null,
       total_episodes: input.totalEpisodes ?? 40,
       free_episodes_count: input.freeEpisodesCount ?? 5,
       release_year: new Date().getFullYear(),

@@ -38,6 +38,7 @@ export interface DramaFields {
   posterUrl?: string;
   bannerUrl?: string;
   freeEpisodesCount?: number;
+  publishAt?: string | null;
 }
 
 export interface FieldError {
@@ -355,6 +356,30 @@ export function validateDramaPayload(input: unknown, mode: "create" | "update"):
       });
     } else {
       value.bannerUrl = banner.trim();
+    }
+  }
+
+  const publishAt = firstDefined(body, ["publishAt", "publish_at"]);
+  if (publishAt !== undefined) {
+    if (publishAt === null || publishAt === "") {
+      value.publishAt = null;
+    } else if (typeof publishAt === "string") {
+      const parsed = Date.parse(publishAt);
+      if (isNaN(parsed)) {
+        errors.push({ field: "publishAt", message: "publishAt must be a valid date timestamp string." });
+      } else {
+        value.publishAt = new Date(parsed).toISOString();
+      }
+    } else {
+      errors.push({ field: "publishAt", message: "publishAt must be a valid date timestamp string or null." });
+    }
+  }
+
+  if (value.status === "Scheduled") {
+    if (mode === "create" && !value.publishAt) {
+      errors.push({ field: "publishAt", message: "publishAt is required when status is Scheduled." });
+    } else if (mode === "update" && value.publishAt === null) {
+      errors.push({ field: "publishAt", message: "publishAt cannot be null when status is Scheduled." });
     }
   }
 

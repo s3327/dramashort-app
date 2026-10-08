@@ -168,6 +168,7 @@ export type Database = {
           hero_tagline?: string | null
           featured_rank?: number | null
           free_episodes_count?: number
+          publish_at?: string | null
         }
         Insert: {
           channel_code: string
@@ -192,6 +193,7 @@ export type Database = {
           hero_tagline?: string | null
           featured_rank?: number | null
           free_episodes_count?: number
+          publish_at?: string | null
         }
         Update: {
           channel_code?: string
@@ -216,6 +218,7 @@ export type Database = {
           hero_tagline?: string | null
           featured_rank?: number | null
           free_episodes_count?: number
+          publish_at?: string | null
         }
         Relationships: [
           {

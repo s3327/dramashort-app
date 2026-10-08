@@ -88,6 +88,7 @@ export function mapTitleRowToTitle(row: TitleRow): Title {
       row.free_episodes_count !== undefined && row.free_episodes_count !== null
         ? Number(row.free_episodes_count)
         : 5,
+    publishAt: row.publish_at || null,
   };
 }
 
@@ -1291,6 +1292,8 @@ export interface UpdateDramaPayload {
   poster_url?: string;
   banner?: string;
   banner_url?: string;
+  publishAt?: string | null;
+  publish_at?: string | null;
 }
 
 /**
@@ -1351,6 +1354,8 @@ export interface CreateDramaPayload {
   poster_url?: string;
   banner?: string;
   banner_url?: string;
+  publishAt?: string | null;
+  publish_at?: string | null;
   status?: TitleStatus;
 }
 
@@ -1672,6 +1677,95 @@ export async function deleteAdminEpisode(
     return { success: true };
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : "Network error deleting episode";
+    return { success: false, error: msg };
+  }
+}
+
+export interface ScheduledPublishingPreview {
+  totalScheduled: number;
+  dueNowCount: number;
+  upcomingCount: number;
+  nextPublishAt: string | null;
+  dueDramas: Array<{ id: string; title: string; slug: string; publish_at: string }>;
+  upcomingDramas: Array<{ id: string; title: string; slug: string; publish_at: string }>;
+}
+
+export interface ScheduledPublishingResult {
+  message: string;
+  publishedCount: number;
+  skippedCount: number;
+  publishedDramas: Array<{ id: string; title: string; slug: string }>;
+  skippedDramas: Array<{ id: string; title: string; reason: string }>;
+}
+
+/**
+ * Previews upcoming scheduled content and counts items due for publication.
+ */
+export async function getScheduledPublishingPreview(): Promise<{
+  success: boolean;
+  data?: ScheduledPublishingPreview;
+  error?: string;
+}> {
+  try {
+    const res = await adminFetch("/api/admin/dramas/publish-scheduled", {
+      method: "GET",
+    });
+
+    const json = (await readJsonSafely(res)) as {
+      success?: boolean;
+      data?: ScheduledPublishingPreview;
+      error?: string;
+    };
+
+    if (!res.ok || !json?.success) {
+      return {
+        success: false,
+        error: getApiErrorMessage(json, `Failed to load scheduled preview (HTTP ${res.status})`),
+      };
+    }
+
+    return {
+      success: true,
+      data: json.data,
+    };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Network error fetching scheduled preview";
+    return { success: false, error: msg };
+  }
+}
+
+/**
+ * Manually executes the scheduled publisher job, promoting eligible dramas to 'Published'.
+ */
+export async function executeScheduledPublishing(): Promise<{
+  success: boolean;
+  data?: ScheduledPublishingResult;
+  error?: string;
+}> {
+  try {
+    const res = await adminFetch("/api/admin/dramas/publish-scheduled", {
+      method: "POST",
+    });
+
+    const json = (await readJsonSafely(res)) as {
+      success?: boolean;
+      data?: ScheduledPublishingResult;
+      error?: string;
+    };
+
+    if (!res.ok || !json?.success) {
+      return {
+        success: false,
+        error: getApiErrorMessage(json, `Failed to execute scheduled publishing (HTTP ${res.status})`),
+      };
+    }
+
+    return {
+      success: true,
+      data: json.data,
+    };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Network error running scheduled publishing";
     return { success: false, error: msg };
   }
 }

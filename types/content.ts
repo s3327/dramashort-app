@@ -33,6 +33,7 @@ export interface Drama {
   heroTagline?: string | null;
   featuredRank?: number | null;
   freeEpisodesCount?: number;
+  publishAt?: string | null;
 }
 
 /**

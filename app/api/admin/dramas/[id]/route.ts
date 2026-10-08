@@ -98,6 +98,7 @@ export async function PATCH(
   if (input.posterUrl !== undefined) updateData.poster_url = input.posterUrl;
   if (input.bannerUrl !== undefined) updateData.banner_url = input.bannerUrl;
   if (input.freeEpisodesCount !== undefined) updateData.free_episodes_count = input.freeEpisodesCount;
+  if (input.publishAt !== undefined) updateData.publish_at = input.publishAt;
 
   if (
     input.channelName === undefined &&
@@ -109,6 +110,26 @@ export async function PATCH(
 
   try {
     const adminClient = getContentAdminClient();
+
+    if (input.status === "Scheduled") {
+      let effectivePublishAt = input.publishAt;
+      if (effectivePublishAt === undefined) {
+        const { data: existingRow } = await adminClient
+          .from("titles")
+          .select("publish_at")
+          .eq("id", id)
+          .maybeSingle();
+        effectivePublishAt = existingRow?.publish_at;
+      }
+      if (!effectivePublishAt) {
+        return apiError(
+          "VALIDATION_ERROR",
+          "A scheduled publish date and time (publishAt) is required when status is Scheduled.",
+          400,
+          [{ field: "publishAt", message: "publishAt is required when status is Scheduled." }]
+        );
+      }
+    }
 
     if (input.status === "Published") {
       // Task 16.1: Block publishing a drama if it has zero ready episodes

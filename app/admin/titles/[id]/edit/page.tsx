@@ -4,7 +4,7 @@ import { use, useEffect, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Save, Loader2, AlertCircle, Film } from "lucide-react";
+import { ArrowLeft, Save, Loader2, AlertCircle, Film, Calendar, Clock } from "lucide-react";
 import AdminSidebar from "@/components/admin/AdminSidebar";
 import { ArtworkUploader } from "@/components/admin/ArtworkUploader";
 import Breadcrumbs from "@/components/Breadcrumbs";
@@ -52,6 +52,7 @@ export default function AdminTitleEditPage({
     synopsis: "",
     poster: "",
     banner: "",
+    publishAt: "",
   });
 
   // 1. Fetch dynamic Drama data & Channels catalog on mount
@@ -82,6 +83,11 @@ export default function AdminTitleEditPage({
 
         if (dramaData) {
           setDrama(dramaData);
+          const rawPublishAt = dramaData.publishAt;
+          const formattedPublish = rawPublishAt
+            ? new Date(rawPublishAt).toISOString().slice(0, 16)
+            : "";
+
           setForm({
             title: dramaData.title || "",
             channel: dramaData.channel || fetchedChannels[0]?.name || "DramaShort Originals",
@@ -92,6 +98,7 @@ export default function AdminTitleEditPage({
             synopsis: dramaData.synopsis || "",
             poster: dramaData.poster || "",
             banner: dramaData.bannerUrl || "",
+            publishAt: formattedPublish,
           });
         }
       } catch (err: unknown) {
@@ -119,6 +126,11 @@ export default function AdminTitleEditPage({
       return;
     }
 
+    if (form.status === "Scheduled" && !form.publishAt) {
+      setErrorMessage("Scheduled release requires a valid target date and time.");
+      return;
+    }
+
     setIsSubmitting(true);
     setErrorMessage(null);
 
@@ -126,6 +138,13 @@ export default function AdminTitleEditPage({
       .split(",")
       .map((t) => t.trim())
       .filter(Boolean);
+
+    const publishAtPayload =
+      form.status === "Scheduled"
+        ? (form.publishAt ? new Date(form.publishAt).toISOString() : undefined)
+        : form.publishAt
+        ? new Date(form.publishAt).toISOString()
+        : null;
 
     const result = await updateDrama(id, {
       title: form.title.trim(),
@@ -137,6 +156,7 @@ export default function AdminTitleEditPage({
       synopsis: form.synopsis.trim(),
       poster: form.poster.trim() || undefined,
       banner: form.banner.trim() || undefined,
+      publishAt: publishAtPayload,
     });
 
     setIsSubmitting(false);
@@ -349,6 +369,28 @@ export default function AdminTitleEditPage({
               </div>
             </div>
 
+            {form.status === "Scheduled" && (
+              <div className="p-3.5 rounded-lg border border-primary/30 bg-primary/5 space-y-1.5 animate-fadeIn">
+                <label htmlFor="publishAt" className="block text-xs font-semibold text-text flex items-center gap-1.5">
+                  <Calendar size={14} className="text-primary" />
+                  <span>Scheduled Release Date & Time</span>
+                </label>
+                <input
+                  id="publishAt"
+                  type="datetime-local"
+                  value={form.publishAt}
+                  onChange={(e) => setForm((prev) => ({ ...prev, publishAt: e.target.value }))}
+                  required={form.status === "Scheduled"}
+                  disabled={isSubmitting}
+                  className="w-full rounded-md border border-border bg-bg px-3.5 py-2 text-sm text-text focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-colors disabled:opacity-60"
+                />
+                <p className="text-[11px] text-text-muted flex items-center gap-1">
+                  <Clock size={12} className="shrink-0" />
+                  <span>The drama will automatically flip to &quot;Published&quot; once this scheduled target time passes.</span>
+                </p>
+              </div>
+            )}
+
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label htmlFor="genre" className="block text-sm font-semibold mb-1.5">
@@ -517,6 +559,14 @@ export default function AdminTitleEditPage({
                   )}
                 </div>
               </div>
+              {form.status === "Scheduled" && (form.publishAt || drama.publishAt) && (
+                <div className="flex items-center justify-between text-xs py-1 border-b border-border/50">
+                  <span className="text-text-muted">Target Release</span>
+                  <span className="font-medium text-amber-500 font-mono text-[11px]">
+                    {new Date(form.publishAt || drama.publishAt || "").toLocaleString()}
+                  </span>
+                </div>
+              )}
               <div className="flex items-center justify-between text-xs py-1 border-b border-border/50">
                 <span className="text-text-muted">Episodes Available</span>
                 <span className="font-medium">

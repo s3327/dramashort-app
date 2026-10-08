@@ -445,7 +445,7 @@ describe("Artwork Uploads & Aspect Ratio Validation (Task 16.2)", () => {
       } as any));
 
       const squarePng = createMockPng(600, 600);
-      const blob = new Blob([squarePng], { type: "image/png" });
+      const blob = new Blob([new Uint8Array(squarePng)], { type: "image/png" });
       const formData = new FormData();
       formData.append("file", blob, "square.png");
       formData.append("type", "poster");
@@ -470,7 +470,7 @@ describe("Artwork Uploads & Aspect Ratio Validation (Task 16.2)", () => {
       } as any));
 
       const posterPng = createMockPng(600, 900);
-      const blob = new Blob([posterPng], { type: "image/png" });
+      const blob = new Blob([new Uint8Array(posterPng)], { type: "image/png" });
       const formData = new FormData();
       formData.append("file", blob, "poster.png");
       formData.append("type", "poster");
@@ -504,7 +504,7 @@ describe("Artwork Uploads & Aspect Ratio Validation (Task 16.2)", () => {
       } as any));
 
       const bannerJpeg = createMockJpeg(1280, 720);
-      const blob = new Blob([bannerJpeg], { type: "image/jpeg" });
+      const blob = new Blob([new Uint8Array(bannerJpeg)], { type: "image/jpeg" });
       const formData = new FormData();
       formData.append("file", blob, "banner.jpg");
       formData.append("type", "banner");

@@ -4,7 +4,7 @@ import { Suspense, useCallback, useEffect, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Search, List, LayoutGrid, Pencil, Plus, Loader2, Film } from "lucide-react";
+import { Search, List, LayoutGrid, Pencil, Plus, Loader2, Film, Calendar, Clock, Zap } from "lucide-react";
 import AdminSidebar from "@/components/admin/AdminSidebar";
 import Pagination from "@/components/Pagination";
 import Modal from "@/components/Modal";
@@ -17,6 +17,7 @@ import {
   getAdminDramas,
   getChannels,
   createDrama,
+  executeScheduledPublishing,
   type Drama,
   type TitleStatus,
 } from "@/lib/services/content.service";
@@ -72,8 +73,10 @@ function AdminTitlesContent() {
     totalEpisodes: 40,
     poster: "",
     banner: "",
+    publishAt: "",
     status: "Draft" as TitleStatus,
   });
+  const [isProcessingScheduled, setIsProcessingScheduled] = useState(false);
 
   // Load distinct channels from Content DB
   useEffect(() => {
@@ -199,11 +202,21 @@ function AdminTitlesContent() {
       return;
     }
 
+    if (newDrama.status === "Scheduled" && !newDrama.publishAt) {
+      setDramaFormError("Scheduled release requires a valid target date and time.");
+      return;
+    }
+
     setIsSubmittingDrama(true);
     setDramaFormError("");
 
     const chosenChannel =
       newDrama.channel || channelList[0]?.name || "DramaShort Originals";
+
+    const publishAtPayload =
+      newDrama.status === "Scheduled" && newDrama.publishAt
+        ? new Date(newDrama.publishAt).toISOString()
+        : undefined;
 
     const res = await createDrama({
       title: newDrama.title.trim(),
@@ -214,6 +227,7 @@ function AdminTitlesContent() {
       totalEpisodes: Number(newDrama.totalEpisodes) || 40,
       poster: newDrama.poster.trim() || undefined,
       banner: newDrama.banner.trim() || undefined,
+      publishAt: publishAtPayload,
       status: newDrama.status,
     });
 
@@ -230,6 +244,7 @@ function AdminTitlesContent() {
         totalEpisodes: 40,
         poster: "",
         banner: "",
+        publishAt: "",
         status: "Draft",
       });
       showToast("Drama created successfully");
@@ -237,6 +252,18 @@ function AdminTitlesContent() {
       router.push(`/admin/dramas/${res.data.id}/edit`);
     } else {
       setDramaFormError(res.error || "Failed to create drama");
+    }
+  };
+
+  const handleRunScheduler = async () => {
+    setIsProcessingScheduled(true);
+    const res = await executeScheduledPublishing();
+    setIsProcessingScheduled(false);
+    if (res.success && res.data) {
+      showToast(res.data.message || "Scheduled publisher executed.");
+      fetchCatalog(query, selectedChannel, selectedStatus, page, rowsPerPage);
+    } else {
+      showToast(res.error || "Failed to run scheduled publisher.");
     }
   };
 
@@ -252,17 +279,33 @@ function AdminTitlesContent() {
               All dramas in the catalog.
             </p>
           </div>
-          <button
-            type="button"
-            onClick={() => {
-              setDramaFormError("");
-              setIsAddModalOpen(true);
-            }}
-            className="flex items-center gap-1.5 rounded-full bg-btn-primary hover:bg-btn-primary-hover text-btn-primary-text font-semibold text-sm px-4 py-2 shadow-sm transition-colors cursor-pointer"
-          >
-            <Plus size={16} strokeWidth={2.5} />
-            Add Drama
-          </button>
+          <div className="flex items-center gap-2.5">
+            <button
+              type="button"
+              onClick={handleRunScheduler}
+              disabled={isProcessingScheduled}
+              title="Promote past-due scheduled dramas immediately"
+              className="inline-flex items-center gap-1.5 rounded-full border border-border bg-surface hover:bg-surface-raised text-text font-semibold text-sm px-3.5 py-2 shadow-xs transition-colors disabled:opacity-60 cursor-pointer"
+            >
+              {isProcessingScheduled ? (
+                <Loader2 size={15} className="animate-spin text-primary" />
+              ) : (
+                <Zap size={15} className="text-amber-500" />
+              )}
+              <span>{isProcessingScheduled ? "Processing..." : "Process Scheduled"}</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setDramaFormError("");
+                setIsAddModalOpen(true);
+              }}
+              className="flex items-center gap-1.5 rounded-full bg-btn-primary hover:bg-btn-primary-hover text-btn-primary-text font-semibold text-sm px-4 py-2 shadow-sm transition-colors cursor-pointer"
+            >
+              <Plus size={16} strokeWidth={2.5} />
+              Add Drama
+            </button>
+          </div>
         </div>
 
         <form onSubmit={handleSearch} className="flex flex-wrap items-center gap-3 mb-6">
@@ -500,11 +543,19 @@ function AdminTitlesContent() {
                     </td>
                     <td className="px-3 py-3 text-text-muted">{t.channel}</td>
                     <td className="px-3 py-3">
-                      <span
-                        className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${STATUS_STYLES[t.status]}`}
-                      >
-                        {t.status}
-                      </span>
+                      <div className="flex flex-col gap-0.5">
+                        <span
+                          className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold w-fit ${STATUS_STYLES[t.status]}`}
+                        >
+                          {t.status}
+                        </span>
+                        {t.status === "Scheduled" && t.publishAt && (
+                          <span className="text-[10px] text-text-muted flex items-center gap-1 font-mono">
+                            <Clock size={10} className="text-amber-500 shrink-0" />
+                            <span>{new Date(t.publishAt).toLocaleDateString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}</span>
+                          </span>
+                        )}
+                      </div>
                     </td>
                     <td className="px-3 py-3 text-right">
                       <div className="inline-flex items-center gap-1 justify-end">
@@ -582,11 +633,19 @@ function AdminTitlesContent() {
                   <p className="mt-1 text-xs text-text-muted">
                     {t.year} · {t.episodesAvailable !== undefined ? `${t.episodesAvailable}/${t.totalEpisodes}` : t.totalEpisodes} eps
                   </p>
-                  <span
-                    className={`mt-2 inline-flex rounded-full border px-2 py-0.5 text-[10px] font-semibold ${STATUS_STYLES[t.status]}`}
-                  >
-                    {t.status}
-                  </span>
+                  <div className="mt-2 flex items-center justify-between gap-1">
+                    <span
+                      className={`inline-flex rounded-full border px-2 py-0.5 text-[10px] font-semibold ${STATUS_STYLES[t.status]}`}
+                    >
+                      {t.status}
+                    </span>
+                    {t.status === "Scheduled" && t.publishAt && (
+                      <span className="text-[10px] text-text-muted font-mono flex items-center gap-0.5">
+                        <Clock size={10} className="text-amber-500 shrink-0" />
+                        <span>{new Date(t.publishAt).toLocaleDateString([], { month: "short", day: "numeric" })}</span>
+                      </span>
+                    )}
+                  </div>
                 </div>
               </div>
             ))}
@@ -720,6 +779,27 @@ function AdminTitlesContent() {
                 </select>
               </div>
             </div>
+
+            {newDrama.status === "Scheduled" && (
+              <div className="p-3 rounded-md border border-primary/30 bg-primary/5 space-y-1 animate-fadeIn">
+                <label htmlFor="newDrama-publishAt" className="block text-xs font-semibold text-text flex items-center gap-1.5">
+                  <Calendar size={13} className="text-primary" />
+                  <span>Target Publish Date & Time</span>
+                </label>
+                <input
+                  id="newDrama-publishAt"
+                  type="datetime-local"
+                  value={newDrama.publishAt}
+                  onChange={(e) => setNewDrama({ ...newDrama, publishAt: e.target.value })}
+                  required
+                  className="w-full rounded-md border border-border bg-surface px-3 py-1.5 text-xs text-text focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary"
+                />
+                <p className="text-[11px] text-text-muted flex items-center gap-1">
+                  <Clock size={11} className="shrink-0" />
+                  <span>The drama will automatically flip to Published when this target time arrives.</span>
+                </p>
+              </div>
+            )}
 
             <div className="space-y-4 pt-1 border-t border-border/60">
               <ArtworkUploader
