@@ -2451,3 +2451,39 @@
   - Full test runner `npm test`: all 734 tests pass across 194 suites with 0 failures (100% pass rate).
   - TypeScript compiler check (`npx tsc --noEmit`): 0 type errors.
   - Next.js production build (`npm run build`): cleanly compiles 65/65 routes (including new `ƒ /api/events`).
+---
+
+## [2026-10-08] Task 15.2: Client Tracking Module
+* **Milestone**: Phase 15 (Product Analytics, Engagement Tracking & Real Trending) — Task 15.2
+* **Goal**: Build and integrate the client-side playback analytics engine: FIFO event queueing, 10-second periodic batch flush, guaranteed unload flush via `sendBeacon` and `keepalive` fetch, attribution capture on entry, anonymous device identification, privacy consent controls, player progress milestone tracking, and user action telemetry.
+* **Implementation Steps Taken**:
+  1. **Core Client Tracking Engine (`lib/analytics/track.ts`)**:
+     - Built lightweight in-memory FIFO queue (`eventQueue: PlaybackEventPayload[]`) with 150-item buffer cap to prevent memory leaks during extended offline periods.
+     - Implemented periodic batch flush interval (`10_000` ms) and guaranteed flush-on-hide lifecycle hooks (`visibilitychange`, `pagehide`, `beforeunload`).
+     - Transport resilience: sync unload uses `navigator.sendBeacon` with `text/plain` JSON payload or `fetch(..., { keepalive: true })`. Failed async batches automatically restore to queue for retry.
+     - Anonymous device identification: reads/writes `dramashort_anon_id` cookie (2-year TTL) with `localStorage` fallback.
+     - Watch session identification: generates and persists per-session UUID in `sessionStorage` (`dramashort_session_id`).
+     - Attribution engine: extracts UTM parameters from query string (`utm_source`, `utm_medium`, `utm_campaign`, `utm_term`, `utm_content`) and Telegram campaign queries (`tgWebAppStartParam`, `startapp`, `ref`), persisting to `sessionStorage` (`dramashort_utm`).
+     - Platform detection: resolves `web`, `pwa` (standalone display mode), or `tma` (Telegram WebApp).
+     - Privacy & consent controls: `hasAnalyticsConsent()`, `setAnalyticsConsent()`, and `NEXT_PUBLIC_ENABLE_ANALYTICS` kill-switch. Zero events enqueued when consent declined; queue is immediately purged on consent revocation.
+  2. **Player Progress Milestones & Hook Integration (`components/player/useProgressReporter.ts` & `WatchPlayerIsland.tsx`)**:
+     - Upgraded `useProgressReporter.ts` with optional `tracking` configuration and milestone tracking refs.
+     - Integrated into `WatchPlayerIsland.tsx` to automatically emit:
+       - `episode_start`: on first playback of an episode.
+       - `episode_progress_25`: on crossing 25% duration threshold (deduplicated per episode).
+       - `episode_progress_50`: on crossing 50% duration threshold (deduplicated per episode).
+       - `episode_progress_75`: on crossing 75% duration threshold (deduplicated per episode).
+       - `episode_complete`: on video ended.
+       - `episode_skip`: on episode change before 95% completion.
+       - Synchronous analytics queue flush on `visibilitychange` (hidden) and unmount.
+  3. **Engagement Action Telemetry Integration**:
+     - `components/player/WatchOverlay.tsx`: dispatches `share` with native/clipboard share method payload and `favorite_add` on favorite toggle.
+     - `components/islands/DramaInteractiveActions.tsx`: dispatches `favorite_add` on favorite toggle.
+     - `lib/analytics/guest-engagement.ts`: routes soft engagement prompts (`guest_prompt_shown`, `guest_prompt_cta`, `guest_prompt_dismiss`) through `trackGuestPrompt`.
+  4. **Automated Verification Test Suite (`__tests__/analytics/client-tracking.test.ts`)**:
+     - Authored 21 automated unit and contract tests verifying anonymous ID generation/reuse, session ID, UTM capture, platform detection, privacy/consent controls, event queueing, periodic flush, beacon flush, network retry, action helpers, batch slicing ($\le 50$), queue memory cap (150), and hook integration contracts.
+* **Regression Analysis & Verification Record**:
+  - `__tests__/analytics/client-tracking.test.ts`: 21 / 21 tests pass (100%).
+  - Full test runner `npm test`: all 755 tests pass across 204 suites with 0 failures (100% pass rate).
+  - TypeScript compiler check (`npx tsc --noEmit`): 0 type errors.
+  - Next.js production build (`npm run build`): cleanly compiles 65/65 static/dynamic routes.

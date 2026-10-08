@@ -12,6 +12,7 @@ import { useFavorites } from "@/contexts/FavoritesContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/useToast";
 import { isGuestPromptDismissed } from "@/lib/analytics/guest-engagement";
+import { trackFavorite } from "@/lib/analytics/track";
 
 export interface DramaInteractiveActionsProps {
   slug: string;
@@ -48,6 +49,7 @@ export default function DramaInteractiveActions({
     if (ok) {
       if (!wasFavorited) {
         showToast("Added to Favorites");
+        trackFavorite({ titleSlug: slug, episodeNumber: 1 });
         // Soft engagement prompt (Task 14.8): Trigger when guest adds their 2nd favorite
         if (!user && !isGuestPromptDismissed("favorite")) {
           const projectedCount = favoritedSlugs.has(slug)

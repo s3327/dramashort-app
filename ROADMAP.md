@@ -2126,7 +2126,7 @@ These items stay ✅ for history; the gaps are tracked as new tasks.
 * **Target Files**: `supabase/user/supabase/migrations/20261008170000_playback_events.sql` (new), `types/analytics.ts` (new), `lib/services/analytics.service.ts` (new), `lib/security/rate-limiter.ts`, `lib/api/responses.ts`, `app/api/events/route.ts` (new), `__tests__/analytics/event-ingestion.test.ts` (new)
 * **Delivered Capabilities**:
   1. **Dual DB Architecture & Migration (`20261008170000_playback_events.sql`)**:
-     - Created `public.playback_events` in User DB with schema: `id bigserial PRIMARY KEY`, `occurred_at timestamptz`, `user_id uuid REFERENCES auth.users(id) ON DELETE SET NULL`, `anon_id uuid NOT NULL`, `session_id text NOT NULL`, `title_slug text NOT NULL`, `episode_number integer`, `event_type text NOT NULL`, `platform text NOT NULL`, `position_seconds numeric(10,2)`, `duration_seconds numeric(10,2)`, `utm jsonb`, `payload jsonb`, `created_at timestamptz`.
+     - Hybrid analytics architecture (decided in ADR-0003): created `public.playback_events` in User DB with schema: `id bigserial PRIMARY KEY`, `occurred_at timestamptz`, `user_id uuid REFERENCES auth.users(id) ON DELETE SET NULL`, `anon_id uuid NOT NULL`, `session_id text NOT NULL`, `title_slug text NOT NULL`, `episode_number integer`, `event_type text NOT NULL`, `platform text NOT NULL`, `position_seconds numeric(10,2)`, `duration_seconds numeric(10,2)`, `utm jsonb`, `payload jsonb`, `created_at timestamptz`.
      - Strict RLS enabled with `ENABLE ROW LEVEL SECURITY`: client direct queries blocked (`FOR ALL USING (false)`), service role bypass for batch insertion.
      - Aggregation and analytics indexes created: compound `(title_slug, occurred_at DESC)`, `(event_type, occurred_at DESC)`, `(user_id, occurred_at DESC)`, `(anon_id, occurred_at DESC)`, and `(occurred_at DESC)`.
   2. **Analytics Domain Types (`types/analytics.ts`)**:
@@ -2152,13 +2152,39 @@ These items stay ✅ for history; the gaps are tracked as new tasks.
 ---
 
 ### Task 15.2: Client Tracking Module
-* **Status**: ⏳ Planned
-* **Target Files**: `lib/analytics/track.ts` (new), `components/player/useProgressReporter.ts` (Task 14.1)
-* **Planned Specifications**:
-  1. In-memory queue flushed every 10 seconds and on `visibilitychange`; anonymous ID cookie; UTM capture on entry (ads and Telegram campaigns).
-  2. Integrated into the player progress reporter, the drama page, share, and favorites.
-  3. No-op when the analytics feature flag is off or the user has declined consent.
-* **Verification**: unit tests for batching and flush-on-hide; manual check that no events are sent without consent where consent is required.
+* **Status**: ✅ Completed (2026-10-08)
+* **Target Files**: `lib/analytics/track.ts` (new), `components/player/useProgressReporter.ts`, `components/watch/WatchPlayerIsland.tsx`, `components/player/WatchOverlay.tsx`, `components/islands/DramaInteractiveActions.tsx`, `lib/analytics/guest-engagement.ts`, `__tests__/analytics/client-tracking.test.ts` (new)
+* **Problem**: Ingestion endpoint (Task 15.1) lacked a unified client tracking module to buffer playback events, batch network dispatches, capture attribution on entry, and reliably deliver telemetry without impacting playback performance or losing data on unload.
+* **Delivered Capabilities**:
+  1. **Core Client Tracking Engine (`lib/analytics/track.ts`)**:
+     - In-memory event queue with FIFO buffering and automatic retry upon transient network errors.
+     - 10-second periodic batch flush interval and guaranteed flush-on-hide (`visibilitychange`, `pagehide`, `beforeunload`) using `navigator.sendBeacon` (with `text/plain` body) or `fetch(..., { keepalive: true })`.
+     - Anonymous device ID resolution (`dramashort_anon_id` cookie with 2-year TTL and `localStorage` fallback).
+     - Session ID persistence in `sessionStorage` (`dramashort_session_id`).
+     - Initial UTM attribution capture (`utm_source`, `utm_medium`, `utm_campaign`, `utm_term`, `utm_content`) and Telegram campaign support (`tgWebAppStartParam`, `startapp`, `ref`).
+     - Platform detection: `web`, `pwa` (display-mode standalone), `tma` (Telegram WebApp).
+     - Privacy & consent engine: `hasAnalyticsConsent()`, `setAnalyticsConsent()`, environment kill-switch (`NEXT_PUBLIC_ENABLE_ANALYTICS=false`), with queue immediate purge on consent revocation.
+  2. **Player Progress Milestones & Lifecycle Integration**:
+     - Upgraded `useProgressReporter.ts` with `tracking` configuration and milestone tracker refs (`milestoneTrackerRef`).
+     - Upgraded `WatchPlayerIsland.tsx` to automatically emit:
+       - `episode_start`: on first playback of an episode.
+       - `episode_progress_25`: on crossing 25% duration threshold (deduplicated per episode).
+       - `episode_progress_50`: on crossing 50% duration threshold (deduplicated per episode).
+       - `episode_progress_75`: on crossing 75% duration threshold (deduplicated per episode).
+       - `episode_complete`: on video ended.
+       - `episode_skip`: on episode change before 95% completion.
+       - Synchronous analytics queue flush on `visibilitychange` (hidden) and unmount.
+  3. **Engagement Action Integration**:
+     - `components/player/WatchOverlay.tsx`: dispatches `share` (native and clipboard) and `favorite_add`.
+     - `components/islands/DramaInteractiveActions.tsx`: dispatches `favorite_add`.
+     - `lib/analytics/guest-engagement.ts`: routes soft engagement prompt actions (`guest_prompt_shown`, `guest_prompt_cta`, `guest_prompt_dismiss`) into `trackGuestPrompt`.
+  4. **Automated Verification Test Suite (`__tests__/analytics/client-tracking.test.ts`)**:
+     - 21 automated unit and contract tests verifying anonymous ID generation/reuse, session ID, UTM capture, platform detection, privacy/consent controls, event queueing, periodic flush, beacon flush, network retry, action helpers, batch slicing ($\le 50$), queue memory cap (150), and hook integration contracts.
+* **Verification Results**:
+  - `__tests__/analytics/client-tracking.test.ts`: 21 / 21 tests passing (100%).
+  - Clean TypeScript verification (`npx tsc --noEmit` with 0 errors).
+  - Full test runner `npm test`: all 755 tests passing with 0 failures across 204 test suites.
+  - Production build `npm run build`: cleanly compiles 65/65 static/dynamic routes.
 
 ---
 

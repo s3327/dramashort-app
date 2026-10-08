@@ -29,6 +29,13 @@ import {
   preloadEpisodePlayback,
   getPreloadedEpisodePlayback,
 } from "@/lib/player/episode-preloader";
+import {
+  trackPlaybackStart,
+  trackPlaybackProgress,
+  trackPlaybackComplete,
+  trackPlaybackSkip,
+  flushEvents,
+} from "@/lib/analytics/track";
 
 const EPISODES_PER_TAB = 40;
 
@@ -135,6 +142,21 @@ export default function WatchPlayerIsland({
     durationSeconds: 0,
   });
 
+  // Analytics milestone tracker ref (Task 15.2)
+  const milestoneTrackerRef = useRef<{
+    hasStarted: boolean;
+    has25: boolean;
+    has50: boolean;
+    has75: boolean;
+    hasCompleted: boolean;
+  }>({
+    hasStarted: false,
+    has25: false,
+    has50: false,
+    has75: false,
+    hasCompleted: false,
+  });
+
   useEffect(() => {
     currentProgressRef.current.episode = currentEpisode;
   }, [currentEpisode]);
@@ -239,6 +261,29 @@ export default function WatchPlayerIsland({
 
   const handleSelectEpisode = useCallback(
     (ep: number) => {
+      // Task 15.2: Track skip if current episode was started but not finished
+      if (
+        milestoneTrackerRef.current.hasStarted &&
+        !milestoneTrackerRef.current.hasCompleted &&
+        currentProgressRef.current.progressRatio < 0.95
+      ) {
+        trackPlaybackSkip({
+          titleSlug: drama.slug,
+          episodeNumber: currentProgressRef.current.episode,
+          positionSeconds: currentProgressRef.current.positionSeconds,
+          durationSeconds: currentProgressRef.current.durationSeconds,
+        });
+      }
+
+      // Reset milestone tracking for new episode
+      milestoneTrackerRef.current = {
+        hasStarted: false,
+        has25: false,
+        has50: false,
+        has75: false,
+        hasCompleted: false,
+      };
+
       setCurrentEpisode(ep);
       setActiveTab(Math.min(maxTab, Math.floor((Math.max(1, ep) - 1) / EPISODES_PER_TAB)));
       setAutoPlayNext(true);
@@ -260,7 +305,7 @@ export default function WatchPlayerIsland({
       };
       recordProgress(ep, 0, 0, 0);
     },
-    [maxTab, recordProgress]
+    [maxTab, recordProgress, drama.slug]
   );
 
   const handleTimeUpdate = useCallback(
@@ -278,6 +323,48 @@ export default function WatchPlayerIsland({
         positionSeconds: positionSec,
         durationSeconds: durationSec,
       };
+
+      // Task 15.2: Track playback milestones
+      if (durationSec > 0) {
+        if (!milestoneTrackerRef.current.hasStarted && currentTime > 0.1) {
+          milestoneTrackerRef.current.hasStarted = true;
+          trackPlaybackStart({
+            titleSlug: drama.slug,
+            episodeNumber: currentEpisode,
+            durationSeconds: durationSec,
+          });
+        }
+        if (!milestoneTrackerRef.current.has25 && progressRatio >= 0.25) {
+          milestoneTrackerRef.current.has25 = true;
+          trackPlaybackProgress({
+            titleSlug: drama.slug,
+            episodeNumber: currentEpisode,
+            milestone: 25,
+            positionSeconds: positionSec,
+            durationSeconds: durationSec,
+          });
+        }
+        if (!milestoneTrackerRef.current.has50 && progressRatio >= 0.50) {
+          milestoneTrackerRef.current.has50 = true;
+          trackPlaybackProgress({
+            titleSlug: drama.slug,
+            episodeNumber: currentEpisode,
+            milestone: 50,
+            positionSeconds: positionSec,
+            durationSeconds: durationSec,
+          });
+        }
+        if (!milestoneTrackerRef.current.has75 && progressRatio >= 0.75) {
+          milestoneTrackerRef.current.has75 = true;
+          trackPlaybackProgress({
+            titleSlug: drama.slug,
+            episodeNumber: currentEpisode,
+            milestone: 75,
+            positionSeconds: positionSec,
+            durationSeconds: durationSec,
+          });
+        }
+      }
 
       if (
         positionSec > 0 &&
@@ -297,7 +384,7 @@ export default function WatchPlayerIsland({
         }
       }
     },
-    [currentEpisode, totalEps, dbEpisodes, recordProgress]
+    [currentEpisode, totalEps, dbEpisodes, recordProgress, drama.slug]
   );
 
   const handlePause = useCallback(
@@ -333,6 +420,16 @@ export default function WatchPlayerIsland({
     };
     recordProgress(currentEpisode, 1.0, dur, dur);
 
+    // Task 15.2: Track playback complete
+    if (!milestoneTrackerRef.current.hasCompleted) {
+      milestoneTrackerRef.current.hasCompleted = true;
+      trackPlaybackComplete({
+        titleSlug: drama.slug,
+        episodeNumber: currentEpisode,
+        durationSeconds: dur,
+      });
+    }
+
     // Soft engagement prompt (Task 14.8): Trigger when guest finishes Episode 3
     if (!user && currentEpisode === 3 && !isGuestPromptDismissed("episode_3")) {
       setGuestPromptTrigger("episode_3");
@@ -344,7 +441,7 @@ export default function WatchPlayerIsland({
     if (autoPlayNext && currentEpisode < totalEps) {
       handleSelectEpisode(currentEpisode + 1);
     }
-  }, [currentEpisode, totalEps, autoPlayNext, user, recordProgress, handleSelectEpisode]);
+  }, [currentEpisode, totalEps, autoPlayNext, user, recordProgress, handleSelectEpisode, drama.slug]);
 
   const handleCloseGuestPrompt = useCallback(() => {
     setGuestPromptOpen(false);
@@ -390,6 +487,8 @@ export default function WatchPlayerIsland({
           true
         );
       }
+      // Task 15.2: Flush client analytics queue on background / page exit
+      flushEvents({ sync: true }).catch(() => {});
     };
 
     const handleVisibilityChange = () => {

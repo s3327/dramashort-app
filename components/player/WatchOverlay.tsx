@@ -24,6 +24,7 @@ import { useFavorites } from "@/contexts/FavoritesContext";
 import type { WatchOverlayProps } from "./PlayerTypes";
 import { usePlayerGestures } from "./usePlayerGestures";
 import { toggleFullscreen as toggleFullscreenAdapter } from "@/lib/player/fullscreen-capabilities";
+import { trackShare, trackFavorite } from "@/lib/analytics/track";
 
 function formatTime(seconds: number): string {
   if (isNaN(seconds) || seconds < 0) return "00:00";
@@ -66,16 +67,19 @@ export default function WatchOverlay({
     if (ok) {
       setShareToast(wasFav ? "Removed from Favorites" : "Saved to Favorites");
       setTimeout(() => setShareToast(null), 2500);
-      if (!wasFav && onGuestPromptTrigger) {
-        const projectedCount = favoritedSlugs.has(drama.slug)
-          ? favoritedSlugs.size
-          : favoritedSlugs.size + 1;
-        if (projectedCount >= 2) {
-          onGuestPromptTrigger("favorite");
+      if (!wasFav) {
+        trackFavorite({ titleSlug: drama.slug, episodeNumber: currentEpisode });
+        if (onGuestPromptTrigger) {
+          const projectedCount = favoritedSlugs.has(drama.slug)
+            ? favoritedSlugs.size
+            : favoritedSlugs.size + 1;
+          if (projectedCount >= 2) {
+            onGuestPromptTrigger("favorite");
+          }
         }
       }
     }
-  }, [favorited, toggleFavorite, drama.slug, favoritedSlugs, onGuestPromptTrigger]);
+  }, [favorited, toggleFavorite, drama.slug, currentEpisode, favoritedSlugs, onGuestPromptTrigger]);
 
   const handleToggleMute = useCallback(() => {
     if (onToggleMute) {
@@ -148,6 +152,11 @@ export default function WatchOverlay({
           text: `Watch ${title} on DramaShort`,
           url,
         });
+        trackShare({
+          titleSlug: drama.slug,
+          episodeNumber: currentEpisode,
+          shareMethod: "native",
+        });
       } catch {
         // User cancelled share
       }
@@ -156,9 +165,14 @@ export default function WatchOverlay({
         await navigator.clipboard.writeText(url);
         setShareToast("Link copied to clipboard!");
         setTimeout(() => setShareToast(null), 2500);
+        trackShare({
+          titleSlug: drama.slug,
+          episodeNumber: currentEpisode,
+          shareMethod: "clipboard",
+        });
       } catch {}
     }
-  }, [drama.title, currentEpisode]);
+  }, [drama.title, drama.slug, currentEpisode]);
 
   const handleScrubChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const val = parseFloat(e.target.value);

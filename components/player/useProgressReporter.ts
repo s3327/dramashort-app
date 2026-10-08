@@ -2,6 +2,11 @@
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import { RESUME_NOTIFICATION_DURATION_MS } from "@/lib/player/streaming-robustness";
+import {
+  trackPlaybackStart,
+  trackPlaybackProgress,
+  trackPlaybackComplete,
+} from "@/lib/analytics/track";
 
 export interface UseProgressReporterOptions {
   videoRef: React.RefObject<HTMLVideoElement | null>;
@@ -10,6 +15,14 @@ export interface UseProgressReporterOptions {
   onTimeUpdate?: (currentTime: number, duration: number, progressRatio: number) => void;
   onPause?: (currentTime: number, duration: number, progressRatio: number) => void;
   onEnded?: () => void;
+  /**
+   * Optional analytics tracking configuration (Task 15.2)
+   */
+  tracking?: {
+    titleSlug: string;
+    episodeNumber: number;
+    enabled?: boolean;
+  };
 }
 
 function formatTime(seconds: number): string {
@@ -30,6 +43,7 @@ export function useProgressReporter({
   onTimeUpdate,
   onPause,
   onEnded,
+  tracking,
 }: UseProgressReporterOptions) {
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
@@ -41,6 +55,30 @@ export function useProgressReporter({
 
   const hasAppliedInitialProgressRef = useRef<boolean>(false);
   const resumeTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  const milestoneTrackerRef = useRef<{
+    hasStarted: boolean;
+    has25: boolean;
+    has50: boolean;
+    has75: boolean;
+    hasCompleted: boolean;
+  }>({
+    hasStarted: false,
+    has25: false,
+    has50: false,
+    has75: false,
+    hasCompleted: false,
+  });
+
+  useEffect(() => {
+    milestoneTrackerRef.current = {
+      hasStarted: false,
+      has25: false,
+      has50: false,
+      has75: false,
+      hasCompleted: false,
+    };
+  }, [tracking?.titleSlug, tracking?.episodeNumber]);
 
   const handleLoadedMetadata = useCallback(() => {
     const video = videoRef.current;
@@ -154,13 +192,57 @@ export function useProgressReporter({
       setDuration(dur);
       const ratio = curr / dur;
       onTimeUpdate?.(curr, dur, ratio);
+
+      if (tracking && tracking.enabled !== false && tracking.titleSlug) {
+        const durSec = Math.floor(dur);
+        const posSec = Math.floor(curr);
+
+        if (!milestoneTrackerRef.current.hasStarted && curr > 0.1) {
+          milestoneTrackerRef.current.hasStarted = true;
+          trackPlaybackStart({
+            titleSlug: tracking.titleSlug,
+            episodeNumber: tracking.episodeNumber,
+            durationSeconds: durSec,
+          });
+        }
+        if (!milestoneTrackerRef.current.has25 && ratio >= 0.25) {
+          milestoneTrackerRef.current.has25 = true;
+          trackPlaybackProgress({
+            titleSlug: tracking.titleSlug,
+            episodeNumber: tracking.episodeNumber,
+            milestone: 25,
+            positionSeconds: posSec,
+            durationSeconds: durSec,
+          });
+        }
+        if (!milestoneTrackerRef.current.has50 && ratio >= 0.50) {
+          milestoneTrackerRef.current.has50 = true;
+          trackPlaybackProgress({
+            titleSlug: tracking.titleSlug,
+            episodeNumber: tracking.episodeNumber,
+            milestone: 50,
+            positionSeconds: posSec,
+            durationSeconds: durSec,
+          });
+        }
+        if (!milestoneTrackerRef.current.has75 && ratio >= 0.75) {
+          milestoneTrackerRef.current.has75 = true;
+          trackPlaybackProgress({
+            titleSlug: tracking.titleSlug,
+            episodeNumber: tracking.episodeNumber,
+            milestone: 75,
+            positionSeconds: posSec,
+            durationSeconds: durSec,
+          });
+        }
+      }
     }
 
     if (video.buffered.length > 0 && Number.isFinite(dur) && dur > 0) {
       const buffEnd = video.buffered.end(video.buffered.length - 1);
       setBuffered(Math.min(1, buffEnd / dur));
     }
-  }, [videoRef, onTimeUpdate]);
+  }, [videoRef, onTimeUpdate, tracking]);
 
   const handlePause = useCallback(() => {
     const video = videoRef.current;
@@ -170,8 +252,21 @@ export function useProgressReporter({
   }, [videoRef, onPause]);
 
   const handleEnded = useCallback(() => {
+    if (
+      tracking &&
+      tracking.enabled !== false &&
+      tracking.titleSlug &&
+      !milestoneTrackerRef.current.hasCompleted
+    ) {
+      milestoneTrackerRef.current.hasCompleted = true;
+      trackPlaybackComplete({
+        titleSlug: tracking.titleSlug,
+        episodeNumber: tracking.episodeNumber,
+        durationSeconds: Math.floor(duration),
+      });
+    }
     onEnded?.();
-  }, [onEnded]);
+  }, [onEnded, tracking, duration]);
 
   const dismissResumeNotification = useCallback(() => {
     if (resumeTimeoutRef.current) {
@@ -203,5 +298,6 @@ export function useProgressReporter({
     seekToBeginning,
     resumeTimeoutRef,
     hasAppliedInitialProgressRef,
+    milestoneTrackerRef,
   };
 }

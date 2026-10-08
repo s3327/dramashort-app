@@ -4,6 +4,8 @@
  * local dismissal cooldowns for non-intrusive prompts.
  */
 
+import { trackGuestPrompt } from "@/lib/analytics/track";
+
 export type GuestEngagementTrigger = "favorite" | "episode_3";
 export type GuestEngagementAction = "shown" | "cta_click" | "dismiss";
 
@@ -65,7 +67,7 @@ export function clearGuestPromptDismissed(): void {
 
 /**
  * Tracks a guest engagement event. Dispatches a custom DOM event for client listeners
- * and defensively relays to the analytics ingestion endpoint (Phase 15.1) if available.
+ * and routes to the client analytics tracking queue (Task 15.2).
  */
 export function trackGuestEngagementEvent(data: GuestEngagementEventData): void {
   const payload = {
@@ -83,25 +85,16 @@ export function trackGuestEngagementEvent(data: GuestEngagementEventData): void 
       // Ignore DOM dispatch error
     }
 
-    // 2. Prepare forwarder to /api/events (Phase 15.1)
+    // 2. Queue into Phase 15 analytics pipeline (Task 15.2)
     try {
-      if (typeof navigator !== "undefined" && typeof navigator.sendBeacon === "function") {
-        const blob = new Blob([JSON.stringify(payload)], {
-          type: "application/json",
-        });
-        navigator.sendBeacon("/api/events", blob);
-      } else if (typeof fetch === "function") {
-        fetch("/api/events", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
-          keepalive: true,
-        }).catch(() => {
-          // Silent catch: endpoint will be activated in Task 15.1
-        });
-      }
+      trackGuestPrompt({
+        action: data.action,
+        trigger: data.trigger,
+        titleSlug: data.dramaSlug,
+        episodeNumber: data.episodeNumber,
+      });
     } catch {
-      // Silent catch
+      // Ignore tracking queue errors
     }
   }
 }
