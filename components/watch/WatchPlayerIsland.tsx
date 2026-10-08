@@ -7,6 +7,11 @@ import { Flag, Film, Tv, Star, Eye } from "lucide-react";
 import VideoPlayer from "@/components/VideoPlayer";
 import EpisodeSheet from "@/components/player/EpisodeSheet";
 import WatchOverlay from "@/components/player/WatchOverlay";
+import GuestEngagementModal from "@/components/engagement/GuestEngagementModal";
+import {
+  type GuestEngagementTrigger,
+  isGuestPromptDismissed,
+} from "@/lib/analytics/guest-engagement";
 import type { Title, Episode, PlaybackSource } from "@/types/content";
 import { getEpisodePlayback } from "@/lib/services/content.service";
 import { useAuth } from "@/contexts/AuthContext";
@@ -107,6 +112,8 @@ export default function WatchPlayerIsland({
   const [currentTimeState, setCurrentTimeState] = useState(0);
   const [durationState, setDurationState] = useState(0);
   const [isEpisodeSheetOpen, setIsEpisodeSheetOpen] = useState(false);
+  const [guestPromptOpen, setGuestPromptOpen] = useState(false);
+  const [guestPromptTrigger, setGuestPromptTrigger] = useState<GuestEngagementTrigger>("episode_3");
 
   // Synchronize when initialEpisodes changes
   useEffect(() => {
@@ -326,11 +333,25 @@ export default function WatchPlayerIsland({
     };
     recordProgress(currentEpisode, 1.0, dur, dur);
 
+    // Soft engagement prompt (Task 14.8): Trigger when guest finishes Episode 3
+    if (!user && currentEpisode === 3 && !isGuestPromptDismissed("episode_3")) {
+      setGuestPromptTrigger("episode_3");
+      setGuestPromptOpen(true);
+      return;
+    }
+
     // Auto-advance to next episode (Task 14.4)
     if (autoPlayNext && currentEpisode < totalEps) {
       handleSelectEpisode(currentEpisode + 1);
     }
-  }, [currentEpisode, totalEps, autoPlayNext, recordProgress, handleSelectEpisode]);
+  }, [currentEpisode, totalEps, autoPlayNext, user, recordProgress, handleSelectEpisode]);
+
+  const handleCloseGuestPrompt = useCallback(() => {
+    setGuestPromptOpen(false);
+    if (guestPromptTrigger === "episode_3" && autoPlayNext && currentEpisode < totalEps) {
+      handleSelectEpisode(currentEpisode + 1);
+    }
+  }, [guestPromptTrigger, autoPlayNext, currentEpisode, totalEps, handleSelectEpisode]);
 
   const handleTogglePlay = useCallback(() => {
     const vid = document.querySelector("video");
@@ -583,6 +604,12 @@ export default function WatchPlayerIsland({
                 isMuted={isMutedState}
                 onToggleMute={handleToggleMute}
                 showUnmutePill={showUnmutePillState}
+                onGuestPromptTrigger={(trigger) => {
+                  if (!user && !isGuestPromptDismissed(trigger)) {
+                    setGuestPromptTrigger(trigger);
+                    setGuestPromptOpen(true);
+                  }
+                }}
               />
             </div>
           </div>
@@ -775,6 +802,17 @@ export default function WatchPlayerIsland({
         episodes={dbEpisodes}
         onSelectEpisode={handleSelectEpisode}
         dramaTitle={drama.title}
+      />
+
+      {/* Guest Soft Engagement Modal (Task 14.8) */}
+      <GuestEngagementModal
+        open={guestPromptOpen}
+        onClose={handleCloseGuestPrompt}
+        trigger={guestPromptTrigger}
+        dramaTitle={drama.title}
+        dramaSlug={drama.slug}
+        episodeNumber={currentEpisode}
+        returnUrl={`/watch/${drama.slug}?ep=${currentEpisode}`}
       />
     </div>
   );

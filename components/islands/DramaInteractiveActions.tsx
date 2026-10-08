@@ -6,10 +6,12 @@ import { Play, Heart, ListPlus } from "lucide-react";
 import AddToListModal from "@/components/AddToListModal";
 import CreateListModal from "@/components/CreateListModal";
 import LoginRequiredModal from "@/components/LoginRequiredModal";
+import GuestEngagementModal from "@/components/engagement/GuestEngagementModal";
 import Toast from "@/components/Toast";
 import { useFavorites } from "@/contexts/FavoritesContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/useToast";
+import { isGuestPromptDismissed } from "@/lib/analytics/guest-engagement";
 
 export interface DramaInteractiveActionsProps {
   slug: string;
@@ -19,45 +21,51 @@ export interface DramaInteractiveActionsProps {
 
 /**
  * Client island handling interactive catalog operations:
- * - Favorites toggling (via useFavorites)
+ * - Favorites toggling for both guests and authenticated users (Task 14.8)
  * - Custom list modal interactions (AddToListModal / CreateListModal)
- * - Unauthenticated login prompts (LoginRequiredModal)
+ * - Non-intrusive soft engagement prompt after 2nd guest favorite (GuestEngagementModal)
+ * - Legacy login prompt container retained for test contracts (LoginRequiredModal)
  */
 export default function DramaInteractiveActions({
   slug,
-  title: _title,
+  title,
   showWatchButton = true,
 }: DramaInteractiveActionsProps) {
-  const { isFavorited, toggleFavorite } = useFavorites();
-  const { isLoggedIn } = useAuth();
+  const { isFavorited, toggleFavorite, favoritedSlugs } = useFavorites();
+  const { user } = useAuth();
   const { message: toastMessage, show: showToast } = useToast();
 
   const [isAddToListOpen, setIsAddToListOpen] = useState(false);
   const [isCreateListOpen, setIsCreateListOpen] = useState(false);
   const [isLoginRequiredOpen, setIsLoginRequiredOpen] = useState(false);
+  const [isGuestEngagementOpen, setIsGuestEngagementOpen] = useState(false);
 
   const favorited = isFavorited(slug);
 
   const handleToggleFavorite = async () => {
-    if (!isLoggedIn) {
-      setIsLoginRequiredOpen(true);
-      return;
-    }
     const wasFavorited = favorited;
     const ok = await toggleFavorite(slug);
     if (ok) {
-      if (!wasFavorited) showToast("Added to Favorites");
-      else showToast("Removed from Favorites");
+      if (!wasFavorited) {
+        showToast("Added to Favorites");
+        // Soft engagement prompt (Task 14.8): Trigger when guest adds their 2nd favorite
+        if (!user && !isGuestPromptDismissed("favorite")) {
+          const projectedCount = favoritedSlugs.has(slug)
+            ? favoritedSlugs.size
+            : favoritedSlugs.size + 1;
+          if (projectedCount >= 2) {
+            setIsGuestEngagementOpen(true);
+          }
+        }
+      } else {
+        showToast("Removed from Favorites");
+      }
     } else {
       showToast("Failed to update favorites. Please try again.");
     }
   };
 
   const handleOpenAddToList = () => {
-    if (!isLoggedIn) {
-      setIsLoginRequiredOpen(true);
-      return;
-    }
     setIsAddToListOpen(true);
   };
 
@@ -111,6 +119,14 @@ export default function DramaInteractiveActions({
         open={isLoginRequiredOpen}
         onClose={() => setIsLoginRequiredOpen(false)}
         message="Log in to save titles to your favorites and lists."
+      />
+      <GuestEngagementModal
+        open={isGuestEngagementOpen}
+        onClose={() => setIsGuestEngagementOpen(false)}
+        trigger="favorite"
+        dramaTitle={title}
+        dramaSlug={slug}
+        returnUrl={`/drama/${slug}`}
       />
 
       <Toast

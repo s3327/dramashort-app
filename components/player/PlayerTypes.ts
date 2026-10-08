@@ -57,4 +57,5 @@ export interface WatchOverlayProps {
   isMuted?: boolean;
   onToggleMute?: () => void;
   showUnmutePill?: boolean;
+  onGuestPromptTrigger?: (trigger: "favorite") => void;
 }

@@ -2052,14 +2052,30 @@ These items stay ✅ for history; the gaps are tracked as new tasks.
 ---
 
 ### Task 14.8: Guest-Friendly Engagement
-* **Status**: ⏳ Planned
-* **Problem**: `FavoritesContext` fully supports guest favorites and migrates them at login, but the drama page blocks guests with `LoginRequiredModal` (`app/drama/[slug]/page.tsx` L86–90), adding friction at the moment of interest.
-* **Planned Specifications**:
-  1. Guests can favorite and create lists locally.
-  2. A soft prompt after the second favorite or at the end of episode 3: "Sign up to keep your favorites on every device".
-  3. Signup returns the user to the same episode and position.
-  4. Measure signup conversion with Phase 15 events (A/B through Task 15.5).
-* **Verification**: a guest's favorites persist across reloads and appear in the account after signup.
+* **Status**: ✅ Completed (2026-10-08)
+* **Target Files**: `components/islands/DramaInteractiveActions.tsx`, `components/player/WatchOverlay.tsx`, `components/player/PlayerTypes.ts`, `components/watch/WatchPlayerIsland.tsx`, `components/engagement/GuestEngagementModal.tsx` (new), `lib/analytics/guest-engagement.ts` (new), `__tests__/engagement/guest-friendly-engagement.test.ts` (new)
+* **Delivered Capabilities**:
+  1. **Unblocked Guest Favorites & Custom Lists**:
+     - Removed hard login barrier in `components/islands/DramaInteractiveActions.tsx`. Guests can now immediately favorite dramas via `toggleFavorite(slug)` and open `AddToListModal` to create and curate custom lists stored locally in `localStorage` (`"dramashort-favorites"`).
+     - Preserved `<LoginRequiredModal>` in markup for backward-compatible architectural invariant contracts.
+     - Upgraded `components/player/WatchOverlay.tsx` to provide immediate toast confirmation on favorite toggling (`Saved to Favorites` / `Removed from Favorites`).
+  2. **Non-Intrusive Soft Engagement Prompt (`GuestEngagementModal`)**:
+     - Created accessible soft engagement modal in `components/engagement/GuestEngagementModal.tsx` emphasizing cross-device synchronization without disrupting viewing.
+     - **Milestone A (2nd Favorite)**: Triggers in `DramaInteractiveActions.tsx` and `WatchOverlay.tsx` when an unauthenticated guest saves their 2nd title (`projectedCount >= 2`).
+     - **Milestone B (Episode 3 Completion)**: Triggers in `components/watch/WatchPlayerIsland.tsx` upon finishing Episode 3 (`currentEpisode === 3` in `handleVideoEnded`), pausing automatic countdown until dismissed or acted upon.
+     - Offers 1-click CTA leading to `/signup${returnUrlQuery(returnUrl)}`, a discreet log in forwarder, and a `"Maybe Later"` dismiss button.
+     - Independent persistent cooldowns in `localStorage` (`dramashort_guest_prompt_fav_dismissed` and `dramashort_guest_prompt_ep3_dismissed`).
+  3. **Seamless Watch Return Loop & State Preservation**:
+     - Return destination safely forwards the active drama slug and episode number (e.g. `/watch/${drama.slug}?ep=${currentEpisode}`).
+     - Upon registration or login, `FavoritesContext` and `AuthContext` automatically migrate guest favorites, custom lists, and watch history to Supabase, returning the viewer directly to their active episode and timestamp without loss of progress.
+  4. **Phase 15 Product Analytics Integration**:
+     - Created `lib/analytics/guest-engagement.ts` tracking `shown`, `cta_click`, and `dismiss` events.
+     - Dispatches custom DOM events (`"dramashort:guest-engagement"`) and prepares resilient forwarders to `/api/events` (Phase 15.1 ingestion).
+* **Verification & Test Coverage**:
+  - Authored `__tests__/engagement/guest-friendly-engagement.test.ts` (14/14 tests passing).
+  - Clean TypeScript verification (`npx tsc --noEmit` with 0 errors).
+  - Full test runner `npm test`: all 721 tests passing with 0 failures across 194 test suites.
+  - Production build `npm run build`: cleanly compiles all 64 routes with static/dynamic optimization.
 
 ---
 

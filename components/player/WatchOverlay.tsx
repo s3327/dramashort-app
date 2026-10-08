@@ -54,10 +54,28 @@ export default function WatchOverlay({
   isMuted = false,
   onToggleMute,
   showUnmutePill,
+  onGuestPromptTrigger,
 }: WatchOverlayProps) {
-  const { isFavorited, toggleFavorite } = useFavorites();
+  const { isFavorited, toggleFavorite, favoritedSlugs } = useFavorites();
   const favorited = isFavorited(drama.slug);
   const [shareToast, setShareToast] = useState<string | null>(null);
+
+  const handleToggleFavorite = useCallback(async () => {
+    const wasFav = favorited;
+    const ok = await toggleFavorite(drama.slug);
+    if (ok) {
+      setShareToast(wasFav ? "Removed from Favorites" : "Saved to Favorites");
+      setTimeout(() => setShareToast(null), 2500);
+      if (!wasFav && onGuestPromptTrigger) {
+        const projectedCount = favoritedSlugs.has(drama.slug)
+          ? favoritedSlugs.size
+          : favoritedSlugs.size + 1;
+        if (projectedCount >= 2) {
+          onGuestPromptTrigger("favorite");
+        }
+      }
+    }
+  }, [favorited, toggleFavorite, drama.slug, favoritedSlugs, onGuestPromptTrigger]);
 
   const handleToggleMute = useCallback(() => {
     if (onToggleMute) {
@@ -290,7 +308,7 @@ export default function WatchOverlay({
         {/* Favorite Button */}
         <button
           type="button"
-          onClick={() => toggleFavorite(drama.slug)}
+          onClick={handleToggleFavorite}
           className="flex flex-col items-center gap-1 text-white group"
           aria-label={favorited ? "Remove from favorites" : "Add to favorites"}
         >
