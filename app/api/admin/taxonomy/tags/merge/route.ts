@@ -11,7 +11,7 @@ export const dynamic = "force-dynamic";
  * Merges sourceTag into targetTag, updating all titles.tags and deleting sourceTag. Admin only.
  */
 export async function POST(request: NextRequest) {
-  const auth = await requireAdmin();
+  const auth = await requireAdmin({ roles: ["admin", "editor"], permission: "taxonomy:write" });
   if (!auth.authorized) {
     return auth.response;
   }

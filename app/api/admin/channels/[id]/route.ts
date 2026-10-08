@@ -18,7 +18,7 @@ export async function GET(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const auth = await requireAdmin();
+  const auth = await requireAdmin({ roles: ["admin", "editor"], permission: "channels:read" });
   if (!auth.authorized) {
     return auth.response;
   }
@@ -49,7 +49,7 @@ export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const auth = await requireAdmin();
+  const auth = await requireAdmin({ roles: ["admin", "editor"], permission: "channels:write" });
   if (!auth.authorized) {
     return auth.response;
   }
@@ -93,7 +93,7 @@ export async function DELETE(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const auth = await requireAdmin();
+  const auth = await requireAdmin({ roles: ["admin", "editor"], permission: "channels:write" });
   if (!auth.authorized) {
     return auth.response;
   }

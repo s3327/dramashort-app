@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { requireAdmin } from "@/lib/auth/require-admin";
+import { recordAuditLog } from "@/lib/server/audit";
 import { getContentAdminClient } from "@/lib/supabase/content";
 import { mapTitleRowToTitle } from "@/lib/services/content.service";
 import { apiError, apiSuccess } from "@/lib/api/responses";
@@ -26,7 +27,7 @@ const DEFAULT_POSTER_URL =
  * Lists every drama (all statuses) with server-side search, filtering, and pagination. Admin only.
  */
 export async function GET(request: NextRequest) {
-  const auth = await requireAdmin();
+  const auth = await requireAdmin({ roles: ["admin", "editor"], permission: "dramas:read" });
   if (!auth.authorized) {
     return auth.response;
   }
@@ -115,7 +116,7 @@ export async function GET(request: NextRequest) {
  * Creates a new drama in the Content DB. Admin only.
  */
 export async function POST(request: NextRequest) {
-  const auth = await requireAdmin();
+  const auth = await requireAdmin({ roles: ["admin", "editor"], permission: "dramas:write" });
   if (!auth.authorized) {
     return auth.response;
   }
@@ -178,6 +179,17 @@ export async function POST(request: NextRequest) {
       console.error("[POST /api/admin/dramas] Supabase insert error:", insertError);
       return apiError("DATABASE_ERROR", "Failed to create drama.", 500);
     }
+
+    await recordAuditLog({
+      actorId: auth.user.id,
+      actorEmail: auth.user.email,
+      action: "drama.create",
+      entityType: "drama",
+      entityId: insertedRow.id,
+      before: null,
+      after: insertedRow,
+      ip: request.headers.get("x-forwarded-for") || undefined,
+    });
 
     return apiSuccess(mapTitleRowToTitle(insertedRow), 201);
   } catch (err) {

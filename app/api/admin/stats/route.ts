@@ -9,7 +9,7 @@ import { getAdminDashboardStats } from "@/lib/services/analytics.service";
  * Admin only.
  */
 export async function GET(request: NextRequest) {
-  const auth = await requireAdmin();
+  const auth = await requireAdmin({ roles: ["admin", "editor"], permission: "stats:read" });
   if (!auth.authorized) {
     return auth.response;
   }

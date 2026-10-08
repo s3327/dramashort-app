@@ -26,7 +26,7 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const auth = await requireAdmin();
+  const auth = await requireAdmin({ roles: ["admin", "editor"], permission: "episodes:read" });
   if (!auth.authorized) {
     return auth.response;
   }
@@ -63,7 +63,7 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const auth = await requireAdmin();
+  const auth = await requireAdmin({ roles: ["admin", "editor"], permission: "episodes:write" });
   if (!auth.authorized) {
     return auth.response;
   }
@@ -85,6 +85,11 @@ export async function POST(
   }
 
   const mode = (body as Record<string, unknown>).mode || "single";
+  const actor = {
+    id: auth.user.id,
+    email: auth.user.email,
+    ip: request.headers.get("x-forwarded-for") || undefined,
+  };
 
   try {
     // 1. Single Episode Creation
@@ -94,7 +99,7 @@ export async function POST(
         return apiError("VALIDATION_ERROR", "Invalid episode payload.", 400, validation.errors);
       }
 
-      const res = await createAdminEpisodeServer(id, validation.value);
+      const res = await createAdminEpisodeServer(id, validation.value, actor);
       if (!res.ok) {
         return apiError("DATABASE_ERROR", res.error, 400);
       }
@@ -109,7 +114,7 @@ export async function POST(
         return apiError("VALIDATION_ERROR", "Invalid bulk range payload.", 400, validation.errors);
       }
 
-      const res = await bulkCreateAdminEpisodesServer(id, validation.value);
+      const res = await bulkCreateAdminEpisodesServer(id, validation.value, actor);
       if (!res.ok) {
         return apiError("DATABASE_ERROR", res.error, 400);
       }
@@ -139,7 +144,7 @@ export async function POST(
         return apiError("VALIDATION_ERROR", "Invalid reorder payload.", 400, validation.errors);
       }
 
-      const res = await reorderAdminEpisodesServer(id, validation.value.orderedEpisodeIds);
+      const res = await reorderAdminEpisodesServer(id, validation.value.orderedEpisodeIds, actor);
       if (!res.ok) {
         return apiError("DATABASE_ERROR", res.error, 400);
       }

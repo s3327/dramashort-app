@@ -2960,3 +2960,42 @@
   - Full test runner `npm test`: all 900 tests pass across 238 suites with 0 failures (100% pass rate).
   - TypeScript compiler check (`npx tsc --noEmit`): 0 type errors.
   - Next.js production build (`npm run build`): cleanly compiles all 81 static and dynamic routes.
+---
+
+## [2026-10-09] Task 16.9: Audit Log & Role Model
+* **Milestone**: Phase 16 (Admin Content Operations Console) — Task 16.9
+* **Goal**: Establish a unified audit logging infrastructure and fine-grained role-based permissions matrix for the administrative operations console. Create `public.admin_audit_log` with performance indexes and strict RLS, formalize editor vs. admin privileges (`lib/auth/permissions.ts`), upgrade `requireAdmin` with granular permission evaluation, attach mutation audit records across dramas, episodes, channels, taxonomy, users, and platform settings, build server-side paginated audit APIs, and deliver an interactive administrative audit viewer console with a visual JSON before/after diff viewer.
+* **Implementation Steps Taken**:
+  1. **Dual Database Schema Migrations (`supabase/content/supabase/migrations/20261009190000_audit_log_and_roles.sql` & `supabase/user/supabase/migrations/20261009190000_audit_log_and_roles.sql`)**:
+     - Created `public.admin_audit_log` table with columns: `id UUID PRIMARY KEY DEFAULT gen_random_uuid()`, `actor_id UUID REFERENCES auth.users(id) ON DELETE SET NULL`, `actor_email TEXT`, `action TEXT NOT NULL`, `entity_type TEXT NOT NULL`, `entity_id TEXT NOT NULL`, `before JSONB`, `after JSONB`, `ip TEXT`, and `created_at TIMESTAMPTZ NOT NULL DEFAULT now()`.
+     - Built performance indexes: `idx_admin_audit_log_entity` (`entity_type`, `entity_id`), `idx_admin_audit_log_created_at` (`created_at DESC`), `idx_admin_audit_log_actor` (`actor_id`, `created_at DESC`), and `idx_admin_audit_log_action` (`action`).
+     - Enabled RLS with policies: `admin_audit_log_service_role` granting full access to `service_role`, `admin_audit_log_admin_read` granting `SELECT` strictly to `profiles.role = 'admin'`, and blocked direct client write operations.
+  2. **Domain Modeling & Permissions Matrix (`types/audit.ts`, `lib/auth/permissions.ts`)**:
+     - Defined `AuditLogItem`, `GetAuditLogsQuery`, `PaginatedAuditLogsResult`, `AuditDiffField`, and `AuditDiffResult` in `types/audit.ts`.
+     - Defined `AdminPermission` domain (`dramas:read`, `dramas:write`, `episodes:read`, `episodes:write`, `channels:read`, `channels:write`, `taxonomy:read`, `taxonomy:write`, `stats:read`, `users:read`, `users:write`, `settings:read`, `settings:write`, `audit:read`).
+     - Formalized role mappings: `editor` restricted strictly to content operations and dashboard stats; `admin` has superuser authority across all resources.
+     - Implemented `hasPermission(role, permission)` engine.
+  3. **Guard Integration & Execution Context (`lib/auth/require-admin.ts`)**:
+     - Upgraded `requireAdmin({ roles?, permission?, client? })` to evaluate both role lists and granular permission requirements against profile records.
+     - Extracts and returns `actor` context (`id`, `email`, `role`, `ip`) for audit recording.
+  4. **Query Parsing & Visual Diff Engine (`lib/validation/audit.ts`)**:
+     - Implemented `computeAuditDiff(before, after)` isolating modified, added, and removed keys for rich visual inspections.
+     - Implemented `parseAuditLogsQueryParams()` safely normalizing search keywords, entity type, action, date ranges, and clamping pagination bounds.
+  5. **Server Operations & Comprehensive Mutation Auditing (`lib/server/audit.ts`, `lib/server/admin.ts`, `lib/server/admin-episodes.ts`)**:
+     - Implemented `recordAuditLog(entry, client?)` with client injection support for isolated test execution.
+     - Implemented `getAuditLogsServer(query, client?)` with multi-field searching, entity filtering, date filtering, and range pagination.
+     - Wired mutation audit trails across drama creation and updates with previous-state snapshots.
+     - Wired mutation audit trails across episode creation, bulk creation, metadata updates, deletion with renumbering, and reordering.
+     - Updated admin channels, taxonomy, user administration, and settings routes to pass actor metadata and verify granular permissions.
+  6. **Secured Audit REST API Endpoint (`app/api/admin/audit/route.ts`)**:
+     - Implemented `GET /api/admin/audit` guarded by `requireAdmin({ roles: ['admin'], permission: 'audit:read' })`.
+  7. **Admin Navigation & Audit Viewer Console UI (`components/admin/AdminSidebar.tsx`, `app/admin/audit/page.tsx`)**:
+     - Added "Audit Log" navigation item with `ShieldCheck` icon to `components/admin/AdminSidebar.tsx`.
+     - Built comprehensive audit console at `app/admin/audit/page.tsx` with search input, entity filter dropdown, date range presets, color-coded action badges, pagination controls, and an interactive Before / After JSON visual diff modal.
+  8. **Automated Verification Test Suite (`__tests__/admin/audit-log-and-role-model.test.ts`)**:
+     - Authored 19 comprehensive unit, integration, and security tests verifying migration SQL invariants, permissions matrix contracts, `requireAdmin` guard enforcement (401/403), diff engine accuracy, server operations with mock client, and UI contracts.
+* **Regression Analysis & Verification Record**:
+  - `__tests__/admin/audit-log-and-role-model.test.ts`: 19 / 19 tests pass (100%).
+  - Full test runner `npm test`: all 919 tests pass across 245 suites with 0 failures (100% pass rate).
+  - TypeScript compiler check (`npx tsc --noEmit`): 0 type errors.
+  - Next.js production build (`npm run build`): cleanly compiles all 82 static and dynamic routes.

@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { requireAdmin } from "@/lib/auth/require-admin";
+import { recordAuditLog } from "@/lib/server/audit";
 import { getContentAdminClient } from "@/lib/supabase/content";
 import { mapTitleRowToTitle } from "@/lib/services/content.service";
 import { apiError, apiSuccess } from "@/lib/api/responses";
@@ -19,7 +20,7 @@ export async function GET(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const auth = await requireAdmin();
+  const auth = await requireAdmin({ roles: ["admin", "editor"], permission: "dramas:read" });
   if (!auth.authorized) {
     return auth.response;
   }
@@ -65,7 +66,7 @@ export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const auth = await requireAdmin();
+  const auth = await requireAdmin({ roles: ["admin", "editor"], permission: "dramas:write" });
   if (!auth.authorized) {
     return auth.response;
   }
@@ -110,6 +111,16 @@ export async function PATCH(
 
   try {
     const adminClient = getContentAdminClient();
+
+    const { data: previousRow } = await adminClient
+      .from("titles")
+      .select("*")
+      .eq("id", id)
+      .maybeSingle();
+
+    if (!previousRow) {
+      return apiError("NOT_FOUND", "Drama not found.", 404);
+    }
 
     if (input.status === "Scheduled") {
       let effectivePublishAt = input.publishAt;
@@ -262,6 +273,17 @@ export async function PATCH(
       return apiError("NOT_FOUND", "Drama not found.", 404);
     }
 
+    await recordAuditLog({
+      actorId: auth.user.id,
+      actorEmail: auth.user.email,
+      action: "drama.update",
+      entityType: "drama",
+      entityId: id,
+      before: previousRow,
+      after: updatedRow,
+      ip: request.headers.get("x-forwarded-for") || undefined,
+    });
+
     return apiSuccess(mapTitleRowToTitle(updatedRow));
   } catch (err) {
     console.error("[PATCH /api/admin/dramas/:id] Unexpected error:", err);
@@ -283,7 +305,7 @@ export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const auth = await requireAdmin();
+  const auth = await requireAdmin({ roles: ["admin", "editor"], permission: "dramas:write" });
   if (!auth.authorized) {
     return auth.response;
   }

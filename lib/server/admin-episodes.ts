@@ -10,6 +10,7 @@ import type {
   UpdateEpisodeInput,
 } from "@/types/content";
 import { type Result, ok, err } from "@/lib/common/result";
+import { recordAuditLog } from "./audit";
 
 function computeMediaStatus(
   mediaRow: any,
@@ -126,7 +127,8 @@ export async function getAdminEpisodesServer(
  */
 export async function createAdminEpisodeServer(
   titleId: string,
-  input: CreateEpisodeInput
+  input: CreateEpisodeInput,
+  actor?: { id?: string | null; email?: string | null; ip?: string | null }
 ): Promise<Result<AdminEpisode, string>> {
   try {
     const adminClient = getContentAdminClient();
@@ -238,7 +240,20 @@ export async function createAdminEpisodeServer(
         .eq("id", titleId);
     }
 
-    return ok(mapToAdminEpisode(newEp, mediaRow));
+    const mapped = mapToAdminEpisode(newEp, mediaRow);
+
+    await recordAuditLog({
+      actorId: actor?.id,
+      actorEmail: actor?.email,
+      action: "episode.create",
+      entityType: "episode",
+      entityId: newEp.id,
+      before: null,
+      after: mapped as any,
+      ip: actor?.ip,
+    });
+
+    return ok(mapped);
   } catch (error: any) {
     console.error("[createAdminEpisodeServer] Unexpected error:", error);
     return err(error?.message || "Failed to create episode.");
@@ -250,7 +265,8 @@ export async function createAdminEpisodeServer(
  */
 export async function bulkCreateAdminEpisodesServer(
   titleId: string,
-  input: BulkCreateEpisodesInput
+  input: BulkCreateEpisodesInput,
+  actor?: { id?: string | null; email?: string | null; ip?: string | null }
 ): Promise<Result<{ createdCount: number }, string>> {
   try {
     const adminClient = getContentAdminClient();
@@ -321,6 +337,21 @@ export async function bulkCreateAdminEpisodesServer(
         .update({ total_episodes: count })
         .eq("id", titleId);
     }
+
+    await recordAuditLog({
+      actorId: actor?.id,
+      actorEmail: actor?.email,
+      action: "episode.bulk_create",
+      entityType: "episode",
+      entityId: titleId,
+      before: null,
+      after: {
+        createdCount: rowsToInsert.length,
+        startNumber: input.startNumber,
+        endNumber: input.endNumber,
+      },
+      ip: actor?.ip,
+    });
 
     return ok({ createdCount: rowsToInsert.length });
   } catch (error: any) {
@@ -414,7 +445,8 @@ export async function bulkAssignMediaServer(
  */
 export async function updateAdminEpisodeServer(
   episodeId: string,
-  input: UpdateEpisodeInput
+  input: UpdateEpisodeInput,
+  actor?: { id?: string | null; email?: string | null; ip?: string | null }
 ): Promise<Result<AdminEpisode, string>> {
   try {
     const adminClient = getContentAdminClient();
@@ -520,7 +552,20 @@ export async function updateAdminEpisodeServer(
       mediaRow = existingMedia;
     }
 
-    return ok(mapToAdminEpisode(updatedEp, mediaRow));
+    const mapped = mapToAdminEpisode(updatedEp, mediaRow);
+
+    await recordAuditLog({
+      actorId: actor?.id,
+      actorEmail: actor?.email,
+      action: "episode.update",
+      entityType: "episode",
+      entityId: episodeId,
+      before: currentEp,
+      after: mapped as any,
+      ip: actor?.ip,
+    });
+
+    return ok(mapped);
   } catch (error: any) {
     console.error("[updateAdminEpisodeServer] Unexpected error:", error);
     return err(error?.message || "Failed to update episode.");
@@ -531,7 +576,8 @@ export async function updateAdminEpisodeServer(
  * Deletes an episode and renumbers remaining episodes safely under UNIQUE(title_id, episode_number).
  */
 export async function deleteAdminEpisodeServer(
-  episodeId: string
+  episodeId: string,
+  actor?: { id?: string | null; email?: string | null; ip?: string | null }
 ): Promise<Result<{ success: boolean }, string>> {
   try {
     const adminClient = getContentAdminClient();
@@ -539,7 +585,7 @@ export async function deleteAdminEpisodeServer(
     // 1. Fetch target episode
     const { data: targetEp, error: fetchErr } = await adminClient
       .from("episodes")
-      .select("id, title_id, episode_number")
+      .select("id, title_id, episode_number, title")
       .eq("id", episodeId)
       .maybeSingle();
 
@@ -597,6 +643,17 @@ export async function deleteAdminEpisodeServer(
       .update({ total_episodes: remainingCount })
       .eq("id", titleId);
 
+    await recordAuditLog({
+      actorId: actor?.id,
+      actorEmail: actor?.email,
+      action: "episode.delete",
+      entityType: "episode",
+      entityId: episodeId,
+      before: targetEp,
+      after: null,
+      ip: actor?.ip,
+    });
+
     return ok({ success: true });
   } catch (error: any) {
     console.error("[deleteAdminEpisodeServer] Unexpected error:", error);
@@ -609,7 +666,8 @@ export async function deleteAdminEpisodeServer(
  */
 export async function reorderAdminEpisodesServer(
   titleId: string,
-  orderedEpisodeIds: string[]
+  orderedEpisodeIds: string[],
+  actor?: { id?: string | null; email?: string | null; ip?: string | null }
 ): Promise<Result<{ success: boolean }, string>> {
   try {
     const adminClient = getContentAdminClient();
@@ -617,7 +675,7 @@ export async function reorderAdminEpisodesServer(
     // Verify all IDs belong to this drama
     const { data: episodes, error: fetchErr } = await adminClient
       .from("episodes")
-      .select("id")
+      .select("id, episode_number")
       .eq("title_id", titleId);
 
     if (fetchErr || !episodes) {
@@ -661,6 +719,17 @@ export async function reorderAdminEpisodesServer(
         return err("Failed during reorder phase 2.");
       }
     }
+
+    await recordAuditLog({
+      actorId: actor?.id,
+      actorEmail: actor?.email,
+      action: "episode.reorder",
+      entityType: "episode",
+      entityId: titleId,
+      before: { previousOrder: episodes },
+      after: { newOrder: orderedEpisodeIds },
+      ip: actor?.ip,
+    });
 
     return ok({ success: true });
   } catch (error: any) {

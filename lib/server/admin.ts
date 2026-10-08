@@ -89,7 +89,8 @@ export interface AdminDramasResult {
  * Uses getContentAdminClient() (service role) directly without internal HTTP round-trips.
  */
 export async function createDrama(
-  payload: CreateDramaPayload
+  payload: CreateDramaPayload,
+  options?: { actor?: { id?: string | null; email?: string | null; ip?: string | null } }
 ): Promise<Result<Drama, string>> {
   try {
     const validation = validateDramaPayload(payload, "create");
@@ -140,6 +141,17 @@ export async function createDrama(
       return err(error?.message || "Failed to create drama in database");
     }
 
+    await recordAuditLog({
+      actorId: options?.actor?.id,
+      actorEmail: options?.actor?.email,
+      action: "drama.create",
+      entityType: "drama",
+      entityId: data.id,
+      before: null,
+      after: data,
+      ip: options?.actor?.ip,
+    });
+
     return ok(mapDramaRowToDrama(data));
   } catch (error) {
     return err(error instanceof Error ? error.message : "Error creating drama");
@@ -157,7 +169,8 @@ export const createTitle = createDrama;
  */
 export async function updateDrama(
   id: string,
-  payload: UpdateDramaPayload
+  payload: UpdateDramaPayload,
+  options?: { actor?: { id?: string | null; email?: string | null; ip?: string | null } }
 ): Promise<Result<Drama, string>> {
   if (!id) return err("Drama ID is required");
   if (!isUuid(id)) return err("Drama id must be a valid UUID");
@@ -172,6 +185,13 @@ export async function updateDrama(
     const input = validation.value;
     const adminClient = getContentAdminClient();
 
+    // Fetch previous drama state for accurate audit before snapshot
+    const { data: previousDrama } = await adminClient
+      .from("titles")
+      .select("*")
+      .eq("id", id)
+      .maybeSingle();
+
     const updateData: TitleUpdate = {};
     if (input.title !== undefined) updateData.title = input.title;
     if (input.synopsis !== undefined) updateData.synopsis = input.synopsis;
@@ -183,17 +203,11 @@ export async function updateDrama(
 
     const requestedSlug = input.slug || payload.slug;
     if (requestedSlug !== undefined) {
-      const { data: currentDrama, error: fetchErr } = await adminClient
-        .from("titles")
-        .select("slug, status")
-        .eq("id", id)
-        .maybeSingle();
+      const currentSlug = previousDrama?.slug;
+      if (!previousDrama) return err("Drama not found");
 
-      if (fetchErr) return err(fetchErr.message);
-      if (!currentDrama) return err("Drama not found");
-
-      if (requestedSlug !== currentDrama.slug) {
-        if (currentDrama.status === "Published") {
+      if (requestedSlug !== currentSlug) {
+        if (previousDrama.status === "Published") {
           return err("Slug cannot be modified once a drama has been published.");
         }
         updateData.slug = requestedSlug;
@@ -229,6 +243,17 @@ export async function updateDrama(
     if (!data) {
       return err("Drama not found");
     }
+
+    await recordAuditLog({
+      actorId: options?.actor?.id,
+      actorEmail: options?.actor?.email,
+      action: "drama.update",
+      entityType: "drama",
+      entityId: id,
+      before: previousDrama ?? null,
+      after: data,
+      ip: options?.actor?.ip,
+    });
 
     return ok(mapDramaRowToDrama(data));
   } catch (error) {

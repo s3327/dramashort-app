@@ -14,7 +14,7 @@ export const dynamic = "force-dynamic";
  * Lists all tags with live database usage counts. Admin only.
  */
 export async function GET() {
-  const auth = await requireAdmin();
+  const auth = await requireAdmin({ roles: ["admin", "editor"], permission: "taxonomy:read" });
   if (!auth.authorized) {
     return auth.response;
   }
@@ -33,7 +33,7 @@ export async function GET() {
  * Creates a new tag. Admin only.
  */
 export async function POST(request: NextRequest) {
-  const auth = await requireAdmin();
+  const auth = await requireAdmin({ roles: ["admin", "editor"], permission: "taxonomy:write" });
   if (!auth.authorized) {
     return auth.response;
   }

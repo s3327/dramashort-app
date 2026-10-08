@@ -14,7 +14,7 @@ export const dynamic = "force-dynamic";
  * Lists all channels with live database drama counts. Admin only.
  */
 export async function GET() {
-  const auth = await requireAdmin();
+  const auth = await requireAdmin({ roles: ["admin", "editor"], permission: "channels:read" });
   if (!auth.authorized) {
     return auth.response;
   }
@@ -33,7 +33,7 @@ export async function GET() {
  * Creates a new channel with slug & code uniqueness and audit logging. Admin only.
  */
 export async function POST(request: NextRequest) {
-  const auth = await requireAdmin();
+  const auth = await requireAdmin({ roles: ["admin", "editor"], permission: "channels:write" });
   if (!auth.authorized) {
     return auth.response;
   }

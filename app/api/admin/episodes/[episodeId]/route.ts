@@ -17,7 +17,7 @@ export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ episodeId: string }> }
 ) {
-  const auth = await requireAdmin();
+  const auth = await requireAdmin({ roles: ["admin", "editor"], permission: "episodes:write" });
   if (!auth.authorized) {
     return auth.response;
   }
@@ -40,7 +40,11 @@ export async function PATCH(
   }
 
   try {
-    const res = await updateAdminEpisodeServer(episodeId, validation.value);
+    const res = await updateAdminEpisodeServer(episodeId, validation.value, {
+      id: auth.user.id,
+      email: auth.user.email,
+      ip: request.headers.get("x-forwarded-for") || undefined,
+    });
     if (!res.ok) {
       return apiError("DATABASE_ERROR", res.error, 400);
     }
@@ -65,7 +69,7 @@ export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ episodeId: string }> }
 ) {
-  const auth = await requireAdmin();
+  const auth = await requireAdmin({ roles: ["admin", "editor"], permission: "episodes:write" });
   if (!auth.authorized) {
     return auth.response;
   }
@@ -76,7 +80,11 @@ export async function DELETE(
   }
 
   try {
-    const res = await deleteAdminEpisodeServer(episodeId);
+    const res = await deleteAdminEpisodeServer(episodeId, {
+      id: auth.user.id,
+      email: auth.user.email,
+      ip: request.headers.get("x-forwarded-for") || undefined,
+    });
     if (!res.ok) {
       return apiError("DATABASE_ERROR", res.error, 400);
     }
