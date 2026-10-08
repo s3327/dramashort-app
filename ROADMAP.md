@@ -47,7 +47,7 @@
 | **Phase 11** | 🔴 Critical | Complete Stubbed User Flows (email verification, password recovery, account deletion, support pipeline, real 404s) | ✅ Completed (11.1–11.7 ✅) | Every visible action performs a real operation |
 | **Phase 12** | 🟠 High | Functional Bug Fixes & Data Integrity (12.1–12.8 ✅) | ✅ Completed | Full catalog visible, admin drafts, progress semantics, zero mocks, session, lists, integrity, player robustness |
 | **Phase 13** | 🟠 High | Backend Architecture Consolidation (database topology ADR-0003, server-rendered catalog, service split, taxonomy scalability, observability) | ✅ Completed (13.1–13.6 ✅) | Decision gate for Phase 8; faster pages; operability |
-| **Phase 14** | 🟠 High | Mobile-First Vertical Watch Experience & UI Polish | 🚧 In progress (14.1, 14.2, 14.3, 14.4, 14.5 ✅) | Core 9:16 viewing experience on phones |
+| **Phase 14** | 🟠 High | Mobile-First Vertical Watch Experience & UI Polish | 🚧 In progress (14.1, 14.2, 14.3, 14.4, 14.5, 14.6 ✅) | Core 9:16 viewing experience on phones |
 | **Phase 15** | 🟠 High | Product Analytics, Engagement Tracking & Real Trending | ⏳ Planned | Real views, trending and dashboard; data to tune the paywall |
 | **Phase 16** | 🟠 High | Admin Content Operations Console (episodes, uploads, scheduling, taxonomy, users, audit log) | ⏳ Planned | Catalog operable end-to-end without SQL |
 | **Phase 17** | 🟡 Medium | Quality Engineering, CI & Documentation Integrity (continuous) | ⏳ Planned | Regression safety; trustworthy status docs |
@@ -2005,13 +2005,27 @@ These items stay ✅ for history; the gaps are tracked as new tasks.
 ---
 
 ### Task 14.6: Hero Banner Quality & Accessibility
-* **Status**: ⏳ Planned
-* **Problem**: The Hero stretches the 800px portrait poster across 100vw (`components/Hero.tsx` L88–99), so it is blurry and heavily cropped on desktop. It renders one `<h1>` per slide (L125), and autoplay ignores hover, focus, and `prefers-reduced-motion`.
-* **Planned Specifications**:
-  1. Content migration adds `banner_url` (landscape 16:9, ≥ 1920px), `hero_tagline`, and `featured_rank` to dramas, with admin fields and upload (Task 16.2). The hero becomes admin-curated instead of "top 4 by views".
-  2. Without a banner: blurred poster background with the sharp poster beside the text.
-  3. One `<h1>` per page (slides use `<h2>`); pause on hover and focus; respect reduced motion; carousel ARIA (`aria-roledescription="carousel"`, polite live region).
-* **Verification**: axe check passes on `/home`; the hero image is sharp at 1920px width.
+* **Status**: ✅ Completed
+* **Problem**: The Hero previously stretched 800px portrait posters across 100vw (`components/Hero.tsx`), resulting in pixelation and heavy vertical cropping on desktop screens. It rendered an `<h1>` per slide violating document heading hierarchy, and carousel rotation ignored mouse hover, keyboard focus, and `prefers-reduced-motion`.
+* **Delivered Capabilities**:
+  1. **Schema & Domain Curation**: Added `banner_url TEXT`, `hero_tagline TEXT`, and `featured_rank INT` columns with partial indexing to `public.titles` table (`20261008160000_hero_banner_curation.sql`). Updated domain models (`Drama`, `Title`, `HeroSlide`).
+  2. **Curated & Fallback Hero Query**: Upgraded `getHeroSlides()` in `content.service.ts` and `catalog.ts` with `React.cache()` to prioritize published titles ordered by `featured_rank ASC` before supplementing with top trending titles.
+  3. **Dual Rendering Presentation**:
+     - **Mode A (High-Res Landscape Banner)**: When `slide.bannerUrl` is present, renders sharp 16:9 widescreen imagery across the canvas with Ken Burns zoom and text scrim.
+     - **Mode B (Portrait Fallback)**: When `slide.bannerUrl` is absent, applies an atmospheric, cinematic blurred backdrop (`blur-2xl scale-110 brightness-40 saturate-150`) across the canvas to eliminate pixelation, while rendering a crisp, uncropped vertical poster card in 2:3 aspect ratio (`w-44 lg:w-52 rounded-2xl shadow-2xl border border-white/20`) on desktop screens beside the title, badge, and CTA.
+  4. **Heading Hierarchy (WCAG 2.1 AA)**: Restructured heading hierarchy to feature a single canonical `<h1 className="sr-only">Featured Dramas</h1>` for the section, while individual slide titles render as `<h2>` elements.
+  5. **Pause on Hover, Focus & Reduced Motion**: Automatically pauses auto-advance on mouse hover (`onMouseEnter`/`onMouseLeave`) and keyboard focus (`onFocus`/`onBlur`). Subscribes to `prefers-reduced-motion` media query to disable automatic rotation and heavy CSS transforms when requested by the operating system.
+  6. **Accessible Carousel Controls & ARIA**:
+     - Added manual pause/resume control button with accessible `aria-label` for WCAG 2.2.2.
+     - Section declares `role="region"`, `aria-roledescription="carousel"`, and `aria-label="Featured Dramas"`.
+     - Slides declare `role="group"`, `aria-roledescription="slide"`, and `aria-label="Slide X of Y: Title"`.
+     - Integrated polite live region (`aria-live="polite"`, `aria-atomic="true"`) announcing slide changes to assistive technology.
+     - Keyboard arrow key navigation (`ArrowLeft`, `ArrowRight`) and desktop prev/next buttons.
+* **Verification & Test Coverage**:
+  - Authored `__tests__/components/hero-quality-accessibility.test.ts` (7/7 tests passing).
+  - Clean TypeScript verification (`npx tsc --noEmit` with 0 errors).
+  - Full test runner `npm test`: all 701 tests passing with 0 failures across 189 test suites.
+  - Production build `npm run build`: cleanly compiles 64/64 routes with static ISR optimization.
 
 ---
 

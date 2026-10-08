@@ -29,6 +29,9 @@ export interface Drama {
   createdAt: string;
   status: DramaStatus;
   year: number;
+  bannerUrl?: string | null;
+  heroTagline?: string | null;
+  featuredRank?: number | null;
 }
 
 /**
@@ -61,6 +64,8 @@ export interface HeroSlide {
   badge: string;
   image: string;
   href: string;
+  bannerUrl?: string | null;
+  posterUrl?: string;
 }
 
 export interface TrendingDrama {

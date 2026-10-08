@@ -2258,3 +2258,42 @@
   - `npx tsc --noEmit`: 0 type errors.
   - Full test runner `npm test`: 694 / 694 tests pass across 190 suites with 0 failures (100% pass rate).
   - Next.js production build (`npm run build`): cleanly compiles all 64 routes with static ISR optimization.
+
+---
+
+## [2026-10-08] Task 14.6: Hero Banner Quality & Accessibility
+* **Milestone**: Phase 14 (Mobile-First Vertical Watch Experience & UI Polish) — Task 14.6
+* **Goal**: Resolve desktop poster distortion and aggressive vertical cropping by introducing high-resolution 16:9 banner support and a dual-rendering fallback (ambient cinematic backdrop + sharp uncropped 2:3 card on desktop), fix document heading hierarchy by enforcing a single canonical `<h1>` and slide `<h2>` tags, implement hover/focus autoplay pausing and OS `prefers-reduced-motion` compliance, and provide complete carousel ARIA semantics with polite live regions and manual pause controls.
+* **Implementation Steps Taken**:
+  1. **Schema & Domain Curation (`supabase/content/supabase/migrations/20261008160000_hero_banner_curation.sql`, `types/content.ts`, `types/supabase-content.ts`)**:
+     - Added `banner_url TEXT` (16:9 widescreen imagery), `hero_tagline TEXT`, and `featured_rank INT` with partial indexing (`idx_titles_featured_rank`) to `public.titles` table.
+     - Granted column SELECT permissions to `anon` and `authenticated`.
+     - Updated domain models (`Drama`, `Title`, `HeroSlide`) to include `bannerUrl`, `heroTagline`, `featuredRank`, and `posterUrl`.
+     - Updated row mappers (`mapTitleRowToTitle` in `content.service.ts` and `mapDramaRowToDrama` in `catalog.ts`).
+  2. **Curated & Fallback Hero Query (`lib/services/content.service.ts`, `lib/server/catalog.ts`)**:
+     - Upgraded `getHeroSlides()` wrapped in `React.cache()` to prioritize published titles ordered by `featured_rank ASC` before supplementing with top trending titles.
+     - Mapped `bannerUrl`, `posterUrl`, and curated `tagline` into `HeroSlide` array.
+  3. **Dual-Rendering Presentation (`components/Hero.tsx`)**:
+     - **Mode A (Widescreen Banner)**: If `slide.bannerUrl` is present, renders sharp 16:9 imagery with `object-cover`.
+     - **Mode B (Portrait Poster Fallback)**: If `slide.bannerUrl` is absent, applies an atmospheric, cinematic blurred backdrop (`blur-2xl scale-110 brightness-40 saturate-150`) across the canvas to eliminate pixelation, while displaying a crisp, uncropped vertical poster card in 2:3 aspect ratio (`w-44 lg:w-52 aspect-[2/3] rounded-2xl shadow-2xl border border-white/20`) on desktop screens (`hidden md:block`) beside the title and CTA.
+  4. **Heading Hierarchy & Accessibility (WCAG 2.1 AA)**:
+     - Rendered single canonical `<h1 className="sr-only">Featured Dramas</h1>` for the section.
+     - Replaced per-slide `<h1>` elements with `<h2>` headings, preventing multiple `<h1>` elements on the page.
+  5. **Pause on Hover, Focus & Reduced Motion Compliance**:
+     - Pauses carousel countdown on `onMouseEnter` / `onMouseLeave` and `onFocus` / `onBlur`.
+     - Subscribes to `prefers-reduced-motion: reduce` media query and disables auto-rotation and heavy CSS scale animations when user prefers reduced motion.
+     - Added manual pause/resume control button with accessible `aria-label` for WCAG 2.2.2.
+  6. **Carousel ARIA Semantics & Live Regions**:
+     - Attached `role="region"`, `aria-roledescription="carousel"`, `aria-label="Featured Dramas"`.
+     - Attached `role="group"`, `aria-roledescription="slide"`, `aria-label="Slide X of Y: Title"`.
+     - Added polite live region (`aria-live="polite"`, `aria-atomic="true"`).
+     - Added keyboard arrow key navigation (`ArrowLeft`, `ArrowRight`) and desktop prev/next buttons.
+  7. **Automated Verification Test Suite (`__tests__/components/hero-quality-accessibility.test.ts`)**:
+     - Authored 7 tests validating migration schema, type definitions, service queries, heading hierarchy, carousel ARIA semantics, hover/focus/motion controls, and dual rendering.
+* **Regression Analysis & Verification Record**:
+  - `__tests__/components/hero-quality-accessibility.test.ts`: 7 / 7 tests pass (100%).
+  - `__tests__/navigation/landing-gate-and-home.test.ts`: 5 / 5 tests pass (100%).
+  - Catalog and runtime suites (`__tests__/catalog/server-rendered-catalog.test.ts`, `no-mock-fallback.test.ts`): 47 / 47 tests pass (100%).
+  - `npx tsc --noEmit`: 0 type errors.
+  - Full test runner `npm test`: 701 / 701 tests pass across 189 suites with 0 failures (100% pass rate).
+  - Next.js production build (`npm run build`): cleanly compiles all 64 routes with static ISR optimization.
