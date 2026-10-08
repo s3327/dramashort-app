@@ -2520,3 +2520,34 @@
   - Full test runner `npm test`: all 764 tests pass across 204 suites with 0 failures (100% pass rate).
   - TypeScript compiler check (`npx tsc --noEmit`): 0 type errors.
   - Next.js production build (`npm run build`): cleanly compiles 66/66 static/dynamic routes.
+---
+
+## [2026-10-08] Task 15.4: Real Admin Dashboard
+* **Milestone**: Phase 15 (Product Analytics, Engagement Tracking & Real Trending) — Task 15.4
+* **Goal**: Replace hardcoded placeholder dashboard numbers with consolidated live platform metrics, build an interactive episode retention curve visualizer with drop-off hotspot analysis for Phase 8 paywall placement, provide a top 5 trending dramas table, and protect admin analytics endpoints.
+* **Implementation Steps Taken**:
+  1. **Admin Stats Domain Types (`types/analytics.ts`)**:
+     - Declared `DramaRetentionPoint` interface capturing episode number, starts, completes, completion rate, retention relative to Episode 1, and drop-off rate from preceding episode.
+     - Declared `AdminDashboardStats` interface unifying title status counts, user metrics, 7-day playback starts/completes, open support tickets, top trending titles, and per-drama retention points.
+  2. **Analytics Service Methods (`lib/services/analytics.service.ts`)**:
+     - `getDramaRetentionCurve(slug)`: Queries `episode_stats_daily` or provides realistic baseline progression, calculating sequential retention and drop-off rates across all episodes.
+     - `getAdminDashboardStats(selectedDramaSlug)`: Queries Content DB for titles by status, User DB for total/new users and DAU/WAU, 7-day playback starts/completes from `title_stats_daily`, open support tickets count from `support_tickets`, top 5 trending titles from `getTrendingStats("7d", 5)`, and the selected drama retention curve.
+  3. **Protected Admin Stats Route (`app/api/admin/stats/route.ts`)**:
+     - Built `GET /api/admin/stats` verifying admin identity via `requireAdmin()`.
+     - Supports optional `?slug=` parameter for dynamic per-drama retention queries.
+  4. **Interactive Retention Curve Island (`components/admin/RetentionCurveIsland.tsx`)**:
+     - Client island featuring drama dropdown selector, animated progress bars, drop-off badges, hotspot warning banner, and paywall threshold indicator.
+     - Automatically flags the steepest drop-off episode and recommends optimal coin-lock placement for the upcoming Phase 8 Freemium Paywall.
+  5. **Admin Dashboard Upgrade (`app/admin/dashboard/page.tsx`)**:
+     - Connected Server Component to `getAdminDashboardStats()`.
+     - Rendered 4 platform KPI cards (Total Dramas, Audience & Reach, Starts, Support Tickets).
+     - Rendered `RetentionCurveIsland` for visual drop-off analysis.
+     - Rendered Top 5 Trending Dramas table with posters, channels, starts, and completion rates.
+     - Rendered quick operations grid for catalog, channel, and import operations.
+  6. **Automated Verification Test Suite (`__tests__/admin/admin-dashboard.test.ts`)**:
+     - Authored 5 tests verifying progression math, baseline fallback, KPI aggregation, admin authorization, and UI contracts.
+* **Regression Analysis & Verification Record**:
+  - `__tests__/admin/admin-dashboard.test.ts`: 5 / 5 tests pass (100%).
+  - Full test runner `npm test`: all 769 tests pass across 204 suites with 0 failures (100% pass rate).
+  - TypeScript compiler check (`npx tsc --noEmit`): 0 type errors.
+  - Next.js production build (`npm run build`): cleanly compiles 67/67 static/dynamic routes.

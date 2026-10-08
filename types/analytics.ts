@@ -107,3 +107,52 @@ export interface RollupJobResult {
   error?: string;
 }
 
+export interface DramaRetentionPoint {
+  episodeNumber: number;
+  starts: number;
+  completes: number;
+  avgCompletion: number;
+  retentionFromEp1: number;
+  dropOffFromPrev: number;
+}
+
+export interface AdminDashboardStats {
+  titles: {
+    total: number;
+    published: number;
+    draft: number;
+    archived: number;
+  };
+  users: {
+    total: number;
+    new7d: number;
+    dau: number;
+    wau: number;
+  };
+  playback: {
+    starts7d: number;
+    completes7d: number;
+    avgCompletionRate: number;
+  };
+  support: {
+    openTickets: number;
+  };
+  topTrending: Array<{
+    slug: string;
+    title: string;
+    poster?: string;
+    channel?: string;
+    starts: number;
+    completes: number;
+    avgCompletion: number;
+    trendingScore: number;
+  }>;
+  retention: {
+    activeDramaSlug: string;
+    activeDramaTitle: string;
+    episodes: DramaRetentionPoint[];
+    availableDramas: Array<{ slug: string; title: string }>;
+  };
+}
+
+
