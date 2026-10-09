@@ -11,6 +11,8 @@ import GuestEngagementModal from "@/components/engagement/GuestEngagementModal";
 import EpisodeUnlockModal, { AUTO_UNLOCK_STORAGE_KEY } from "@/components/player/EpisodeUnlockModal";
 import DailyCheckInModal from "@/components/rewards/DailyCheckInModal";
 import LoginRequiredModal from "@/components/LoginRequiredModal";
+import SubtitleSettingsModal from "@/components/player/SubtitleSettingsModal";
+import { loadSubtitleSettings, saveSubtitleSettings, type SubtitleSettings } from "@/types/subtitles";
 import {
   type GuestEngagementTrigger,
   isGuestPromptDismissed,
@@ -135,6 +137,10 @@ export default function WatchPlayerIsland({
   const [isUnlockModalOpen, setIsUnlockModalOpen] = useState(false);
   const [isDailyCheckInModalOpen, setIsDailyCheckInModalOpen] = useState(false);
   const [isLoginRequiredModalOpen, setIsLoginRequiredModalOpen] = useState(false);
+  const [isSubtitleModalOpen, setIsSubtitleModalOpen] = useState(false);
+  const [subtitleSettings, setSubtitleSettings] = useState<SubtitleSettings>(() => {
+    return loadSubtitleSettings();
+  });
   const [pendingLockedEpisode, setPendingLockedEpisode] = useState<number | null>(null);
   const [autoUnlockToast, setAutoUnlockToast] = useState<string | null>(null);
 
@@ -854,6 +860,7 @@ export default function WatchPlayerIsland({
                 isMuted={isMutedState}
                 onToggleMute={handleToggleMute}
                 showUnmutePill={showUnmutePillState}
+                onOpenSubtitles={() => setIsSubtitleModalOpen(true)}
                 onGuestPromptTrigger={(trigger) => {
                   if (!user && !isGuestPromptDismissed(trigger)) {
                     setGuestPromptTrigger(trigger);
@@ -1155,6 +1162,17 @@ export default function WatchPlayerIsland({
         dramaSlug={drama.slug}
         episodeNumber={currentEpisode}
         returnUrl={`/watch/${drama.slug}?ep=${currentEpisode}`}
+      />
+
+      {/* Subtitle & Caption Settings Modal (Task 9.2) */}
+      <SubtitleSettingsModal
+        isOpen={isSubtitleModalOpen}
+        onClose={() => setIsSubtitleModalOpen(false)}
+        settings={subtitleSettings}
+        onChangeSettings={(newSettings) => {
+          setSubtitleSettings(newSettings);
+          saveSubtitleSettings(newSettings);
+        }}
       />
     </div>
   );

@@ -3302,3 +3302,47 @@
   - TypeScript compiler check (`npx tsc --noEmit`): 0 type errors.
   - Architecture boundaries (`__tests__/architecture/service-layer-split.test.ts`): 25 / 25 tests pass with 0 client-server leakage.
   - Next.js production build (`npm run build`): cleanly compiles all 92 static and dynamic routes.
+---
+
+## [2026-10-09] Task 9.2: Multi-Language Subtitles (.vtt / .srt) in Video Player
+* **Milestone**: Phase 9 (Mobile PWA & Advanced Video Player UX) — Task 9.2
+* **Goal**: Deliver a comprehensive multi-language subtitle engine with HTML5 `<track>` synchronization, support for English (`en`), Indonesian (`id`), Spanish (`es`), and Chinese (`zh`), a high-readability custom subtitle overlay with adjustable typography and opacity, an accessible SubtitleSettingsModal with live dynamic preview, and persistent user preferences.
+* **Implementation Steps Taken**:
+  1. **Domain Types & Persistence Architecture (`types/subtitles.ts`)**:
+     - Defined `SubtitleLanguageCode` ("off", "en", "id", "es", "zh"), `SubtitleFontSize` ("small", "medium", "large"), `SubtitleTextColor` ("white", "yellow"), and `SubtitleBackgroundColor` ("transparent", "semi-black", "solid-black").
+     - Structured `SubtitleCue` and `SubtitleTrack` interfaces supporting both in-memory cues and remote `.vtt` file references.
+     - Implemented SSR-safe `loadSubtitleSettings()` and `saveSubtitleSettings()` persisting user preferences to `localStorage` (`dramashort_subtitle_settings`) with validation and fallback to `DEFAULT_SUBTITLE_SETTINGS`.
+  2. **Subtitle Parsing, Timing & Demo Tracks Engine (`lib/player/subtitles.ts`)**:
+     - Built standard WebVTT and SubRip SRT parsers (`parseVtt`, `parseSrt`, `parseVttOrSrt`) handling cue indexing, millisecond timestamps, comma/dot normalization, and multi-line cue dialogues.
+     - Implemented `timeStringToSeconds()` and `secondsToVttTime()` for bidirectional timestamp conversions.
+     - Built `findActiveCue()` for timestamp synchronization matching video playback time.
+     - Built `getDefaultDemoTracks()` generating authentic short-drama dialogues in English, Indonesian, Spanish, and Chinese.
+     - Created static WebVTT tracks in `public/subtitles/demo-{en,id,es,zh}.vtt`.
+  3. **High-Readability Custom Subtitle Overlay (`components/player/SubtitleOverlay.tsx`)**:
+     - Designed overlay rendered dynamically above video scrub controls.
+     - Applied custom typography classes: Small (`text-xs sm:text-sm`), Medium (`text-sm sm:text-base md:text-lg`), Large (`text-base sm:text-lg md:text-xl font-bold`).
+     - Applied high-contrast text color options: Classic White with deep drop shadow, High-contrast Yellow (`text-yellow-300`) for bright video frames.
+     - Applied background container styles: Transparent (shadow only), 50% Semi-black (`bg-black/60 backdrop-blur-xs`), Solid Black (`bg-black/95`).
+  4. **Interactive Subtitle Settings Modal (`components/player/SubtitleSettingsModal.tsx`)**:
+     - Developed accessible modal dialog with backdrop dismissals and `Escape` key capture.
+     - Language selector for Off, English, Indonesian, Spanish, and Chinese with checkmarks.
+     - Visual appearance toggles for font size chips, color swatches, and background opacity pills.
+     - Real-time dynamic live preview container simulating a drama video frame with sample text in the selected language.
+     - "Reset to Defaults" button and instant state persistence.
+  5. **Video Player & Mobile Watch Island Integration (`components/VideoPlayer.tsx`, `components/player/WatchOverlay.tsx`, `components/watch/WatchPlayerIsland.tsx`)**:
+     - Extended `VideoPlayerProps` with optional `subtitles?: SubtitleTrack[]`.
+     - Rendered native `<track kind="subtitles">` elements inside `<video>` with `track.mode = "hidden"` to prevent duplicate browser text rendering while preserving accessibility.
+     - Mounted `<SubtitleOverlay>` over the video element.
+     - Added Subtitle/CC button in desktop bottom control bar with active language badge (e.g. `CC [EN]`).
+     - Added `C` keyboard shortcut in global key listener to toggle subtitles quickly.
+     - Added mobile Subtitles action button to `WatchOverlay` vertical action rail.
+     - Wired `onOpenSubtitles` in `WatchPlayerIsland.tsx` to launch the unified settings modal across desktop and mobile.
+  6. **Automated Verification Test Suite (`__tests__/player/subtitle-settings.test.ts`)**:
+     - Authored 18 automated unit and integration tests covering timestamp conversions, WebVTT and SRT parsing, active cue matching, VTT generation, multilingual demo tracks, and settings persistence.
+* **Regression Analysis & Verification Record**:
+  - `__tests__/player/subtitle-settings.test.ts`: 18 / 18 tests pass (100%).
+  - `__tests__/player/player-streaming-robustness.test.ts`: 35 / 35 tests pass (100%).
+  - Full test runner `npm test`: all 1,058 tests pass across 298 suites with 0 failures (100% pass rate).
+  - TypeScript compiler check (`npx tsc --noEmit`): 0 type errors.
+  - Architecture boundaries (`__tests__/architecture/service-layer-split.test.ts`): 25 / 25 tests pass with 0 client-server leakage.
+  - Next.js production build (`npm run build`): cleanly compiles all 92 static and dynamic routes.

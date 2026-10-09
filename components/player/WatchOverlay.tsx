@@ -19,6 +19,7 @@ import {
   Maximize,
   Minimize,
   VolumeX,
+  Subtitles,
 } from "lucide-react";
 import { useFavorites } from "@/contexts/FavoritesContext";
 import type { WatchOverlayProps } from "./PlayerTypes";
@@ -55,6 +56,7 @@ export default function WatchOverlay({
   isMuted = false,
   onToggleMute,
   showUnmutePill,
+  onOpenSubtitles,
   onGuestPromptTrigger,
 }: WatchOverlayProps) {
   const { isFavorited, toggleFavorite, favoritedSlugs } = useFavorites();
@@ -359,6 +361,23 @@ export default function WatchOverlay({
             Episodes
           </span>
         </button>
+
+        {/* Subtitles & Captions Trigger (Task 9.2) */}
+        {onOpenSubtitles && (
+          <button
+            type="button"
+            onClick={onOpenSubtitles}
+            className="flex flex-col items-center gap-1 text-white group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary rounded-xl"
+            aria-label="Subtitles & captions"
+          >
+            <div className="p-3 rounded-full bg-black/60 hover:bg-black/80 text-white/90 hover:text-white border border-white/10 backdrop-blur-md transition-all shadow-lg">
+              <Subtitles size={20} />
+            </div>
+            <span className="text-[10px] font-medium text-white/80 drop-shadow">
+              Subtitles
+            </span>
+          </button>
+        )}
 
         {/* Share Button */}
         <button

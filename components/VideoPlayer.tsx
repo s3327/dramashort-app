@@ -26,7 +26,13 @@ import {
   ChevronDown,
   FastForward,
   X,
+  Subtitles,
 } from "lucide-react";
+import SubtitleOverlay from "@/components/player/SubtitleOverlay";
+import SubtitleSettingsModal from "@/components/player/SubtitleSettingsModal";
+import type { SubtitleTrack, SubtitleCue, SubtitleSettings } from "@/types/subtitles";
+import { loadSubtitleSettings, saveSubtitleSettings } from "@/types/subtitles";
+import { getDefaultDemoTracks, findActiveCue, parseVtt } from "@/lib/player/subtitles";
 import {
   HLS_SHORT_VOD_CONFIG,
   MAX_NETWORK_RETRIES,
@@ -63,6 +69,7 @@ export interface VideoPlayerProps {
   autoPlay?: boolean;
   aspectRatio?: string;
   isMobileFullViewport?: boolean;
+  subtitles?: SubtitleTrack[];
   onTimeUpdate?: (currentTime: number, duration: number, progressRatio: number) => void;
   onPause?: (currentTime: number, duration: number, progressRatio: number) => void;
   onEnded?: () => void;
@@ -95,6 +102,7 @@ export default function VideoPlayer({
   autoPlay = true,
   aspectRatio,
   isMobileFullViewport = false,
+  subtitles,
   onTimeUpdate,
   onPause,
   onEnded,
@@ -145,6 +153,77 @@ export default function VideoPlayer({
     formatted: string;
     ratio: number;
   } | null>(null);
+
+  // Subtitle & Closed Caption State (Task 9.2)
+  const [subtitleSettings, setSubtitleSettings] = useState<SubtitleSettings>(() => {
+    return loadSubtitleSettings();
+  });
+  const [isSubtitleModalOpen, setIsSubtitleModalOpen] = useState(false);
+
+  const effectiveTracks = useMemo<SubtitleTrack[]>(() => {
+    if (subtitles && subtitles.length > 0) {
+      return subtitles;
+    }
+    return getDefaultDemoTracks(dramaTitle || title, currentEpisode);
+  }, [subtitles, dramaTitle, title, currentEpisode]);
+
+  const activeTrack = useMemo(() => {
+    if (subtitleSettings.language === "off") return null;
+    return effectiveTracks.find((t) => t.language === subtitleSettings.language) || null;
+  }, [effectiveTracks, subtitleSettings.language]);
+
+  const [activeCues, setActiveCues] = useState<SubtitleCue[]>(() => activeTrack?.cues || []);
+
+  useEffect(() => {
+    if (!activeTrack) {
+      setActiveCues([]);
+      return;
+    }
+    if (activeTrack.cues && activeTrack.cues.length > 0) {
+      setActiveCues(activeTrack.cues);
+      return;
+    }
+    if (activeTrack.src) {
+      let isCurrent = true;
+      fetch(activeTrack.src)
+        .then((res) => (res.ok ? res.text() : ""))
+        .then((text) => {
+          if (!isCurrent) return;
+          if (text) {
+            setActiveCues(parseVtt(text));
+          }
+        })
+        .catch(() => {});
+      return () => {
+        isCurrent = false;
+      };
+    }
+    setActiveCues([]);
+  }, [activeTrack]);
+
+  const currentActiveCue = useMemo(() => {
+    if (subtitleSettings.language === "off") return null;
+    return findActiveCue(activeCues, currentTime);
+  }, [subtitleSettings.language, activeCues, currentTime]);
+
+  const toggleSubtitlesQuick = useCallback(() => {
+    setSubtitleSettings((prev) => {
+      const nextLang = prev.language === "off" ? "en" : "off";
+      const next = { ...prev, language: nextLang };
+      saveSubtitleSettings(next);
+      return next;
+    });
+  }, []);
+
+  // Ensure native browser textTrack cues are hidden to prevent duplicate text rendering
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video || !video.textTracks) return;
+    for (let i = 0; i < video.textTracks.length; i++) {
+      const track = video.textTracks[i];
+      track.mode = "hidden";
+    }
+  }, [effectiveTracks, currentTime]);
 
   // Vertical Swipe Gesture States (Swipe Up = Next, Swipe Down = Prev)
   const touchStartY = useRef<number | null>(null);
@@ -523,12 +602,23 @@ export default function VideoPlayer({
     }
   }, [isPlaying, showSpeedMenu, showSettingsMenu, isScrubbing]);
 
+  // Keep controls visible when subtitle settings modal is open
+  useEffect(() => {
+    if (isSubtitleModalOpen) {
+      if (controlsTimeoutRef.current) {
+        clearTimeout(controlsTimeoutRef.current);
+        controlsTimeoutRef.current = null;
+      }
+      setControlsVisible(true);
+    }
+  }, [isSubtitleModalOpen]);
+
   const handleMouseMove = () => {
     resetControlsTimeout();
   };
 
   const handleMouseLeave = () => {
-    if (isPlaying && !showSpeedMenu && !showSettingsMenu && !isScrubbing) {
+    if (isPlaying && !showSpeedMenu && !showSettingsMenu && !isScrubbing && !isSubtitleModalOpen) {
       setControlsVisible(false);
     }
   };
@@ -903,6 +993,11 @@ export default function VideoPlayer({
           e.preventDefault();
           goToPrevEpisode();
           break;
+        case "c":
+          e.preventDefault();
+          toggleSubtitlesQuick();
+          resetControlsTimeout();
+          break;
         default:
           break;
       }
@@ -916,6 +1011,7 @@ export default function VideoPlayer({
     togglePlay,
     toggleMute,
     toggleFullscreen,
+    toggleSubtitlesQuick,
     seekRelative,
     goToNextEpisode,
     goToPrevEpisode,
@@ -1165,8 +1261,26 @@ export default function VideoPlayer({
             setIsBuffering(false);
             setHasError((prev) => prev || "Error loading video stream. Please check your connection.");
           }}
-        />
+        >
+          {effectiveTracks.map((track) => (
+            <track
+              key={track.id || track.language}
+              kind="subtitles"
+              src={track.src}
+              srcLang={track.language}
+              label={track.label}
+              default={track.language === subtitleSettings.language}
+            />
+          ))}
+        </video>
       </div>
+
+      {/* High-Readability Custom Subtitle Overlay (Task 9.2) */}
+      <SubtitleOverlay
+        cue={currentActiveCue}
+        settings={subtitleSettings}
+        isControlsVisible={controlsVisible}
+      />
 
       {/* Auto-Resume Floating Pill Indicator */}
       {resumeNotification && (
@@ -1588,6 +1702,24 @@ export default function VideoPlayer({
 
           {/* Right Controls */}
           <div className="flex items-center gap-1 sm:gap-2 relative">
+            {/* Subtitles & Closed Captions (Task 9.2) */}
+            <button
+              type="button"
+              title={`Subtitles (${subtitleSettings.language.toUpperCase()}) - Press C to toggle`}
+              aria-label="Subtitles and Closed Captions"
+              onClick={() => setIsSubtitleModalOpen(true)}
+              className={`p-1.5 sm:p-2 rounded-md transition-colors flex items-center gap-1 focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none ${
+                subtitleSettings.language !== "off"
+                  ? "bg-primary/20 text-primary border border-primary/30 hover:bg-primary/30"
+                  : "hover:bg-white/15 text-white"
+              }`}
+            >
+              <Subtitles size={17} />
+              <span className="text-[10px] font-bold uppercase hidden sm:inline">
+                {subtitleSettings.language !== "off" ? subtitleSettings.language : "CC"}
+              </span>
+            </button>
+
             {/* Speed Selector */}
             <div className="relative">
               <button
@@ -1643,6 +1775,18 @@ export default function VideoPlayer({
           </div>
         </div>
       </div>
+
+      {/* Subtitle & Caption Settings Modal (Task 9.2) */}
+      <SubtitleSettingsModal
+        isOpen={isSubtitleModalOpen}
+        onClose={() => setIsSubtitleModalOpen(false)}
+        settings={subtitleSettings}
+        onChangeSettings={(newSettings) => {
+          setSubtitleSettings(newSettings);
+          saveSubtitleSettings(newSettings);
+        }}
+        availableTracks={effectiveTracks}
+      />
     </div>
   );
 }

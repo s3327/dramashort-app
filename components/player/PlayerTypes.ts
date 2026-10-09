@@ -1,4 +1,6 @@
 import type { Episode } from "@/types/content";
+import type { SubtitleTrack } from "@/types/subtitles";
+export type { SubtitleTrack, SubtitleCue, SubtitleSettings } from "@/types/subtitles";
 
 export type AspectRatioMode = "fit" | "9:16" | "16:9";
 
@@ -14,6 +16,7 @@ export interface VideoPlayerProps {
   autoPlay?: boolean;
   aspectRatio?: string;
   isMobileFullViewport?: boolean;
+  subtitles?: SubtitleTrack[];
   onTimeUpdate?: (currentTime: number, duration: number, progressRatio: number) => void;
   onPause?: (currentTime: number, duration: number, progressRatio: number) => void;
   onEnded?: () => void;
@@ -61,5 +64,6 @@ export interface WatchOverlayProps {
   isMuted?: boolean;
   onToggleMute?: () => void;
   showUnmutePill?: boolean;
+  onOpenSubtitles?: () => void;
   onGuestPromptTrigger?: (trigger: "favorite") => void;
 }

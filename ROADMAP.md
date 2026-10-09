@@ -934,19 +934,33 @@ To eliminate ambiguity across product requirements, admin CMS, and codebase inte
      - Next.js production build (`npm run build`): All 92 routes compiled cleanly with 0 errors.
 
 ### Task 9.2: Multi-Language Subtitles (.vtt / .srt) in Video Player
-* **Status**: ⏳ Planned
-* **Target Files**: `components/WatchVideo.tsx`, `components/player/SubtitleSettingsModal.tsx`
-* **Planned Specifications**:
+* **Status**: ✅ Completed
+* **Target Files**: `types/subtitles.ts`, `lib/player/subtitles.ts`, `components/player/SubtitleOverlay.tsx`, `components/player/SubtitleSettingsModal.tsx`, `components/VideoPlayer.tsx`, `components/player/WatchOverlay.tsx`, `components/watch/WatchPlayerIsland.tsx`, `public/subtitles/demo-*.vtt`, `__tests__/player/subtitle-settings.test.ts`
+* **Delivered Specifications**:
   1. Video Subtitle Engine:
-     - HTML5 `<track kind="subtitles">` synchronization inside custom player.
-     - Support for multi-lingual short drama subtitles: English (`en`), Indonesian (`id`), Spanish (`es`), Chinese (`zh`).
-  2. Custom Subtitle Overlay:
-     - Styled overlay with font readability guarantees against bright video frames:
-       - Font size toggle (Small, Medium, Large).
-       - Text color (White with black drop-shadow, High-contrast Yellow).
-       - Background opacity pill (Transparent, 50% Semi-black, Solid black).
-  3. User Preferences:
-     - Selected subtitle language and styling persisted in `localStorage` across episodes and dramas.
+     - HTML5 `<track kind="subtitles">` synchronization inside the custom video player.
+     - Multi-lingual subtitle track support: English (`en`), Indonesian (`id`), Spanish (`es`), Chinese (`zh`), and `off`.
+     - High-performance WebVTT & SRT parser (`parseVtt`, `parseSrt`, `parseVttOrSrt`) and timestamp converter (`timeStringToSeconds`, `secondsToVttTime`).
+     - Realistic multilingual short drama demo dialogues generated via `getDefaultDemoTracks()` and static demo files in `public/subtitles/demo-{en,id,es,zh}.vtt`.
+     - Browser native text tracks hidden (`track.mode = "hidden"`) to eliminate duplicate subtitle rendering while preserving accessibility.
+  2. Custom High-Readability Subtitle Overlay (`components/player/SubtitleOverlay.tsx`):
+     - Center-aligned bottom overlay positioned dynamically based on controls visibility.
+     - Font size options: Small (`text-xs sm:text-sm`), Medium (`text-sm sm:text-base md:text-lg`), Large (`text-base sm:text-lg md:text-xl font-bold`).
+     - Text color options: Classic White with deep drop shadow, High-contrast Yellow (`text-yellow-300`) for bright video frames.
+     - Background opacity options: Transparent (shadow only), 50% Semi-black (`bg-black/60 backdrop-blur-xs`), Solid Black (`bg-black/95`).
+  3. Interactive Subtitle Settings Modal (`components/player/SubtitleSettingsModal.tsx`):
+     - Accessible configuration modal with language selection, typography controls, and color swatches.
+     - Real-time dynamic live preview container simulating a drama scene with sample text in the selected language.
+     - Reset to Defaults and Escape/click-outside dismissals.
+  4. Integration & Persistence:
+     - Subtitle button (`Subtitles` / `CC` badge) in bottom controls bar with `C` hotkey toggle.
+     - Mobile Subtitles button on `WatchOverlay` vertical action rail.
+     - Persistent preferences in `localStorage` (`dramashort_subtitle_settings`) with validation and fallback.
+  5. Verification & Clean Architecture:
+     - `__tests__/player/subtitle-settings.test.ts`: 18/18 unit & integration tests passing.
+     - Architecture split: 25/25 tests passing with 0 client-server leakage.
+     - Full test suite: 1,058/1,058 tests passing across 298 suites with 0 regressions.
+     - Production build: Clean compilation across all 92 routes.
 
 ### Task 9.3: Desktop Keyboard Navigation & Hotkeys
 * **Status**: ⏳ Planned

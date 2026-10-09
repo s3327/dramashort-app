@@ -6,6 +6,8 @@ export { usePlayerControls } from "./usePlayerControls";
 export { useSwipeNavigation } from "./useSwipeNavigation";
 export { usePlayerGestures } from "./usePlayerGestures";
 export { useProgressReporter } from "./useProgressReporter";
+export { SubtitleOverlay } from "./SubtitleOverlay";
+export { SubtitleSettingsModal } from "./SubtitleSettingsModal";
 export * from "./PlayerTypes";
 export {
   preloadEpisodePlayback,
