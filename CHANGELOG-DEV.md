@@ -3414,3 +3414,32 @@
   - TypeScript compiler check (`npx tsc --noEmit`): 0 type errors.
   - Architecture boundaries (`__tests__/architecture/service-layer-split.test.ts`): 25 / 25 tests pass with 0 client-server leakage.
   - Next.js production build (`npm run build`): cleanly compiles all 92 static and dynamic routes.
+---
+
+## [2026-10-09] Task 9.5: Automated Testing Suite Expansion & Final Funnel Verification
+* **Milestone**: Phase 9 (Mobile PWA & Advanced Video Player UX) — Task 9.5 (Phase 9 Completion Capstone)
+* **Goal**: Deliver comprehensive automated unit and funnel integration testing covering the client wallet service layer (`lib/services/wallet.service.ts`), coin catalog definitions, and end-to-end monetization paywall rules, concluding Phase 9 with 100% test pass rate across 1,111 tests.
+* **Implementation Steps Taken**:
+  1. **Client Wallet Service Test Suite (`__tests__/services/wallet.service.test.ts`)**:
+     - `calculateBundleCost`: verified standard costs, 20% discounted costs, savings derivation, 0 and negative episode edge cases, and 10-coin minimum cost floor.
+     - `packages.ts`: validated catalog package definitions (`coins_starter_100`, `coins_popular_350`, `coins_binge_800`, `vip_weekly_pass`), prices, bonuses, VIP flags, and ID validators.
+     - `getClientWallet`: tested fetch dispatch with and without `dramaId`, query parameter serialization, and network/HTTP failure resilience returning `null`.
+     - `unlockEpisodeClient`: tested single episode unlock payloads, 402/400 `INSUFFICIENT_COINS` rejections, and network error handling.
+     - `DailyCheckInStatus`: tested status retrieval, claimable flag, streak count, reward schedule, and claim execution.
+     - `getClientCoinTransactions`: tested pagination parameter serialization (`page`, `pageSize`) and graceful fallback.
+     - `createCheckoutSessionClient`: tested checkout order creation and unique reference generation.
+  2. **End-to-End Paywall Funnel & Journey Verification (`__tests__/funnel/paywall-flow.test.ts`)**:
+     - Free Preview Thresholds: verified Episodes 1–5 free preview (`isFree = true`, `isLocked = false`, `coinsCost = 0`) and Episode 6+ paid tier (`isLocked = true`, `coinsCost = 10`).
+     - Dynamic Overrides: tested title-level `freeEpisodesCount` overrides (e.g. 3 or 10 free episodes) and explicit episode-level `is_free` flags.
+     - Guest Paywall Journey: verified unauthenticated guest interceptor preserving `returnUrl` (e.g. `/watch/secret-heiress?ep=8`).
+     - Authenticated User Unlock Journey: verified low-balance prompts (<10 coins), modal confirmation (>=10 coins), seamless auto-unlock preference, and zero deduction for previously unlocked episodes.
+     - Bulk Bundle Unlock Journey: verified 20% savings on remaining locked episodes.
+     - VIP Subscription Journey: verified unconditional 0-coin playback across the entire catalog.
+     - Daily Check-in Streak Progression: verified 7-day progressive streak awards (125 coins total), Day 7 cycle rollover, and UTC midnight countdown formatting (`HHh MMm`).
+* **Regression Analysis & Verification Record**:
+  - `__tests__/services/wallet.service.test.ts`: 14 / 14 tests pass (100%).
+  - `__tests__/funnel/paywall-flow.test.ts`: 13 / 13 tests pass (100%).
+  - Full test runner `npm test`: all 1,111 tests pass across 322 suites with 0 failures (100% pass rate).
+  - TypeScript compiler check (`npx tsc --noEmit`): 0 type errors.
+  - Architecture boundaries (`__tests__/architecture/service-layer-split.test.ts`): 25 / 25 tests pass with 0 client-server leakage.
+  - Next.js production build (`npm run build`): cleanly compiles all 92 static and dynamic routes.

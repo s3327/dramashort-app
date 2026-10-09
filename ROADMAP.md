@@ -1024,15 +1024,33 @@ To eliminate ambiguity across product requirements, admin CMS, and codebase inte
      - Full test suite: 1,084/1,084 tests passing across 308 suites with 0 regressions.
      - Production build: Clean compilation across all 92 routes.
 
-### Task 9.5: Automated Testing Suite Expansion
-* **Status**: ⏳ Planned
-* **Target Directory**: `__tests__/services/`, `__tests__/funnel/`
-* **Planned Specifications**:
-  1. `__tests__/services/wallet.service.test.ts`:
-     - Test coin balance queries, episode unlock deductions, insufficient balance rejection, and streak date math.
-  2. `__tests__/funnel/paywall-flow.test.ts`:
-     - Verify episode boundary rules (Ep 1–5 free, Ep 6 locked, unlock flow transitions).
-  3. Ensure `npm test` runs all existing 14 tests plus new monetization tests with 100% pass rate.
+### Task 9.5: Automated Testing Suite Expansion & Final Funnel Verification
+* **Status**: ✅ Completed
+* **Target Files**: `__tests__/services/wallet.service.test.ts`, `__tests__/funnel/paywall-flow.test.ts`
+* **Delivered Specifications**:
+  1. Client Wallet Service Test Suite (`__tests__/services/wallet.service.test.ts`):
+     - `calculateBundleCost`: verified standard costs, 20% discounted costs, savings derivation, 0 and negative episode edge cases, and 10-coin minimum cost floor.
+     - `packages.ts`: validated catalog package definitions (`coins_starter_100`, `coins_popular_350`, `coins_binge_800`, `vip_weekly_pass`), prices, bonuses, VIP flags, and ID validators.
+     - `getClientWallet`: tested fetch dispatch with and without `dramaId`, query parameter serialization, and network/HTTP failure resilience returning `null`.
+     - `unlockEpisodeClient`: tested single episode unlock payloads, 402/400 `INSUFFICIENT_COINS` rejections, and network error handling.
+     - `DailyCheckInStatus`: tested status retrieval, claimable flag, streak count, reward schedule, and claim execution.
+     - `getClientCoinTransactions`: tested pagination parameter serialization (`page`, `pageSize`) and graceful fallback.
+     - `createCheckoutSessionClient`: tested checkout order creation and unique reference generation.
+  2. End-to-End Paywall Funnel & Journey Verification (`__tests__/funnel/paywall-flow.test.ts`):
+     - Free Preview Thresholds: verified Episodes 1–5 free preview (`isFree = true`, `isLocked = false`, `coinsCost = 0`) and Episode 6+ paid tier (`isLocked = true`, `coinsCost = 10`).
+     - Dynamic Overrides: tested title-level `freeEpisodesCount` overrides (e.g. 3 or 10 free episodes) and explicit episode-level `is_free` flags.
+     - Guest Paywall Journey: verified unauthenticated guest interceptor preserving `returnUrl` (e.g. `/watch/secret-heiress?ep=8`).
+     - Authenticated User Unlock Journey: verified low-balance prompts (<10 coins), modal confirmation (>=10 coins), seamless auto-unlock preference, and zero deduction for previously unlocked episodes.
+     - Bulk Bundle Unlock Journey: verified 20% savings on remaining locked episodes.
+     - VIP Subscription Journey: verified unconditional 0-coin playback across the entire catalog.
+     - Daily Check-in Streak Progression: verified 7-day progressive streak awards (125 coins total), Day 7 cycle rollover, and UTC midnight countdown formatting (`HHh MMm`).
+  3. Verification & Platform Stability:
+     - `__tests__/services/wallet.service.test.ts`: 14/14 tests pass (100%).
+     - `__tests__/funnel/paywall-flow.test.ts`: 13/13 tests pass (100%).
+     - Architecture split: 25/25 tests pass with 0 client-server boundary leakage.
+     - Full test runner `npm test`: all 1,111 tests pass across 322 suites with 0 failures (100% pass rate).
+     - TypeScript compiler check (`npx tsc --noEmit`): 0 type errors.
+     - Production build: Clean compilation across all 92 static and dynamic routes.
 
 ---
 
@@ -3056,10 +3074,10 @@ flowchart TD
         P17 -.->|continuous| P10
     end
 
-    subgraph ActiveDevelopment["🚀 Feature Development (Phases 8 & 9) — after remediation"]
-        P8["Phase 8: Monetization Engine (Freemium Paywall & Coin Economy)<br/>• 8.1: User DB Migration (coins_balance, user_unlocked_episodes, transactions)<br/>• 8.2: Episode Lock Rules (Ep 1–5 Free, Ep 6+ Locked)<br/>• 8.3: Custom Player Paywall Gatekeeper & Coin Unlock Modal<br/>• 8.4: Gamified 7-Day Daily Check-in Streak Rewards<br/>• 8.5: Coin Top-Up Shop & Transaction Architecture"]
+    subgraph CompletedFeatureDevelopment["✅ Feature Development (Phases 8 & 9) — Completed"]
+        P8["Phase 8: Monetization Engine (Freemium Paywall & Coin Economy) ✅<br/>• 8.1: User DB Migration (coins_balance, user_unlocked_episodes, transactions)<br/>• 8.2: Episode Lock Rules (Ep 1–5 Free, Ep 6+ Locked)<br/>• 8.3: Custom Player Paywall Gatekeeper & Coin Unlock Modal<br/>• 8.4: Gamified 7-Day Daily Check-in Streak Rewards<br/>• 8.5: Coin Top-Up Shop & Transaction Architecture"]
         
-        P9["Phase 9: Mobile PWA & Advanced Player UX<br/>• 9.1: Progressive Web App Manifest & Service Worker<br/>• 9.2: Multi-Language Subtitles (.vtt / .srt overlay)<br/>• 9.3: Desktop Keyboard Navigation & Hotkeys (Space, Up/Down, M, F)<br/>• 9.4: Picture-in-Picture & OS Media Session API<br/>• 9.5: Automated Testing Suite Expansion"]
+        P9["Phase 9: Mobile PWA & Advanced Player UX ✅<br/>• 9.1: Progressive Web App Manifest & Service Worker<br/>• 9.2: Multi-Language Subtitles (.vtt / .srt overlay)<br/>• 9.3: Desktop Keyboard Navigation & Hotkeys (Space, Up/Down, M, F)<br/>• 9.4: Picture-in-Picture & OS Media Session API<br/>• 9.5: Automated Testing Suite Expansion"]
         
         P8 --> P9
     end
