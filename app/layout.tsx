@@ -1,14 +1,14 @@
 import type { Metadata, Viewport } from "next";
 import { cookies } from "next/headers";
 import { Fredoka, Plus_Jakarta_Sans } from "next/font/google";
+import { ThemeProvider } from "@/contexts/ThemeContext";
 import {
-  ThemeProvider,
   THEME_COOKIE_NAME,
   DEFAULT_THEME,
   isValidTheme,
   getThemeColor,
   type SiteTheme,
-} from "@/contexts/ThemeContext";
+} from "@/lib/theme/constants";
 import { FavoritesProvider } from "@/contexts/FavoritesContext";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { DailyRewardProvider } from "@/contexts/DailyRewardContext";

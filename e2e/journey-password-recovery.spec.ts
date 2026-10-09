@@ -7,7 +7,7 @@ test.describe("Journey 3: Password Recovery & Reset Flow", () => {
   }) => {
     // 1. Visit Forgot Password Page
     await page.goto("/forgot-password");
-    await expect(page.locator("h1, h2")).toContainText(/Reset|Forgot|Password/i);
+    await expect(page.locator("h1").first()).toContainText(/Reset|Forgot|Password/i);
     await expect(page.locator('input[type="email"]')).toBeVisible();
     await expect(page.locator('button[type="submit"]')).toBeVisible();
 

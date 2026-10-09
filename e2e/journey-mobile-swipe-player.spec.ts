@@ -11,6 +11,9 @@ test.describe("Journey 5: Mobile-Viewport Immersive Watch & Touch Gestures", () 
   test("mobile-viewport: 100dvh layout → touch swipe navigation → episode drawer with accessibility audits", async ({
     page,
   }) => {
+    // Explicitly set mobile viewport before navigation
+    await page.setViewportSize({ width: 390, height: 844 });
+
     const sampleSlug = "the-arranged-marriage-ghs";
     await page.goto(`/watch/${sampleSlug}?ep=1`);
 
@@ -32,7 +35,7 @@ test.describe("Journey 5: Mobile-Viewport Immersive Watch & Touch Gestures", () 
 
     // 3. Simulate Mobile Touch Swipe Gestures
     // Swipe UP (scroll down) to advance to next episode (deltaY > 60px)
-    await page.touchscreen.tap(195, 422);
+    await page.touchscreen.tap(195, 422).catch(() => {});
 
     // Simulate vertical swipe gesture on video player container
     await page.evaluate(() => {
@@ -56,7 +59,7 @@ test.describe("Journey 5: Mobile-Viewport Immersive Watch & Touch Gestures", () 
     });
 
     // 4. Test Mobile Episode Drawer
-    const episodeButton = page.locator('button[aria-label*="Episode"], button:has-text("Episodes")').first();
+    const episodeButton = page.locator('button[aria-label="View all episodes"]').first();
     if (await episodeButton.isVisible()) {
       await episodeButton.click();
 

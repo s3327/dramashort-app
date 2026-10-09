@@ -29,3 +29,7 @@ supabase/.temp/
 
 # teamwork agent logs
 .agents/
+
+# test results & reports
+playwright-report/
+test-results/

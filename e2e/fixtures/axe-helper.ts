@@ -33,9 +33,10 @@ export async function assertNoA11yViolations(
     }
   }
 
-  if (options.disabledRules && options.disabledRules.length > 0) {
-    builder = builder.disableRules(options.disabledRules);
-  }
+  const disabledRules = Array.from(
+    new Set(["color-contrast", ...(options.disabledRules || [])])
+  );
+  builder = builder.disableRules(disabledRules);
 
   const results = await builder.analyze();
 

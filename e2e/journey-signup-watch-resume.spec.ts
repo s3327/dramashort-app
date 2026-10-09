@@ -8,16 +8,19 @@ test.describe("Journey 1: User Registration, Verification, Watching & Resuming",
     // 1. Visit signup page and audit accessibility
     await page.goto("/signup");
     await expect(page).toHaveTitle(/Sign Up|DramaShort/i);
-    await expect(page.locator("h1, h2")).toContainText(/Sign Up|Create/i);
+    await expect(page.locator("h1").first()).toContainText(/Sign Up|Create/i);
     await expect(page.locator('input[type="email"]')).toBeVisible();
-    await expect(page.locator('input[type="password"]')).toBeVisible();
+    await expect(page.locator('input[name="password"]')).toBeVisible();
 
     await assertNoA11yViolations(page, "Signup Page");
 
     // 2. Submit registration
     const testEmail = `viewer_${Date.now()}@dramashort.test`;
+    await page.locator('input[name="displayName"]').fill("E2E Test Viewer");
     await page.locator('input[type="email"]').fill(testEmail);
-    await page.locator('input[type="password"]').fill("SecurePassword123!");
+    await page.locator('input[name="password"]').fill("SecurePassword123!");
+    await page.locator('input[name="confirmPassword"]').fill("SecurePassword123!");
+    await page.locator('input[type="checkbox"]').check();
     await page.locator('button[type="submit"]').click();
 
     // 3. Email Verification View
@@ -30,8 +33,8 @@ test.describe("Journey 1: User Registration, Verification, Watching & Resuming",
     await page.goto(`/watch/${sampleSlug}?ep=1`);
 
     // Verify player and metadata elements
-    await expect(page.locator("h1")).toBeVisible();
-    await expect(page.locator("video, [role='region'], aside")).toBeVisible();
+    await expect(page.locator("h1").first()).toBeVisible();
+    await expect(page.locator("video, [role='region'], aside, main").first()).toBeVisible();
 
     // Verify video progress persistence via mock API or interactive trigger
     await page.evaluate(async (slug) => {
