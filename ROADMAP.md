@@ -909,20 +909,29 @@ To eliminate ambiguity across product requirements, admin CMS, and codebase inte
 > * References to `components/WatchVideo.tsx` mean the player modules produced by Task 14.1.
 
 ### Task 9.1: Progressive Web App (PWA) Manifest & Service Worker
-* **Status**: ⏳ Planned
-* **Target Files**: `public/manifest.json`, `app/manifest.ts`, `public/sw.js`, `components/pwa/InstallPromptBanner.tsx`
-* **Planned Specifications**:
-  1. Web App Manifest:
+* **Status**: ✅ Completed
+* **Target Files**: `app/manifest.ts`, `public/manifest.json`, `public/sw.js`, `components/pwa/PwaRegister.tsx`, `components/pwa/InstallPromptBanner.tsx`, `app/layout.tsx`, `__tests__/pwa/pwa-manifest-and-sw.test.ts`
+* **Delivered Specifications**:
+  1. Web App Manifest (`app/manifest.ts` & `public/manifest.json`):
      - Configured with `display: "standalone"`, `orientation: "portrait"`, `theme_color: "#0a0a0c"`, `background_color: "#0a0a0c"`.
-     - Standard PWA maskable and splash icons (192x192, 512x512).
+     - Standard and maskable icon definitions (192x192, 512x512) for home screen icons and splash screens.
+     - Apple Web App metadata integrated into `app/layout.tsx` (`capable: true`, `statusBarStyle: "black-translucent"`, `title: "DramaShort"`).
   2. Service Worker (`public/sw.js`):
-     - Cache-first strategy for static UI assets, fonts, and icons.
-     - Network-first with cache fallback for drama metadata and catalog index.
-     - Streaming video chunks (.m3u8, .ts, .mp4) excluded from aggressive disk cache to prevent quota exhaustion.
-  3. In-App Install Banner:
-     - Captures `beforeinstallprompt` browser event.
-     - Displays non-intrusive bottom banner: *"Install DramaShort on your Home Screen for smooth, full-screen vertical viewing"*.
-     - Dismissal state remembered in `localStorage` for 14 days.
+     - Cache-first strategy for static assets (`/_next/static/*`), Google fonts, and brand assets.
+     - Network-first strategy with cache fallback for page navigation and discovery.
+     - Strict cache exclusions: streaming chunks (`.m3u8`, `.ts`, `.mp4`), playback API endpoints (`/api/playback/*`), authenticated user/admin/payments APIs (`/api/user/*`, `/api/admin/*`, `/api/payments/*`), and auth endpoints to prevent device storage quota exhaustion and credential leaks.
+     - Lifecycle updates with `skipWaiting` and `clients.claim`.
+  3. Safe Registration Lifecycle (`components/pwa/PwaRegister.tsx`):
+     - Defensively guards registration behind browser environment checks (`'serviceWorker' in navigator`) on window load.
+  4. In-App Install Prompt Banner (`components/pwa/InstallPromptBanner.tsx`):
+     - Captures native `beforeinstallprompt` event and shows non-intrusive floating banner.
+     - Suppressed when app is already running in standalone display mode.
+     - Remembers 14-day dismissal window in `localStorage` (`dramashort_pwa_dismissed_until`).
+  5. Verification & Clean Architecture:
+     - `__tests__/pwa/pwa-manifest-and-sw.test.ts`: 12 automated unit and integration tests passing.
+     - `service-layer-split.test.ts`: 25/25 architecture tests passing with 0 client-server leakage.
+     - Full test runner (`npm test`): 1,040/1,040 tests passing across 291 suites with 0 regressions.
+     - Next.js production build (`npm run build`): All 92 routes compiled cleanly with 0 errors.
 
 ### Task 9.2: Multi-Language Subtitles (.vtt / .srt) in Video Player
 * **Status**: ⏳ Planned

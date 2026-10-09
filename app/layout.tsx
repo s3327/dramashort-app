@@ -13,6 +13,8 @@ import { FavoritesProvider } from "@/contexts/FavoritesContext";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { DailyRewardProvider } from "@/contexts/DailyRewardContext";
 import DailyCheckInModal from "@/components/rewards/DailyCheckInModal";
+import PwaRegister from "@/components/pwa/PwaRegister";
+import InstallPromptBanner from "@/components/pwa/InstallPromptBanner";
 import "./globals.css";
 
 const fredoka = Fredoka({
@@ -31,11 +33,17 @@ export const metadata: Metadata = {
   title: "DramaShort — Vertical dramas, daily",
   description:
     "Vertical dramas built for a 12-minute break — revenge, rebirth, forbidden marriages, repeat.",
+  manifest: "/manifest.json",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "black-translucent",
+    title: "DramaShort",
+  },
 };
 
 export const viewport: Viewport = {
   themeColor: [
-    { media: "(prefers-color-scheme: dark)", color: "#1C1220" },
+    { media: "(prefers-color-scheme: dark)", color: "#0a0a0c" },
     { media: "(prefers-color-scheme: light)", color: "#F3E7EA" },
   ],
 };
@@ -77,6 +85,8 @@ export default async function RootLayout({
               <DailyRewardProvider>
                 {children}
                 <DailyCheckInModal />
+                <InstallPromptBanner />
+                <PwaRegister />
               </DailyRewardProvider>
             </FavoritesProvider>
           </AuthProvider>

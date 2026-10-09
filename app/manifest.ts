@@ -1,0 +1,41 @@
+import type { MetadataRoute } from "next";
+
+export default function manifest(): MetadataRoute.Manifest {
+  return {
+    name: "DramaShort — Vertical dramas, daily",
+    short_name: "DramaShort",
+    description: "Bite-sized vertical drama series with instant streaming, daily rewards, and immersive mobile playback.",
+    start_url: "/",
+    display: "standalone",
+    orientation: "portrait",
+    background_color: "#0a0a0c",
+    theme_color: "#0a0a0c",
+    icons: [
+      {
+        src: "/brand/dramashort-icon-square.png",
+        sizes: "192x192",
+        type: "image/png",
+        purpose: "any",
+      },
+      {
+        src: "/brand/dramashort-icon-circle.png",
+        sizes: "192x192",
+        type: "image/png",
+        purpose: "maskable",
+      },
+      {
+        src: "/brand/dramashort-icon-square.png",
+        sizes: "512x512",
+        type: "image/png",
+        purpose: "any",
+      },
+      {
+        src: "/brand/dramashort-icon-circle.png",
+        sizes: "512x512",
+        type: "image/png",
+        purpose: "maskable",
+      },
+    ],
+    categories: ["entertainment", "video", "drama"],
+  };
+}

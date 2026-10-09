@@ -3271,3 +3271,34 @@
   - TypeScript compiler check (`npx tsc --noEmit`): 0 type errors.
   - Architecture boundaries (`__tests__/architecture/service-layer-split.test.ts`): 25 / 25 tests pass with 0 client-server leakage.
   - Next.js production build (`npm run build`): cleanly compiles all 91 static and dynamic routes.
+
+---
+
+## [2026-10-09] Task 9.1: Progressive Web App (PWA) Manifest & Service Worker
+* **Milestone**: Phase 9 (Mobile PWA & Advanced Video Player UX) — Task 9.1
+* **Goal**: Deliver full PWA compliance for DramaShort, enabling standalone mobile installation, portrait lock, service worker asset caching with strict streaming and authenticated endpoint exclusions, safe browser registration lifecycle, and in-app install prompt banner with a 14-day dismissal window.
+* **Implementation Steps Taken**:
+  1. **Typed Next.js 15 Web App Manifest (`app/manifest.ts`) & Fallback (`public/manifest.json`)**:
+     - Configured standalone display mode (`display: "standalone"`) and locked orientation (`orientation: "portrait"`).
+     - Defined dark brand theme colors (`theme_color: "#0a0a0c"`, `background_color: "#0a0a0c"`).
+     - Provided standard and maskable icon definitions for 192x192 and 512x512 icons (`public/brand/`).
+     - Added Apple Web App metadata to `app/layout.tsx` (`appleWebApp: { capable: true, statusBarStyle: "black-translucent", title: "DramaShort" }`).
+  2. **Service Worker Architecture & Caching Strategies (`public/sw.js`)**:
+     - Cache-first strategy for immutable Next.js static assets (`/_next/static/*`), Google web fonts, and brand assets.
+     - Network-first strategy with cache fallback for HTML page navigations.
+     - Strict cache exclusions: streaming chunks (`.m3u8`, `.ts`, `.mp4`), playback API endpoints (`/api/playback/*`), authenticated user/admin/payments APIs (`/api/user/*`, `/api/admin/*`, `/api/payments/*`), and auth endpoints to prevent storage quota exhaustion and credential leaks.
+     - Lifecycle updates with `skipWaiting` and `clients.claim`.
+  3. **Safe Registration Lifecycle Component (`components/pwa/PwaRegister.tsx`)**:
+     - Client component safely registering `/sw.js` behind browser capability checks (`'serviceWorker' in navigator`) on window load without blocking initial paint.
+  4. **In-App Install Prompt Banner (`components/pwa/InstallPromptBanner.tsx`)**:
+     - Captures native `beforeinstallprompt` event and shows non-intrusive floating banner.
+     - Suppressed when app is already running in standalone display mode.
+     - Persists 14-day dismissal cooldown in `localStorage` (`dramashort_pwa_dismissed_until`).
+  5. **Automated Verification Test Suite (`__tests__/pwa/pwa-manifest-and-sw.test.ts`)**:
+     - Authored 12 automated unit and integration tests covering manifest specifications, service worker caching and exclusions, install prompt banner contracts, and architectural boundaries.
+* **Regression Analysis & Verification Record**:
+  - `__tests__/pwa/pwa-manifest-and-sw.test.ts`: 12 / 12 tests pass (100%).
+  - Full test runner `npm test`: all 1,040 tests pass across 291 suites with 0 failures (100% pass rate).
+  - TypeScript compiler check (`npx tsc --noEmit`): 0 type errors.
+  - Architecture boundaries (`__tests__/architecture/service-layer-split.test.ts`): 25 / 25 tests pass with 0 client-server leakage.
+  - Next.js production build (`npm run build`): cleanly compiles all 92 static and dynamic routes.
