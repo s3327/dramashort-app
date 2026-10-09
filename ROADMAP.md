@@ -2984,7 +2984,7 @@ These items stay ✅ for history; the gaps are tracked as new tasks.
 
 ---
 
-## 20. Phase 17: Quality Engineering, CI & Documentation Integrity (🟡 Medium, Continuous)
+## 20. Phase 17: Quality Engineering, CI & Documentation Integrity ✅ Completed
 
 > **Objective**: Make regressions visible and keep the planning documents truthful. The CI gate itself ships in Task 10.9; this phase broadens coverage and tooling alongside every other phase.
 
