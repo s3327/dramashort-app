@@ -41,8 +41,8 @@
 | **Phase 7** | 🟢 Low | L4: Add root application error boundary (`app/error.tsx`) | ✅ Done | Catches unhandled runtime crashes globally |
 | **Phase 7** | 🟢 Low | L5: Audit `design-tokens/` CSS variables and unused tokens | ✅ Done | Maintains lean, consistent token foundation |
 | **Phase 7** | 🟢 Low | L6: Implement automated test suite (Auth, services, critical journeys) | ✅ Done | Regression prevention and verified end-to-end reliability |
-| **Phase 8** | 🔴 Critical | Monetization Engine: Freemium Paywall & Coin Economy | 🚧 In progress (8.1 ✅) | Direct monetization, unlocks Ep 6+, daily streak rewards |
-| **Phase 9** | 🟠 High | Mobile PWA & Advanced Video Player UX | ⏳ Planned · 🔒 Blocked by 14 | Native app-like PWA, subtitles/VTT, keyboard hotkeys, PiP |
+| **Phase 8** | 🔴 Critical | Monetization Engine: Freemium Paywall & Coin Economy | ✅ Completed (8.1–8.5 ✅) | Direct monetization, unlocks Ep 6+, daily streak rewards, top-up shop |
+| **Phase 9** | 🟠 High | Mobile PWA & Advanced Video Player UX | ✅ Completed (9.1–9.5 ✅) | Native app-like PWA, subtitles/VTT, keyboard hotkeys, PiP, Media Session |
 | **Phase 10** | 🔴 Critical | Security Hardening & Access Control (admin role escalation, RLS & grants, admin API auth, subdomain guard, open redirect, episode media lockdown, CI gate) | ✅ Completed (10.1–10.9 ✅) | Closes privilege escalation and data exposure; gate for all further work |
 | **Phase 11** | 🔴 Critical | Complete Stubbed User Flows (email verification, password recovery, account deletion, support pipeline, real 404s) | ✅ Completed (11.1–11.7 ✅) | Every visible action performs a real operation |
 | **Phase 12** | 🟠 High | Functional Bug Fixes & Data Integrity (12.1–12.8 ✅) | ✅ Completed | Full catalog visible, admin drafts, progress semantics, zero mocks, session, lists, integrity, player robustness |
@@ -50,7 +50,7 @@
 | **Phase 14** | 🟠 High | Mobile-First Vertical Watch Experience & UI Polish | ✅ Completed (14.1–14.9 ✅) | Core 9:16 viewing experience on phones |
 | **Phase 15** | 🟠 High | Product Analytics, Engagement Tracking & Real Trending | ✅ Completed (15.1–15.5 ✅) | Real views, trending and dashboard; data to tune the paywall |
 | **Phase 16** | 🟠 High | Admin Content Operations Console (episodes, uploads, scheduling, taxonomy, users, audit log, support inbox, bulk import) | ✅ Completed (16.1–16.11 ✅) | Catalog operable end-to-end without SQL |
-| **Phase 17** | 🟡 Medium | Quality Engineering, CI & Documentation Integrity (continuous) | ⏳ Planned | Regression safety; trustworthy status docs |
+| **Phase 17** | 🟡 Medium | Quality Engineering, CI & Documentation Integrity (continuous) | ✅ Completed (17.1–17.4 ✅) | Regression safety; trustworthy status docs; bundle budget & CI gates |
 
 > **Execution order (set by the 2026-10-04 platform audit)**: Phase numbers are stable identifiers, not a sequence. Remaining work executes as **10 → 11 → 12 → 13 → 14 → 15 → 16 → 8 → 9**, with Phase 17 running continuously alongside. Gates and dependencies are defined in [§12](#12-platform-audit-remediation-track-phases-1017).
 
