@@ -11,6 +11,8 @@ import {
 } from "@/contexts/ThemeContext";
 import { FavoritesProvider } from "@/contexts/FavoritesContext";
 import { AuthProvider } from "@/contexts/AuthContext";
+import { DailyRewardProvider } from "@/contexts/DailyRewardContext";
+import DailyCheckInModal from "@/components/rewards/DailyCheckInModal";
 import "./globals.css";
 
 const fredoka = Fredoka({
@@ -71,7 +73,12 @@ export default async function RootLayout({
       <body>
         <ThemeProvider initialTheme={initialTheme}>
           <AuthProvider>
-            <FavoritesProvider>{children}</FavoritesProvider>
+            <FavoritesProvider>
+              <DailyRewardProvider>
+                {children}
+                <DailyCheckInModal />
+              </DailyRewardProvider>
+            </FavoritesProvider>
           </AuthProvider>
         </ThemeProvider>
       </body>

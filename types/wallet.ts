@@ -55,14 +55,22 @@ export interface DailyCheckInStatus {
     claimed: boolean;
     isCurrent: boolean;
   }>;
+  schedule?: Array<{
+    day: number;
+    coins: number;
+    claimed?: boolean;
+    isCurrent?: boolean;
+  }>;
 }
 
 export interface DailyCheckInResult {
   success: boolean;
-  checkinId: string;
+  checkinId?: string;
   streakCount: number;
   coinsAwarded: number;
   newBalance: number;
+  alreadyClaimed?: boolean;
+  error?: string;
 }
 
 export interface UnlockEpisodeResult {

@@ -9,6 +9,7 @@ import EpisodeSheet from "@/components/player/EpisodeSheet";
 import WatchOverlay from "@/components/player/WatchOverlay";
 import GuestEngagementModal from "@/components/engagement/GuestEngagementModal";
 import EpisodeUnlockModal, { AUTO_UNLOCK_STORAGE_KEY } from "@/components/player/EpisodeUnlockModal";
+import DailyCheckInModal from "@/components/rewards/DailyCheckInModal";
 import LoginRequiredModal from "@/components/LoginRequiredModal";
 import {
   type GuestEngagementTrigger,
@@ -132,9 +133,20 @@ export default function WatchPlayerIsland({
   const [userWallet, setUserWallet] = useState<WalletInfo | null>(null);
   const [unlockedEpisodeNumbers, setUnlockedEpisodeNumbers] = useState<Set<number>>(new Set());
   const [isUnlockModalOpen, setIsUnlockModalOpen] = useState(false);
+  const [isDailyCheckInModalOpen, setIsDailyCheckInModalOpen] = useState(false);
   const [isLoginRequiredModalOpen, setIsLoginRequiredModalOpen] = useState(false);
   const [pendingLockedEpisode, setPendingLockedEpisode] = useState<number | null>(null);
   const [autoUnlockToast, setAutoUnlockToast] = useState<string | null>(null);
+
+  const refreshUserWallet = useCallback(async () => {
+    if (!user) return;
+    try {
+      const res = await getClientWallet(drama.id);
+      if (res?.wallet) {
+        setUserWallet(res.wallet);
+      }
+    } catch {}
+  }, [user, drama.id]);
 
   // Fetch user wallet and unlocked episodes for this drama
   useEffect(() => {
@@ -1108,9 +1120,22 @@ export default function WatchPlayerIsland({
             userBalance={userWallet?.balance ?? 0}
             isVip={Boolean(userWallet?.isVip)}
             onUnlocked={handleModalUnlocked}
+            onOpenCheckIn={() => setIsDailyCheckInModalOpen(true)}
           />
         );
       })()}
+
+      {/* Daily Check-In & Streak Rewards Modal (Task 8.4) */}
+      <DailyCheckInModal
+        open={isDailyCheckInModalOpen}
+        onClose={() => {
+          setIsDailyCheckInModalOpen(false);
+          refreshUserWallet();
+        }}
+        onBalanceUpdated={(newBalance) => {
+          setUserWallet((prev) => (prev ? { ...prev, balance: newBalance } : null));
+        }}
+      />
 
       {/* Guest Login Required Modal (Task 8.3) */}
       <LoginRequiredModal

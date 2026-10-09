@@ -839,9 +839,9 @@ To eliminate ambiguity across product requirements, admin CMS, and codebase inte
   - Next.js production build (`npm run build`) compiled all 88 routes cleanly.
 
 ### Task 8.4: Gamified Daily Check-in & Reward Streak System
-* **Status**: ⏳ Planned
-* **Target Files**: `components/rewards/DailyCheckInModal.tsx`, `app/api/user/daily-checkin/route.ts`
-* **Planned Specifications**:
+* **Status**: ✅ Completed
+* **Target Files**: `components/rewards/DailyCheckInModal.tsx`, `components/rewards/DailyRewardTrigger.tsx`, `contexts/DailyRewardContext.tsx`, `app/api/user/daily-checkin/route.ts`, `__tests__/monetization/daily-checkin-rewards.test.ts`
+* **Delivered Specifications**:
   1. 7-Day Progressive Streak Rewards:
      - Day 1: +5 coins
      - Day 2: +10 coins
@@ -849,14 +849,25 @@ To eliminate ambiguity across product requirements, admin CMS, and codebase inte
      - Day 4: +15 coins
      - Day 5: +15 coins
      - Day 6: +20 coins
-     - Day 7: +50 coins + Mystery Chest Badge
-  2. API Validation:
-     - Validates check-in date against UTC midnight boundary.
-     - Detects consecutive days ($(\text{today} - \text{last\_date}) = 1$); increments streak up to Day 7 then loops.
-     - Resets streak to Day 1 if $> 48\text{ hours}$ have elapsed.
-     - Credits coins atomically to `profiles.coins_balance` and writes to `coin_transactions`.
-  3. UI Triggers:
-     - Floating daily gift badge on `/home` and `/account` when today's reward is unclaimed.
+     - Day 7: +50 coins + Mystery Chest Bonus (125 coins total full streak)
+  2. UTC Midnight Boundary & Streak Progression:
+     - Deterministic UTC midnight countdown helper (`getTimeUntilUtcMidnight`).
+     - Consecutive day streak continuation with automatic cycle loop after Day 7.
+     - Single-claim-per-day enforcement preventing duplicate rewards.
+     - Streak reset if user misses more than 1 UTC calendar day.
+  3. API & Context Architecture:
+     - Route alias `app/api/user/daily-checkin/route.ts` delegating to GET (status) and POST (claim) handlers.
+     - Client context `DailyRewardContext` (`useDailyReward`) providing status, countdown, modal controls, and balance synchronization.
+     - Mounted globally in `app/layout.tsx` for seamless app-wide access.
+  4. UI Components & Paywall Linkage:
+     - `DailyCheckInModal`: 7-day visual calendar grid, completed checkmarks, active day pulse, countdown timer, and guest sign-in link.
+     - `DailyRewardTrigger`: Header pill and floating badge variants with pulsing indicators for unclaimed rewards.
+     - Connected directly to `HeaderActions.tsx` and `WatchPlayerIsland.tsx` (low-coin prompt inside `EpisodeUnlockModal`).
+  5. Verification & Clean Architecture:
+     - `__tests__/monetization/daily-checkin-rewards.test.ts`: 12 automated unit and integration tests passing.
+     - `service-layer-split.test.ts`: Zero client-to-server boundary leakage verified across all reward components.
+     - Full test suite (`npm test`): 1,015/1,015 tests passing across 280 suites.
+     - Production build (`npm run build`): All 89 routes compiled cleanly with 0 errors.
 
 ### Task 8.5: Coin Top-Up Shop & Transaction Architecture
 * **Status**: ⏳ Planned

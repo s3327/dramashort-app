@@ -3,6 +3,7 @@ import { User } from "lucide-react";
 import { returnUrlQuery } from "@/lib/navigation/safe-redirect";
 import NotificationBell, { isNotificationsFeatureEnabled } from "@/components/NotificationBell";
 import SearchDropdown from "@/components/SearchDropdown";
+import DailyRewardTrigger from "@/components/rewards/DailyRewardTrigger";
 
 export default function HeaderActions({
   isLoggedIn,
@@ -14,7 +15,8 @@ export default function HeaderActions({
   const isNotificationsEnabled = isNotificationsFeatureEnabled();
 
   return (
-    <div className="flex items-center gap-4 shrink-0">
+    <div className="flex items-center gap-3 sm:gap-4 shrink-0">
+      <DailyRewardTrigger variant="header" />
       <SearchDropdown />
       {isNotificationsEnabled && isLoggedIn && <NotificationBell />}
       <div className="relative group">

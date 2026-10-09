@@ -3206,3 +3206,37 @@
   - TypeScript compiler check (`npx tsc --noEmit`): 0 type errors.
   - Architecture boundaries (`__tests__/architecture/service-layer-split.test.ts`): 25 / 25 tests pass with 0 client-server leakage.
   - Next.js production build (`npm run build`): cleanly compiles all 88 static and dynamic routes.
+
+---
+
+## [2026-10-09] Task 8.4: Gamified Daily Check-in & Reward Streak System
+* **Milestone**: Phase 8 (Short Drama Monetization Engine — Freemium Coin Economy) — Task 8.4
+* **Goal**: Deliver a gamified 7-day progressive check-in and streak reward engine with deterministic UTC midnight boundary evaluation, atomic coin grants, duplicate-claim prevention, global client context, responsive visual calendar modal, navigation bar / floating triggers, and seamless paywall linkage.
+* **Implementation Steps Taken**:
+  1. **Deterministic 7-Day Progressive Streak Rewards**:
+     - Configured progressive reward tiers: Day 1 (+5 coins), Day 2 (+10 coins), Day 3 (+10 coins), Day 4 (+15 coins), Day 5 (+15 coins), Day 6 (+20 coins), Day 7 (+50 coins + Mystery Chest Bonus). Total 125 coins over full streak cycle.
+     - Streak loops seamlessly back to Day 1 on day 8 while preserving streak continuity.
+     - Missed check-in reset: if >48 hours elapse without check-in, streak resets to Day 1.
+  2. **Deterministic UTC Countdown & Date Boundary**:
+     - Created `getTimeUntilUtcMidnight()` in `contexts/DailyRewardContext.tsx` calculating remaining hours, minutes, and seconds until the next UTC 00:00:00 midnight reset.
+     - Single-claim-per-day enforcement anchored to UTC calendar date (`YYYY-MM-DD`).
+  3. **REST Route Handlers & API Aliases (`app/api/user/daily-checkin/route.ts`)**:
+     - Route alias forwarding `GET` (check-in status, streak count, schedule, canCheckIn) and `POST` (atomic claim with ledger write).
+     - Protects against unauthenticated requests with HTTP 401 `UNAUTHORIZED`.
+     - Guards against same-day duplicate claims with HTTP 409 `ALREADY_CHECKED_IN_TODAY`.
+  4. **Global DailyRewardContext (`contexts/DailyRewardContext.tsx`)**:
+     - `useDailyReward()` exposes `status`, `isLoading`, `isClaiming`, `canCheckIn`, `countdown`, `claimReward`, and modal open/close controls.
+     - Automatically refreshes status when authenticated user changes.
+     - Mounted in root `app/layout.tsx` for seamless app-wide accessibility without prop drilling.
+  5. **Gamified Visual Modal & Trigger Components (`components/rewards/`)**:
+     - `DailyCheckInModal.tsx`: Accessible modal featuring 7-day visual calendar grid, animated badges, checkmarks for claimed days, pulsing active day card, countdown banner, and guest sign-in CTA.
+     - `DailyRewardTrigger.tsx`: Header pill button with pulsing badge for unclaimed rewards, and floating button variant for mobile/desktop.
+     - Integrated into `HeaderActions.tsx` and `WatchPlayerIsland.tsx` (linked to `EpisodeUnlockModal`'s "Claim Free Coins" prompt).
+  6. **Automated Verification Test Suite (`__tests__/monetization/daily-checkin-rewards.test.ts`)**:
+     - Authored 12 automated unit and integration tests covering countdown calculations, schedule values, Day 1 and Day 7 streak progressions, duplicate prevention, route security, and architectural boundaries.
+* **Regression Analysis & Verification Record**:
+  - `__tests__/monetization/daily-checkin-rewards.test.ts`: 12 / 12 tests pass (100%).
+  - Full test runner `npm test`: all 1,015 tests pass across 280 suites with 0 failures (100% pass rate).
+  - TypeScript compiler check (`npx tsc --noEmit`): 0 type errors.
+  - Architecture boundaries (`__tests__/architecture/service-layer-split.test.ts`): 25 / 25 tests pass with 0 client-server leakage.
+  - Next.js production build (`npm run build`): cleanly compiles all 89 static and dynamic routes.
