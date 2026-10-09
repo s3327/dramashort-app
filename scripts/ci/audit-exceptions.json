@@ -1,0 +1,97 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "description": "Approved security audit exceptions with verified mitigation rationale and expiration dates (Step 11)",
+  "exceptions": [
+    {
+      "module": "braces",
+      "advisory": "GHSA-vfj7-8cjw-p6xm",
+      "severity": "high",
+      "reason": "Transitive build-time dependency in Tailwind CSS v3 compiler. Not exposed to runtime browser or server request paths.",
+      "expires": "2026-12-31"
+    },
+    {
+      "module": "chokidar",
+      "advisory": "braces",
+      "severity": "high",
+      "reason": "File watcher used exclusively in local development and Next.js hot reload.",
+      "expires": "2026-12-31"
+    },
+    {
+      "module": "micromatch",
+      "advisory": "braces",
+      "severity": "high",
+      "reason": "Path pattern matching used in dev toolchain.",
+      "expires": "2026-12-31"
+    },
+    {
+      "module": "fast-glob",
+      "advisory": "micromatch",
+      "severity": "high",
+      "reason": "File system globbing utility in Next.js/Tailwind compiler.",
+      "expires": "2026-12-31"
+    },
+    {
+      "module": "tailwindcss",
+      "advisory": "transitive-compiler-dependencies",
+      "severity": "high",
+      "reason": "Tailwind CSS v3 build-time stylesheet generation compiler. No runtime execution.",
+      "expires": "2026-12-31"
+    },
+    {
+      "module": "@next/eslint-plugin-next",
+      "advisory": "fast-glob",
+      "severity": "high",
+      "reason": "ESLint static analysis plugin for Next.js. Linting tool only.",
+      "expires": "2026-12-31"
+    },
+    {
+      "module": "eslint-config-next",
+      "advisory": "@next/eslint-plugin-next",
+      "severity": "high",
+      "reason": "ESLint configuration package for development linting.",
+      "expires": "2026-12-31"
+    },
+    {
+      "module": "brace-expansion",
+      "advisory": "*",
+      "severity": "high",
+      "reason": "Transitive build-time dependency in TypeScript ESLint parser. Used during static linting only.",
+      "expires": "2026-12-31"
+    },
+    {
+      "module": "postcss",
+      "advisory": "*",
+      "severity": "high",
+      "reason": "Build-time CSS compiler and source map generator bundled with Next.js 15. Not reachable in user runtime.",
+      "expires": "2026-12-31"
+    },
+    {
+      "module": "postcss-selector-parser",
+      "advisory": "*",
+      "severity": "moderate",
+      "reason": "CSS selector parsing in Tailwind compiler.",
+      "expires": "2026-12-31"
+    },
+    {
+      "module": "postcss-nested",
+      "advisory": "*",
+      "severity": "moderate",
+      "reason": "CSS nesting plugin in Tailwind compiler.",
+      "expires": "2026-12-31"
+    },
+    {
+      "module": "sharp",
+      "advisory": "GHSA-wq5f-xc86-pv6w",
+      "severity": "high",
+      "reason": "Image processing library SVG vulnerability. Runtime image optimization uses next/image with sanitized SVG rejection.",
+      "expires": "2026-12-31"
+    },
+    {
+      "module": "source-map-js",
+      "advisory": "GHSA-68fv-2mgg-jv7q",
+      "severity": "high",
+      "reason": "Build-time source map generator in Next.js compiler.",
+      "expires": "2026-12-31"
+    }
+  ]
+}

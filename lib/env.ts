@@ -18,6 +18,10 @@ export interface EnvConfig {
   NEXT_PUBLIC_USER_SUPABASE_URL: string;
   NEXT_PUBLIC_USER_SUPABASE_ANON_KEY: string;
   USER_SUPABASE_SERVICE_ROLE_KEY?: string;
+  PAYMENT_WEBHOOK_SECRET?: string;
+  CRON_SECRET?: string;
+  PLAYBACK_SIGNING_SECRET?: string;
+  ENABLE_SIMULATED_CHECKOUT: boolean;
   ENABLE_MOCK_FALLBACK: boolean;
 }
 
@@ -54,6 +58,10 @@ export function getEnv(): EnvConfig {
       process.env.NEXT_PUBLIC_USER_SUPABASE_ANON_KEY || "",
     USER_SUPABASE_SERVICE_ROLE_KEY:
       process.env.USER_SUPABASE_SERVICE_ROLE_KEY || undefined,
+    PAYMENT_WEBHOOK_SECRET: process.env.PAYMENT_WEBHOOK_SECRET || undefined,
+    CRON_SECRET: process.env.CRON_SECRET || undefined,
+    PLAYBACK_SIGNING_SECRET: process.env.PLAYBACK_SIGNING_SECRET || undefined,
+    ENABLE_SIMULATED_CHECKOUT: process.env.ENABLE_SIMULATED_CHECKOUT === "true",
     ENABLE_MOCK_FALLBACK,
   };
 }

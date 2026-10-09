@@ -1002,7 +1002,22 @@ export async function processPaymentFulfillmentServer(
   // 3. Fulfill VIP Pass vs Coin Package
   if (pkg.isVipPass) {
     const vipRes = await grantVipAccessServer(userId, pkg.vipDays || 7, referenceId, client);
-    if (!vipRes.ok) return err(vipRes.error);
+    if (!vipRes.ok) {
+      if (
+        vipRes.error.includes("23505") ||
+        vipRes.error.toLowerCase().includes("duplicate key") ||
+        vipRes.error.toLowerCase().includes("unique constraint")
+      ) {
+        const walletRes = await getUserWalletServer(userId, client);
+        return ok({
+          success: true,
+          duplicate: true,
+          vipGranted: true,
+          newBalance: walletRes.ok ? walletRes.value.balance : 0,
+        });
+      }
+      return err(vipRes.error);
+    }
 
     const walletRes = await getUserWalletServer(userId, client);
     return ok({
@@ -1023,13 +1038,169 @@ export async function processPaymentFulfillmentServer(
     client
   );
 
-  if (!creditRes.ok) return err(creditRes.error);
+  if (!creditRes.ok) {
+    // Intercept PostgreSQL 23505 unique constraint violation on reference_id as idempotent duplicate
+    if (
+      creditRes.error.includes("23505") ||
+      creditRes.error.toLowerCase().includes("duplicate key") ||
+      creditRes.error.toLowerCase().includes("unique constraint")
+    ) {
+      const { data: existingTx } = await client
+        .from("coin_transactions")
+        .select("id, amount, balance_after")
+        .eq("reference_id", referenceId)
+        .maybeSingle();
+
+      const walletRes = await getUserWalletServer(userId, client);
+      return ok({
+        success: true,
+        duplicate: true,
+        coinsCredited: existingTx?.amount || pkg.totalCoins,
+        newBalance: walletRes.ok ? walletRes.value.balance : (existingTx?.balance_after ?? 0),
+      });
+    }
+    return err(creditRes.error);
+  }
 
   return ok({
     success: true,
     duplicate: false,
     coinsCredited: pkg.totalCoins,
     newBalance: creditRes.value.newBalance,
+  });
+}
+
+export interface FulfillPaymentOrderResult {
+  success: boolean;
+  duplicate: boolean;
+  orderId: string;
+  packageId: string;
+  userId: string;
+  status: string;
+  coinsCredited: number;
+  vipGranted: boolean;
+  newBalance: number;
+  vipExpiresAt?: string | null;
+}
+
+/**
+ * Atomically fulfills a payment order using database-level locking and transaction isolation.
+ */
+export async function fulfillPaymentOrderServer(
+  orderId: string,
+  providerPaymentId?: string | null,
+  injectedClient?: any
+): Promise<Result<FulfillPaymentOrderResult, string>> {
+  if (!orderId) return err("Order ID is required");
+
+  const client = injectedClient || (await createUserServiceRoleClient());
+
+  // 1. Try atomic PostgreSQL RPC first
+  if (typeof client.rpc === "function") {
+    try {
+      const { data: rpcData, error: rpcError } = await client.rpc("fulfill_payment_order", {
+        p_order_id: orderId,
+        p_provider_payment_id: providerPaymentId || null,
+      });
+
+      if (!rpcError && rpcData) {
+        return ok({
+          success: Boolean(rpcData.success),
+          duplicate: Boolean(rpcData.duplicate),
+          orderId: rpcData.order_id,
+          packageId: rpcData.package_id,
+          userId: rpcData.user_id,
+          status: rpcData.status,
+          coinsCredited: Number(rpcData.coins_credited ?? 0),
+          vipGranted: Boolean(rpcData.vip_granted ?? false),
+          newBalance: Number(rpcData.new_balance ?? 0),
+          vipExpiresAt: rpcData.vip_expires_at || null,
+        });
+      }
+      if (rpcError) {
+        if (rpcError.code === "23505" || rpcError.message?.includes("already paid")) {
+          return ok({
+            success: true,
+            duplicate: true,
+            orderId,
+            packageId: "",
+            userId: "",
+            status: "paid",
+            coinsCredited: 0,
+            vipGranted: false,
+            newBalance: 0,
+          });
+        }
+      }
+    } catch {
+      // Fall through to table queries if RPC is not installed in local mock
+    }
+  }
+
+  // 2. Table queries fallback (for in-memory mock client / test harness)
+  const { data: order, error: orderError } = await client
+    .from("payment_orders")
+    .select("*")
+    .eq("id", orderId)
+    .maybeSingle();
+
+  if (orderError) {
+    return err(`Failed to fetch order: ${orderError.message}`);
+  }
+  if (!order) {
+    return err(`Order not found: ${orderId}`);
+  }
+
+  if (order.status === "paid") {
+    const walletRes = await getUserWalletServer(order.user_id, client);
+    return ok({
+      success: true,
+      duplicate: true,
+      orderId: order.id,
+      packageId: order.package_id,
+      userId: order.user_id,
+      status: "paid",
+      coinsCredited: 0,
+      vipGranted: false,
+      newBalance: walletRes.ok ? walletRes.value.balance : 0,
+      vipExpiresAt: walletRes.ok ? walletRes.value.vipExpiresAt : null,
+    });
+  }
+
+  // Mark order paid
+  const nowIso = new Date().toISOString();
+  await client
+    .from("payment_orders")
+    .update({
+      status: "paid",
+      paid_at: nowIso,
+      provider_payment_id: providerPaymentId || order.provider_payment_id,
+    })
+    .eq("id", orderId);
+
+  // Fulfill package via processPaymentFulfillmentServer
+  const fulfillRes = await processPaymentFulfillmentServer(
+    order.user_id,
+    order.package_id as CoinPackageId,
+    order.id,
+    client
+  );
+
+  if (!fulfillRes.ok) {
+    return err(fulfillRes.error);
+  }
+
+  const fVal = fulfillRes.value;
+  return ok({
+    success: true,
+    duplicate: Boolean(fVal.duplicate),
+    orderId: order.id,
+    packageId: order.package_id,
+    userId: order.user_id,
+    status: "paid",
+    coinsCredited: fVal.coinsCredited ?? 0,
+    vipGranted: Boolean(fVal.vipGranted),
+    newBalance: fVal.newBalance ?? 0,
   });
 }
 

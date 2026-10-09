@@ -39,6 +39,8 @@ export interface ResolvedPlayback {
   provider: string;
   aspectRatio: string;
   durationSeconds: number;
+  signedToken?: string;
+  signedUrl?: string;
 }
 
 import { createUserServiceRoleClient } from "@/lib/supabase/user-server";
@@ -140,27 +142,89 @@ export async function canAccessEpisode(
   };
 }
 
+import { createHmac, timingSafeEqual } from "node:crypto";
+
+
+/**
+ * Generates an HMAC-SHA256 signed playback token bound to the episode and expiration epoch.
+ */
+export function signPlaybackToken(
+  episodeId: string,
+  expiresEpochMs: number,
+  secret = process.env.PLAYBACK_SIGNING_SECRET || "default_playback_signing_secret"
+): string {
+  const payload = `${episodeId}:${expiresEpochMs}`;
+  return createHmac("sha256", secret).update(payload).digest("hex");
+}
+
+/**
+ * Verifies the validity and expiration of a signed playback token.
+ */
+export function verifyPlaybackToken(
+  episodeId: string,
+  token: string,
+  expiresEpochMs: number,
+  secret = process.env.PLAYBACK_SIGNING_SECRET || "default_playback_signing_secret"
+): boolean {
+  if (!token || !expiresEpochMs) return false;
+  if (Date.now() > expiresEpochMs) return false; // Expired token
+
+  const expected = signPlaybackToken(episodeId, expiresEpochMs, secret);
+  const tokenBuf = Buffer.from(token);
+  const expectedBuf = Buffer.from(expected);
+
+  if (tokenBuf.length !== expectedBuf.length) return false;
+  return timingSafeEqual(tokenBuf, expectedBuf);
+}
+
+/**
+ * Appends signed token and expiration query parameters to a streaming media URL.
+ */
+export function signPlaybackUrl(
+  streamUrl: string,
+  episodeId: string,
+  expiresInSeconds = 900,
+  secret?: string
+): { url: string; token: string; expiresAt: string; expiresEpochMs: number } {
+  const expiresEpochMs = Date.now() + expiresInSeconds * 1000;
+  const token = signPlaybackToken(episodeId, expiresEpochMs, secret);
+  const separator = streamUrl.includes("?") ? "&" : "?";
+  const signedUrl = streamUrl ? `${streamUrl}${separator}token=${token}&expires=${expiresEpochMs}` : "";
+
+  return {
+    url: signedUrl,
+    token,
+    expiresAt: new Date(expiresEpochMs).toISOString(),
+    expiresEpochMs,
+  };
+}
+
 /**
  * Resolves the streaming media source and signed expiration for an episode.
- * Architecture Note (ADR-0003 / Task 10.6):
- * HLS manifests alone do not protect media segments. In production, providers such as
- * Cloudflare Stream, Mux, or Bunny Stream provide cryptographically signed playback tokens
- * or CDN signed cookies. This resolver generates the active stream URL and expiration.
+ * Architecture Note (ADR-0003): Signed playback delivery.
+ * Security Hardening (Step 10):
+ * Generates cryptographically signed playback tokens with 15-minute expiration (900s).
  */
 export function resolvePlaybackSession(
   info: EpisodePlaybackInfo,
-  expiresInSeconds = 7200 // 2 hours
+  expiresInSeconds = 900 // 15 minutes (P1 Step 10)
 ): ResolvedPlayback {
-  const expiresAt = new Date(Date.now() + expiresInSeconds * 1000).toISOString();
+  const expiresEpochMs = Date.now() + expiresInSeconds * 1000;
+  const expiresAt = new Date(expiresEpochMs).toISOString();
 
   // Prefer HLS stream if available, otherwise MP4 fallback, then legacy video_url
-  let streamUrl = info.hlsUrl || info.mp4Url || info.videoUrl || "";
+  const streamUrl = info.hlsUrl || info.mp4Url || info.videoUrl || "";
+  const signedToken = info.episodeId ? signPlaybackToken(info.episodeId, expiresEpochMs) : undefined;
+  const signedUrl = streamUrl && signedToken
+    ? `${streamUrl}${streamUrl.includes("?") ? "&" : "?"}token=${signedToken}&expires=${expiresEpochMs}`
+    : streamUrl;
 
-  // Provider-specific token signing hook (Mux / Cloudflare / Bunny / Custom CDN)
-  // Can be extended when provider signing keys are configured in environment variables.
+  const shouldEnforceSignedUrl = process.env.REQUIRE_SIGNED_PLAYBACK === "true";
 
   return {
-    url: streamUrl,
+    url: shouldEnforceSignedUrl ? signedUrl : streamUrl,
+    signedUrl,
+    signedToken,
     expiresAt,
     provider: info.provider || "custom",
     aspectRatio: info.aspectRatio || "9:16",

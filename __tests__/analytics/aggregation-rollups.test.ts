@@ -484,18 +484,25 @@ test("Task 15.3: /api/cron/rollup enforces secret authorization and date validat
     assert.equal(validData.data.ok, true);
     assert.equal(validData.data.processedTitles, 3);
 
-    // 4. Valid query param ?secret= -> 200 OK (POST)
-    const validQueryReq = new NextRequest(
+    // 4. Query param ?secret= is rejected (must use Bearer header only) -> 401 Unauthorized
+    const queryParamReq = new NextRequest(
       "http://localhost:3000/api/cron/rollup?secret=test-secret-key-12345",
       { method: "POST" }
     );
-    const validQueryRes = await POST(validQueryReq);
-    assert.equal(validQueryRes.status, 200);
+    const queryParamRes = await POST(queryParamReq);
+    assert.equal(queryParamRes.status, 401);
+    const queryParamData = await queryParamRes.json();
+    assert.equal(queryParamData.error.code, "UNAUTHORIZED");
 
-    // 5. Invalid date query format -> 400 Validation Error
+    // 5. Invalid date query format with valid Bearer token -> 400 Validation Error
     const invalidDateReq = new NextRequest(
-      "http://localhost:3000/api/cron/rollup?secret=test-secret-key-12345&date=invalid-date",
-      { method: "GET" }
+      "http://localhost:3000/api/cron/rollup?date=invalid-date",
+      {
+        method: "GET",
+        headers: {
+          authorization: "Bearer test-secret-key-12345",
+        },
+      }
     );
     const invalidDateRes = await GET(invalidDateReq);
     assert.equal(invalidDateRes.status, 400);

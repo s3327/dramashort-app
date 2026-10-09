@@ -19,6 +19,7 @@
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
     "check:budget": "node scripts/check-bundle-budget.mjs",
+    "check:audit": "node scripts/ci/audit-gate.mjs",
     "analyze": "node -e \"process.env.ANALYZE='true'; const { execSync } = require('child_process'); execSync('next build', { stdio: 'inherit' });\""
   },
   "dependencies": {

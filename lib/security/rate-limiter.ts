@@ -18,12 +18,14 @@ export interface RateLimitPolicy {
 }
 
 export const RATE_LIMIT_POLICIES = {
-  support: { maxRequests: 5, windowMs: 60 * 60 * 1000 }, // 5 req / hour
-  progress: { maxRequests: 60, windowMs: 60 * 1000 },    // 60 req / min
-  playback: { maxRequests: 30, windowMs: 60 * 1000 },    // 30 req / min
-  auth: { maxRequests: 10, windowMs: 60 * 1000 },        // 10 req / min
-  events: { maxRequests: 120, windowMs: 60 * 1000 },      // 120 req / min (Task 15.1)
-  generalApi: { maxRequests: 120, windowMs: 60 * 1000 }, // 120 req / min
+  support: { maxRequests: 5, windowMs: 60 * 60 * 1000 },  // 5 req / hour
+  progress: { maxRequests: 60, windowMs: 60 * 1000 },     // 60 req / min
+  playback: { maxRequests: 30, windowMs: 60 * 1000 },     // 30 req / min
+  auth: { maxRequests: 10, windowMs: 60 * 1000 },         // 10 req / min
+  events: { maxRequests: 120, windowMs: 60 * 1000 },       // 120 req / min (Task 15.1)
+  checkout: { maxRequests: 10, windowMs: 5 * 60 * 1000 },  // 10 req / 5 min per user/IP (P1 Step 9)
+  webhook: { maxRequests: 60, windowMs: 60 * 1000 },      // 60 req / min per provider/IP
+  generalApi: { maxRequests: 120, windowMs: 60 * 1000 },  // 120 req / min
 } as const;
 
 export type RateLimitProfile = keyof typeof RATE_LIMIT_POLICIES;
@@ -148,23 +150,54 @@ export function resetRateLimits(): void {
   sharedRateLimiter.reset();
 }
 
+function isValidIpFormat(ip: string): boolean {
+  if (!ip || typeof ip !== "string") return false;
+  const trimmed = ip.trim();
+  // Valid IPv4 or IPv6
+  const ipv4 = /^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$/;
+  const ipv6 = /^[0-9a-fA-F:]+$/;
+  return ipv4.test(trimmed) || ipv6.test(trimmed);
+}
+
 /**
- * Extracts client IP from x-forwarded-for or x-real-ip headers.
+ * Extracts verified client IP address.
+ * Security Hardening (Step 9):
+ * Prioritizes non-spoofed edge-proxy headers (`x-real-ip`, `cf-connecting-ip`, `x-vercel-forwarded-for`)
+ * over easily spoofable raw client `x-forwarded-for` prefixes.
  */
 export function getClientIp(req: NextRequest | Request): string {
-  const forwarded = req.headers.get("x-forwarded-for");
-  if (forwarded) {
-    const firstIp = forwarded.split(",")[0]?.trim();
-    if (firstIp) return firstIp;
-  }
+  // 1. Edge-set headers that reverse proxies overwrite with verified client connection IP
   const realIp = req.headers.get("x-real-ip");
-  if (realIp && realIp.trim().length > 0) {
+  if (realIp && isValidIpFormat(realIp)) {
     return realIp.trim();
   }
+
+  const cfIp = req.headers.get("cf-connecting-ip");
+  if (cfIp && isValidIpFormat(cfIp)) {
+    return cfIp.trim();
+  }
+
+  const vercelIp = req.headers.get("x-vercel-forwarded-for");
+  if (vercelIp && isValidIpFormat(vercelIp)) {
+    return vercelIp.trim();
+  }
+
+  // 2. Parsed x-forwarded-for fallback
+  const forwarded = req.headers.get("x-forwarded-for");
+  if (forwarded) {
+    const parts = forwarded.split(",").map((p) => p.trim()).filter(Boolean);
+    for (const part of parts) {
+      if (isValidIpFormat(part)) {
+        return part;
+      }
+    }
+  }
+
   const nextReqIp = (req as any).ip;
-  if (nextReqIp && typeof nextReqIp === "string" && nextReqIp.trim().length > 0) {
+  if (nextReqIp && typeof nextReqIp === "string" && isValidIpFormat(nextReqIp)) {
     return nextReqIp.trim();
   }
+
   return "127.0.0.1";
 }
 

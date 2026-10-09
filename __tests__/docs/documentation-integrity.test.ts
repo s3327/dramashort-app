@@ -129,16 +129,18 @@ test("Task 17.4: Documentation Integrity & Alignment", async (t) => {
     assert.ok(fs.existsSync(adrReadmePath), "docs/adr/README.md must exist");
     const content = fs.readFileSync(adrReadmePath, "utf-8");
 
-    // All 3 ADRs must be indexed
+    // All 4 ADRs must be indexed
     assert.ok(content.includes("ADR-0001"), "ADR registry must index ADR-0001");
     assert.ok(content.includes("ADR-0002"), "ADR registry must index ADR-0002");
     assert.ok(content.includes("ADR-0003"), "ADR registry must index ADR-0003");
+    assert.ok(content.includes("ADR-0004"), "ADR registry must index ADR-0004");
 
     // All referenced ADR files must exist on disk
     const adrFiles = [
       "0001-account-deletion-and-data-retention.md",
       "0002-notifications-system-architecture.md",
       "0003-database-topology.md",
+      "0004-payment-provider-architecture.md",
     ];
 
     for (const file of adrFiles) {

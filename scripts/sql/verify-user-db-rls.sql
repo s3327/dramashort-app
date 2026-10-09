@@ -174,6 +174,22 @@ BEGIN
     RAISE NOTICE 'PASS user cannot move items into another user''s list';
   END;
 
+  -- payment_orders and payment_webhook_events privilege boundaries
+  BEGIN
+    INSERT INTO public.payment_orders (user_id, package_id, amount_minor, currency, provider)
+    VALUES (auth.uid(), 'coins_starter_100', 99, 'USD', 'hacked');
+    RAISE EXCEPTION 'FAIL authenticated user inserted directly into payment_orders';
+  EXCEPTION WHEN insufficient_privilege THEN
+    RAISE NOTICE 'PASS authenticated user cannot insert into payment_orders';
+  END;
+
+  BEGIN
+    SELECT count(*) FROM public.payment_webhook_events;
+    RAISE EXCEPTION 'FAIL authenticated user selected from payment_webhook_events';
+  EXCEPTION WHEN insufficient_privilege THEN
+    RAISE NOTICE 'PASS authenticated user cannot access payment_webhook_events';
+  END;
+
   RAISE NOTICE 'PASS custom lists and items isolated; own list + item upsert works';
 END $$;
 ROLLBACK;
@@ -184,7 +200,7 @@ SET LOCAL ROLE anon;
 DO $$
 DECLARE t text;
 BEGIN
-  FOREACH t IN ARRAY ARRAY['profiles','favorites','watch_history','custom_lists','custom_list_items'] LOOP
+  FOREACH t IN ARRAY ARRAY['profiles','favorites','watch_history','custom_lists','custom_list_items','payment_orders','payment_webhook_events','wallets','coin_transactions'] LOOP
     BEGIN
       EXECUTE format('SELECT count(*) FROM public.%I', t);
       RAISE EXCEPTION 'FAIL anon can select from %', t;

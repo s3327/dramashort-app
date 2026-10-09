@@ -72,6 +72,8 @@ describe("Task 12.4: Remove Mock Data From Production Runtime", () => {
         NEXT_PUBLIC_CONTENT_SUPABASE_ANON_KEY: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.test1",
         NEXT_PUBLIC_USER_SUPABASE_URL: "https://bpidsbcrvpkavvdvtpgh.supabase.co",
         NEXT_PUBLIC_USER_SUPABASE_ANON_KEY: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.test2",
+        PAYMENT_WEBHOOK_SECRET: "whsec_live_mock_secret_abcdef123456",
+        CRON_SECRET: "cron_live_mock_secret_abcdef123456",
       };
 
       const res = validateEnvironment(mockEnv, { throws: true, isProduction: true });

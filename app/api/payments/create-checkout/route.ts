@@ -18,9 +18,14 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    let body: any;
+    interface CreateCheckoutBody {
+      packageId?: string;
+      returnUrl?: string;
+    }
+
+    let body: CreateCheckoutBody;
     try {
-      body = await req.json();
+      body = (await req.json()) as CreateCheckoutBody;
     } catch {
       return NextResponse.json(
         { error: "INVALID_JSON", message: "Request body must be valid JSON." },
@@ -36,11 +41,45 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    if (returnUrl !== undefined) {
+      if (typeof returnUrl !== "string") {
+        return NextResponse.json(
+          { error: "INVALID_RETURN_URL", message: "returnUrl must be a string." },
+          { status: 400 }
+        );
+      }
+      const isRelative =
+        returnUrl.startsWith("/") &&
+        !returnUrl.startsWith("//") &&
+        !returnUrl.includes("://");
+      if (!isRelative) {
+        return NextResponse.json(
+          { error: "INVALID_RETURN_URL", message: "returnUrl must be a relative path." },
+          { status: 400 }
+        );
+      }
+    }
+
     const pkg = getCoinPackageById(packageId);
     if (!pkg) {
       return NextResponse.json(
         { error: "INVALID_PACKAGE_ID", message: `Unknown package ID: ${packageId}` },
         { status: 400 }
+      );
+    }
+
+    // Step 1: Guard against simulated checkout in production or when not explicitly enabled
+    const simulatedAllowed =
+      process.env.NODE_ENV !== "production" &&
+      process.env.ENABLE_SIMULATED_CHECKOUT === "true";
+
+    if (!simulatedAllowed) {
+      return NextResponse.json(
+        {
+          error: "PAYMENT_PROVIDER_NOT_CONFIGURED",
+          message: "Purchases are temporarily unavailable.",
+        },
+        { status: 503 }
       );
     }
 

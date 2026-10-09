@@ -51,6 +51,11 @@ export default function CoinPurchaseModal({
         packageId: selectedPackageId,
       });
 
+      if (res.checkoutUrl) {
+        window.location.href = res.checkoutUrl;
+        return;
+      }
+
       if (res.success) {
         const newBal = res.newBalance ?? 0;
         const isVip = Boolean(res.isVip);
@@ -70,7 +75,9 @@ export default function CoinPurchaseModal({
           onClose();
         }, 2200);
       } else {
-        setErrorMessage(res.error || "Payment processing failed. Please try again.");
+        setErrorMessage(
+          res.error || "Purchases are temporarily unavailable. Please check back later."
+        );
       }
     } catch (err: any) {
       setErrorMessage(err?.message || "An unexpected error occurred during checkout.");

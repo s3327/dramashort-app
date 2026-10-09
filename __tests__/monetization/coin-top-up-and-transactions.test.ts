@@ -20,6 +20,7 @@ import {
 } from "@/lib/supabase/user-server";
 import { NextRequest } from "next/server";
 import type { User } from "@supabase/supabase-js";
+import { generateWebhookSignature } from "@/lib/payments/webhook-signature";
 
 /**
  * In-memory mock Supabase client for User DB state.
@@ -306,7 +307,113 @@ describe("Task 8.5: Coin Top-Up Shop & Transaction Architecture", () => {
       }
     });
 
-    it("POST /api/payments/create-checkout fulfills valid package for authenticated user", async () => {
+    it("POST /api/payments/create-checkout returns 503 when simulated checkout is disabled (production guard)", async () => {
+      const originalNodeEnv = process.env.NODE_ENV;
+      const originalSimulated = process.env.ENABLE_SIMULATED_CHECKOUT;
+
+      const mockClient = createMockUserDbClient({
+        wallets: [{ user_id: "usr-chk-prod", balance: 10, is_vip: false }],
+      });
+      const mockUser = { id: "usr-chk-prod", email: "user@example.com" } as User;
+
+      setTestUserServerClientFactory(() => ({
+        auth: {
+          getUser: () => Promise.resolve({ data: { user: mockUser }, error: null }),
+        },
+        ...mockClient,
+      }));
+      setTestUserServiceRoleClientFactory(() => mockClient);
+
+      try {
+        // Case 1: In production mode, simulated checkout MUST return 503 regardless of flag
+        (process.env as any).NODE_ENV = "production";
+        process.env.ENABLE_SIMULATED_CHECKOUT = "true";
+
+        const reqProd = new NextRequest("http://localhost:3000/api/payments/create-checkout", {
+          method: "POST",
+          body: JSON.stringify({ packageId: "coins_starter_100" }),
+        });
+        const resProd = await postCreateCheckoutRoute(reqProd);
+        assert.equal(resProd.status, 503);
+        const jsonProd = await resProd.json();
+        assert.equal(jsonProd.error, "PAYMENT_PROVIDER_NOT_CONFIGURED");
+        assert.equal(mockClient._coinTransactions.length, 0); // NO ledger row written!
+
+        // Case 2: In development mode but with ENABLE_SIMULATED_CHECKOUT unset, return 503
+        (process.env as any).NODE_ENV = "development";
+        delete process.env.ENABLE_SIMULATED_CHECKOUT;
+
+        const reqDevUnset = new NextRequest("http://localhost:3000/api/payments/create-checkout", {
+          method: "POST",
+          body: JSON.stringify({ packageId: "coins_starter_100" }),
+        });
+        const resDevUnset = await postCreateCheckoutRoute(reqDevUnset);
+        assert.equal(resDevUnset.status, 503);
+        assert.equal(mockClient._coinTransactions.length, 0);
+      } finally {
+        (process.env as any).NODE_ENV = originalNodeEnv;
+        if (originalSimulated !== undefined) {
+          process.env.ENABLE_SIMULATED_CHECKOUT = originalSimulated;
+        } else {
+          delete process.env.ENABLE_SIMULATED_CHECKOUT;
+        }
+        setTestUserServerClientFactory(null);
+        setTestUserServiceRoleClientFactory(null);
+      }
+    });
+
+    it("POST /api/payments/create-checkout rejects open redirect returnUrl with 400", async () => {
+      const originalSimulated = process.env.ENABLE_SIMULATED_CHECKOUT;
+      process.env.ENABLE_SIMULATED_CHECKOUT = "true";
+
+      const mockClient = createMockUserDbClient({
+        wallets: [{ user_id: "usr-chk-redirect", balance: 10, is_vip: false }],
+      });
+      const mockUser = { id: "usr-chk-redirect", email: "user@example.com" } as User;
+
+      setTestUserServerClientFactory(() => ({
+        auth: {
+          getUser: () => Promise.resolve({ data: { user: mockUser }, error: null }),
+        },
+        ...mockClient,
+      }));
+      setTestUserServiceRoleClientFactory(() => mockClient);
+
+      try {
+        // Dangerous protocol-relative URL
+        const req1 = new NextRequest("http://localhost:3000/api/payments/create-checkout", {
+          method: "POST",
+          body: JSON.stringify({ packageId: "coins_starter_100", returnUrl: "//evil.com" }),
+        });
+        const res1 = await postCreateCheckoutRoute(req1);
+        assert.equal(res1.status, 400);
+        const json1 = await res1.json();
+        assert.equal(json1.error, "INVALID_RETURN_URL");
+
+        // Dangerous absolute URL
+        const req2 = new NextRequest("http://localhost:3000/api/payments/create-checkout", {
+          method: "POST",
+          body: JSON.stringify({ packageId: "coins_starter_100", returnUrl: "https://evil.com/phish" }),
+        });
+        const res2 = await postCreateCheckoutRoute(req2);
+        assert.equal(res2.status, 400);
+      } finally {
+        if (originalSimulated !== undefined) {
+          process.env.ENABLE_SIMULATED_CHECKOUT = originalSimulated;
+        } else {
+          delete process.env.ENABLE_SIMULATED_CHECKOUT;
+        }
+        setTestUserServerClientFactory(null);
+        setTestUserServiceRoleClientFactory(null);
+      }
+    });
+
+    it("POST /api/payments/create-checkout fulfills valid package when ENABLE_SIMULATED_CHECKOUT='true' in non-production", async () => {
+      const originalNodeEnv = process.env.NODE_ENV;
+      const originalSimulated = process.env.ENABLE_SIMULATED_CHECKOUT;
+      (process.env as any).NODE_ENV = "test";
+      process.env.ENABLE_SIMULATED_CHECKOUT = "true";
+
       const mockClient = createMockUserDbClient({
         wallets: [{ user_id: "usr-chk-auth", balance: 10, is_vip: false }],
       });
@@ -323,7 +430,7 @@ describe("Task 8.5: Coin Top-Up Shop & Transaction Architecture", () => {
       try {
         const req = new NextRequest("http://localhost:3000/api/payments/create-checkout", {
           method: "POST",
-          body: JSON.stringify({ packageId: "coins_starter_100" }),
+          body: JSON.stringify({ packageId: "coins_starter_100", returnUrl: "/account/wallet?status=ok" }),
         });
         const res = await postCreateCheckoutRoute(req);
         assert.equal(res.status, 200);
@@ -332,13 +439,23 @@ describe("Task 8.5: Coin Top-Up Shop & Transaction Architecture", () => {
         assert.equal(json.coinsCredited, 100);
         assert.equal(json.newBalance, 110);
         assert.ok(json.referenceId.startsWith("order_"));
+        assert.equal(json.returnUrl, "/account/wallet?status=ok");
       } finally {
+        (process.env as any).NODE_ENV = originalNodeEnv;
+        if (originalSimulated !== undefined) {
+          process.env.ENABLE_SIMULATED_CHECKOUT = originalSimulated;
+        } else {
+          delete process.env.ENABLE_SIMULATED_CHECKOUT;
+        }
         setTestUserServerClientFactory(null);
         setTestUserServiceRoleClientFactory(null);
       }
     });
 
     it("POST /api/payments/webhook processes payment.completed idempotently", async () => {
+      const originalSecret = process.env.PAYMENT_WEBHOOK_SECRET;
+      process.env.PAYMENT_WEBHOOK_SECRET = "whsec_test_secret_123456789";
+
       const mockClient = createMockUserDbClient({
         wallets: [{ user_id: "usr-hook", balance: 0, is_vip: false }],
       });
@@ -355,9 +472,16 @@ describe("Task 8.5: Coin Top-Up Shop & Transaction Architecture", () => {
           createdAt: new Date().toISOString(),
         };
 
+        const rawBody = JSON.stringify(webhookPayload);
+        const signature = generateWebhookSignature(rawBody, process.env.PAYMENT_WEBHOOK_SECRET, Date.now());
+
         const req1 = new NextRequest("http://localhost:3000/api/payments/webhook", {
           method: "POST",
-          body: JSON.stringify(webhookPayload),
+          headers: {
+            "Content-Type": "application/json",
+            "x-webhook-signature": signature,
+          },
+          body: rawBody,
         });
         const res1 = await postWebhookRoute(req1);
         assert.equal(res1.status, 200);
@@ -370,7 +494,11 @@ describe("Task 8.5: Coin Top-Up Shop & Transaction Architecture", () => {
         // Replay same webhook event (network duplicate)
         const req2 = new NextRequest("http://localhost:3000/api/payments/webhook", {
           method: "POST",
-          body: JSON.stringify(webhookPayload),
+          headers: {
+            "Content-Type": "application/json",
+            "x-webhook-signature": signature,
+          },
+          body: rawBody,
         });
         const res2 = await postWebhookRoute(req2);
         assert.equal(res2.status, 200);
@@ -379,23 +507,111 @@ describe("Task 8.5: Coin Top-Up Shop & Transaction Architecture", () => {
         assert.equal(json2.duplicate, true); // Safely deduplicated!
         assert.equal(json2.newBalance, 800);
       } finally {
+        if (originalSecret !== undefined) {
+          process.env.PAYMENT_WEBHOOK_SECRET = originalSecret;
+        } else {
+          delete process.env.PAYMENT_WEBHOOK_SECRET;
+        }
         setTestUserServiceRoleClientFactory(null);
       }
     });
 
     it("POST /api/payments/webhook ignores non-completed events gracefully", async () => {
-      const req = new NextRequest("http://localhost:3000/api/payments/webhook", {
-        method: "POST",
-        body: JSON.stringify({
+      const originalSecret = process.env.PAYMENT_WEBHOOK_SECRET;
+      process.env.PAYMENT_WEBHOOK_SECRET = "whsec_test_secret_123456789";
+
+      try {
+        const rawBody = JSON.stringify({
           eventId: "evt-failed",
           eventType: "payment.failed",
-        }),
-      });
-      const res = await postWebhookRoute(req);
-      assert.equal(res.status, 200);
-      const json = await res.json();
-      assert.equal(json.received, true);
-      assert.equal(json.processed, false);
+        });
+        const signature = generateWebhookSignature(rawBody, process.env.PAYMENT_WEBHOOK_SECRET, Date.now());
+
+        const req = new NextRequest("http://localhost:3000/api/payments/webhook", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-webhook-signature": signature,
+          },
+          body: rawBody,
+        });
+        const res = await postWebhookRoute(req);
+        assert.equal(res.status, 200);
+        const json = await res.json();
+        assert.equal(json.received, true);
+        assert.equal(json.processed, false);
+      } finally {
+        if (originalSecret !== undefined) {
+          process.env.PAYMENT_WEBHOOK_SECRET = originalSecret;
+        } else {
+          delete process.env.PAYMENT_WEBHOOK_SECRET;
+        }
+      }
+    });
+
+    it("POST /api/payments/webhook fails closed with 500 when secret is not configured", async () => {
+      const originalSecret = process.env.PAYMENT_WEBHOOK_SECRET;
+      delete process.env.PAYMENT_WEBHOOK_SECRET;
+
+      try {
+        const req = new NextRequest("http://localhost:3000/api/payments/webhook", {
+          method: "POST",
+          body: JSON.stringify({ eventType: "payment.completed" }),
+        });
+        const res = await postWebhookRoute(req);
+        assert.equal(res.status, 500);
+        const json = await res.json();
+        assert.equal(json.error, "WEBHOOK_NOT_CONFIGURED");
+      } finally {
+        if (originalSecret !== undefined) {
+          process.env.PAYMENT_WEBHOOK_SECRET = originalSecret;
+        }
+      }
+    });
+
+    it("POST /api/payments/webhook rejects forged or tampered signatures with 401", async () => {
+      const originalSecret = process.env.PAYMENT_WEBHOOK_SECRET;
+      process.env.PAYMENT_WEBHOOK_SECRET = "whsec_real_secret";
+
+      try {
+        const rawBody = JSON.stringify({
+          eventId: "evt-forged",
+          eventType: "payment.completed",
+          userId: "usr-hacker",
+          packageId: "coins_binge_800",
+          referenceId: "order_fake",
+        });
+
+        // 1. Missing signature header
+        const reqNoSig = new NextRequest("http://localhost:3000/api/payments/webhook", {
+          method: "POST",
+          body: rawBody,
+        });
+        const resNoSig = await postWebhookRoute(reqNoSig);
+        assert.equal(resNoSig.status, 401);
+        const jsonNoSig = await resNoSig.json();
+        assert.equal(jsonNoSig.error, "MISSING_SIGNATURE");
+
+        // 2. Invalid/tampered signature header
+        const reqBadSig = new NextRequest("http://localhost:3000/api/payments/webhook", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-webhook-signature": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+          },
+          body: rawBody,
+        });
+        const resBadSig = await postWebhookRoute(reqBadSig);
+        assert.equal(resBadSig.status, 401);
+        const jsonBadSig = await resBadSig.json();
+        assert.equal(jsonBadSig.error, "INVALID_SIGNATURE");
+      } finally {
+        if (originalSecret !== undefined) {
+          process.env.PAYMENT_WEBHOOK_SECRET = originalSecret;
+        } else {
+          delete process.env.PAYMENT_WEBHOOK_SECRET;
+        }
+      }
     });
   });
 

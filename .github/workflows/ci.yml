@@ -47,8 +47,8 @@ jobs:
       - name: First-Load JS Bundle Budget Gate (Task 17.3)
         run: npm run check:budget
 
-      - name: npm Dependency Security Audit
-        run: npm audit --audit-level=high || true
+      - name: npm Dependency Security Audit Gate (P1 Step 11)
+        run: npm run check:audit
 
   supabase-rls-verification:
     name: Supabase Database RLS & Policy Gate
@@ -60,7 +60,7 @@ jobs:
       - name: Setup Supabase CLI
         uses: supabase/setup-cli@v1
         with:
-          version: latest
+          version: 1.192.5
 
       - name: Start User DB & Run Migrations
         run: |

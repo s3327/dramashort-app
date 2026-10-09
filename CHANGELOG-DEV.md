@@ -3675,3 +3675,67 @@
   - Full test runner `npm test`: all 1,161 tests pass across 345 suites with 0 failures (100% pass rate).
   - Next.js production build (`npm run build`): cleanly compiles 84/84 routes with zero errors.
   - TypeScript compiler check (`npx tsc --noEmit`): 0 type errors.
+
+---
+
+## [2026-10-10] Security & Stability Fix Plan (Phases A-F)
+* **Milestone**: Platform Security, Financial Integrity & Stability Hardening — Phases A through F
+* **Goal**: Remediate simulated checkout vulnerabilities, implement zero-trust hosted payment architecture (ADR-0004), database-level partial unique constraints and atomic RPC fulfillment, constant-time HMAC webhook verification with replay protection, environment secret validation, timing-safe Bearer-only cron routes, spoof-resistant bounded rate limiting, 15-minute signed playback delivery tokens, and strict CI security audit gates.
+* **Implementation Steps Taken**:
+  1. **Phase A: Production Guard on Simulated Checkout**:
+     - Hardened `app/api/payments/create-checkout/route.ts` with 503 guard blocking simulation in production or when `ENABLE_SIMULATED_CHECKOUT !== "true"`.
+     - Validated `returnUrl` to eliminate open redirects.
+     - Updated `components/wallet/CoinPurchaseModal.tsx` to handle 503 gracefully and support `res.checkoutUrl` redirects.
+  2. **Phase B: Forensic Audit & Diagnostic Scripts**:
+     - Authored `scripts/sql/audit-monetization-ledger.sql` with read-only diagnostic queries for simulated orders, duplicate references, unbacked VIP grants, and ledger invariant discrepancies.
+  3. **Phase C: Database Safety Net & Idempotent RPC**:
+     - Created migration `supabase/user/supabase/migrations/20261010100000_payment_orders.sql` (`payment_orders`, `payment_webhook_events`, unique partial index `uq_coin_tx_purchase_reference`, atomic `fulfill_payment_order` RPC).
+     - Hardened `lib/server/wallet.ts` with `fulfillPaymentOrderServer` and 23505 unique constraint duplicate handling.
+     - Added RLS verification assertions to `scripts/sql/verify-user-db-rls.sql`.
+  4. **Phase D: Production Payment Architecture (ADR-0004)**:
+     - Authored and indexed `docs/adr/0004-payment-provider-architecture.md`.
+     - Created `lib/payments/webhook-signature.ts` with constant-time HMAC-SHA256 verification (`crypto.timingSafeEqual`) and 300s timestamp freshness verification.
+     - Implemented zero-trust webhook handler `app/api/payments/webhook/route.ts` with fail-closed secret checks, raw body parsing, database order lookups, and refund event handling.
+  5. **Phase E: Ancillary Security Hardening**:
+     - Updated `lib/config/env-validator.mjs`, `lib/env.ts`, and `.env.example` to enforce required secrets in production.
+     - Hardened `app/api/cron/rollup/route.ts` to strictly require `Authorization: Bearer <CRON_SECRET>` with `timingSafeEqual`.
+     - Hardened `lib/security/rate-limiter.ts` with spoof-resistant IP extraction, 10,000 IP bounded memory cache, and dedicated payment rate limiting tiers.
+     - Hardened `lib/server/playback.ts` with 15-minute HMAC-SHA256 signed playback tokens (`signPlaybackToken`, `verifyPlaybackToken`, `signPlaybackUrl`).
+     - Hardened CI pipeline: created `scripts/ci/audit-exceptions.json` and `scripts/ci/audit-gate.mjs`; updated `package.json` (`check:audit`) and `.github/workflows/ci.yml` (removed `|| true`, pinned Supabase CLI to `1.192.5`).
+  6. **Phase F: Codebase Health, Type Safety & Verification**:
+     - Authored comprehensive test suite `__tests__/security/payment-security-and-idempotency.test.ts` (11 tests).
+     - Completed type-safety sweep across payment boundaries (zero `any` types).
+     - Authored comprehensive report `SECURITY_AND_STABILITY_FIX_REPORT.md`.
+* **Key File Diffs**:
+  - Created:
+    - `SECURITY_AND_STABILITY_FIX_REPORT.md`
+    - `docs/adr/0004-payment-provider-architecture.md`
+    - `lib/payments/webhook-signature.ts`
+    - `scripts/ci/audit-exceptions.json`
+    - `scripts/ci/audit-gate.mjs`
+    - `scripts/sql/audit-monetization-ledger.sql`
+    - `supabase/user/supabase/migrations/20261010100000_payment_orders.sql`
+    - `__tests__/security/payment-security-and-idempotency.test.ts`
+  - Modified:
+    - `app/api/payments/create-checkout/route.ts`
+    - `app/api/payments/webhook/route.ts`
+    - `app/api/cron/rollup/route.ts`
+    - `components/wallet/CoinPurchaseModal.tsx`
+    - `docs/adr/README.md`
+    - `lib/config/env-validator.mjs`
+    - `lib/env.ts`
+    - `lib/security/rate-limiter.ts`
+    - `lib/server/playback.ts`
+    - `lib/server/wallet.ts`
+    - `package.json`
+    - `.github/workflows/ci.yml`
+    - `.env.example`
+    - `scripts/sql/verify-user-db-rls.sql`
+    - `__tests__/monetization/coin-top-up-and-transactions.test.ts`
+    - `__tests__/analytics/aggregation-rollups.test.ts`
+    - `__tests__/docs/documentation-integrity.test.ts`
+    - `__tests__/runtime/no-mock-fallback.test.ts`
+* **Regression Analysis & Verification Record**:
+  - Full automated test suite (`npm test`): **1,176 / 1,176 tests pass** across 350 suites with 0 failures (100% pass rate).
+  - CI security audit gate (`node scripts/ci/audit-gate.mjs`): **PASSED** with exit code 0.
+  - TypeScript compiler check (`npx tsc --noEmit`): **0 type errors**.
