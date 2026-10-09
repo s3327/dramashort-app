@@ -3172,3 +3172,37 @@
   - Full test runner `npm test`: all 988 tests pass across 270 suites with 0 failures (100% pass rate).
   - TypeScript compiler check (`npx tsc --noEmit`): 0 type errors.
   - Next.js production build (`npm run build`): cleanly compiles all 88 static and dynamic routes.
+---
+
+## [2026-10-09] Task 8.3: Custom Player Paywall Gatekeeper UI & Coin Unlock Modal
+* **Milestone**: Phase 8 (Short Drama Monetization Engine — Freemium Coin Economy) — Task 8.3
+* **Goal**: Deliver the interactive player paywall gatekeeper UI and coin unlock modal, intercepting locked episode navigation for guests and authenticated viewers, providing single-episode and discounted bulk bundle unlock options, enabling seamless auto-unlock playback transitions, accurately badging episode drawers, and instrumenting Phase 15 paywall analytics.
+* **Implementation Steps Taken**:
+  1. **Accessible Coin Unlock Modal (`components/player/EpisodeUnlockModal.tsx`, `components/modals/EpisodeUnlockModal.tsx`)**:
+     - Built modal component wrapping `@/components/Modal` with WCAG 2.1 AA focus trap, Escape dismissal, and dark backdrop blur.
+     - Single unlock option: 10 coins deduction via `unlockEpisodeClient()`.
+     - Bulk bundle unlock option: 20% discount on remaining locked episodes via `unlockRemainingEpisodesClient()`.
+     - Auto-unlock checkbox: persists preference to `localStorage` key `dramashort_auto_unlock_episodes`.
+     - Insufficient balance state: displays alert card with CTAs to "Daily Free Coins" or "Visit Wallet".
+     - Created architectural re-export facade at `components/modals/EpisodeUnlockModal.tsx`.
+  2. **Player Interception & Paywall Gatekeeper (`components/watch/WatchPlayerIsland.tsx`)**:
+     - Unauthenticated guests: navigation or stream playback of locked episode triggers `LoginRequiredModal` preserving target return URL.
+     - Authenticated users: navigation or playback of locked episode triggers `EpisodeUnlockModal` (or background auto-unlock if preference enabled and balance >= 10).
+     - Reactive server playback error handling: catches HTTP 403 `PAYMENT_REQUIRED` and invokes appropriate modal.
+     - Seamless playback resumption: on unlock success, updates wallet balance, adds episode to unlocked set, calls `getEpisodePlayback()`, and starts video stream from 0:00 without page reload.
+  3. **Continuous Playback Auto-Unlock**:
+     - On auto-advancing to subsequent locked episodes, if auto-unlock preference is enabled and user has sufficient balance, automatically deducts coins, displays discreet toast "Episode X auto-unlocked (-10 coins)", and resumes playback uninterrupted.
+  4. **Episode Drawer & Desktop Grid Lock Badges (`components/player/EpisodeSheet.tsx` & `WatchPlayerIsland.tsx`)**:
+     - Extended `EpisodeSheetProps` with `unlockedEpisodeNumbers`, `freeEpisodesCount`, `isVip`, and `onSelectLockedEpisode`.
+     - Accurately renders lock badges (`Lock`) across both mobile drawer and desktop sidebar episode grid based on verified entitlements.
+  5. **Analytics Integration (`lib/analytics/track.ts`)**:
+     - Added `trackPaywallView` emitting `paywall_view` on modal impression.
+     - Added `trackEpisodeUnlock` emitting `episode_unlock` on successful coin debit.
+  6. **Automated Verification Test Suite (`__tests__/monetization/player-paywall-gatekeeper.test.ts`)**:
+     - Authored 15 automated unit and integration tests covering paywall analytics, storage keys, modal contracts, episode lock decision logic, and bundle pricing.
+* **Regression Analysis & Verification Record**:
+  - `__tests__/monetization/player-paywall-gatekeeper.test.ts`: 15 / 15 tests pass (100%).
+  - Full test runner `npm test`: all 1,003 tests pass across 275 suites with 0 failures (100% pass rate).
+  - TypeScript compiler check (`npx tsc --noEmit`): 0 type errors.
+  - Architecture boundaries (`__tests__/architecture/service-layer-split.test.ts`): 25 / 25 tests pass with 0 client-server leakage.
+  - Next.js production build (`npm run build`): cleanly compiles all 88 static and dynamic routes.

@@ -33,10 +33,25 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    const dramaId = searchParams.get("dramaId");
+    let unlockedEpisodeNumbers: number[] = [];
+    if (dramaId) {
+      const { data: unlockedRows } = await supabase
+        .from("user_unlocked_episodes")
+        .select("episode_number")
+        .eq("user_id", user.id)
+        .eq("drama_id", dramaId);
+
+      if (Array.isArray(unlockedRows)) {
+        unlockedEpisodeNumbers = unlockedRows.map((r: any) => Number(r.episode_number));
+      }
+    }
+
     return NextResponse.json({
       success: true,
       wallet: walletRes.value,
       transactions: txRes.ok ? txRes.value : { items: [], total: 0, page: 1, pageSize: 20, totalPages: 0 },
+      unlockedEpisodes: unlockedEpisodeNumbers,
     });
   } catch (err: any) {
     return NextResponse.json(

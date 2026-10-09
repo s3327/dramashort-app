@@ -29,6 +29,10 @@ export interface EpisodeSheetProps {
   episodes: Episode[];
   onSelectEpisode: (episodeNumber: number) => void;
   dramaTitle?: string;
+  unlockedEpisodeNumbers?: Set<number>;
+  freeEpisodesCount?: number;
+  isVip?: boolean;
+  onSelectLockedEpisode?: (episodeNumber: number) => void;
 }
 
 export interface WatchOverlayProps {

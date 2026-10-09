@@ -13,9 +13,38 @@ import {
  * Client service layer for interacting with wallet, entitlements, and check-in APIs.
  */
 
-export async function getClientWallet(): Promise<WalletInfo | null> {
+/**
+ * Computes bundled discount cost for unlocking remaining episodes.
+ * 20% discount applied to the standard 10-coin per episode price.
+ */
+export function calculateBundleCost(
+  remainingCount: number,
+  perEpisodeCost = 10,
+  discountRate = 0.20
+): { standardCost: number; discountedCost: number; savings: number; discountPercent: number } {
+  if (remainingCount <= 0) {
+    return { standardCost: 0, discountedCost: 0, savings: 0, discountPercent: Math.round(discountRate * 100) };
+  }
+  const standardCost = remainingCount * perEpisodeCost;
+  // Apply discount, minimum 10 coins if unlocking at least 1 episode
+  const discountedCost = Math.max(perEpisodeCost, Math.floor(standardCost * (1 - discountRate)));
+  const savings = Math.max(0, standardCost - discountedCost);
+  return {
+    standardCost,
+    discountedCost,
+    savings,
+    discountPercent: Math.round(discountRate * 100),
+  };
+}
+
+export async function getClientWallet(
+  dramaId?: string
+): Promise<{ wallet: WalletInfo | null; unlockedEpisodes: number[] } | null> {
   try {
-    const res = await fetch("/api/user/wallet", {
+    const url = dramaId
+      ? `/api/user/wallet?dramaId=${encodeURIComponent(dramaId)}`
+      : "/api/user/wallet";
+    const res = await fetch(url, {
       method: "GET",
       headers: { "Content-Type": "application/json" },
       cache: "no-store",
@@ -23,7 +52,10 @@ export async function getClientWallet(): Promise<WalletInfo | null> {
 
     if (!res.ok) return null;
     const json = await res.json();
-    return json.wallet || null;
+    return {
+      wallet: json.wallet || null,
+      unlockedEpisodes: Array.isArray(json.unlockedEpisodes) ? json.unlockedEpisodes : [],
+    };
   } catch {
     return null;
   }

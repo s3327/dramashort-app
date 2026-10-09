@@ -540,6 +540,47 @@ export function trackExperimentExposure(params: {
   });
 }
 
+/**
+ * Tracks a paywall presentation event when a locked episode is encountered (Task 8.3 / Task 15.2).
+ */
+export function trackPaywallView(params: {
+  titleSlug: string;
+  episodeNumber: number;
+  source?: "navigation" | "drawer" | "auto_next" | "initial_load";
+}): void {
+  trackEvent({
+    titleSlug: params.titleSlug,
+    episodeNumber: params.episodeNumber,
+    eventType: "paywall_view",
+    payload: {
+      source: params.source || "navigation",
+    },
+  });
+}
+
+/**
+ * Tracks an episode unlock event when coins are spent or VIP bypass unlocks an episode (Task 8.3 / Task 15.2).
+ */
+export function trackEpisodeUnlock(params: {
+  titleSlug: string;
+  episodeNumber: number;
+  coinsSpent: number;
+  isBundle?: boolean;
+  episodesCount?: number;
+  isVip?: boolean;
+}): void {
+  trackEvent({
+    titleSlug: params.titleSlug,
+    episodeNumber: params.episodeNumber,
+    eventType: "episode_unlock",
+    payload: {
+      coinsSpent: params.coinsSpent,
+      isBundle: Boolean(params.isBundle),
+      episodesCount: params.episodesCount || 1,
+      isVip: Boolean(params.isVip),
+    },
+  });
+}
 
 /**
  * Testing utilities for isolating unit tests

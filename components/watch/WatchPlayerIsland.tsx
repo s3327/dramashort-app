@@ -3,17 +3,21 @@
 import { useEffect, useMemo, useState, useRef, useCallback } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { Flag, Film, Tv, Star, Eye } from "lucide-react";
+import { Flag, Film, Tv, Star, Eye, Coins, Lock } from "lucide-react";
 import VideoPlayer from "@/components/VideoPlayer";
 import EpisodeSheet from "@/components/player/EpisodeSheet";
 import WatchOverlay from "@/components/player/WatchOverlay";
 import GuestEngagementModal from "@/components/engagement/GuestEngagementModal";
+import EpisodeUnlockModal, { AUTO_UNLOCK_STORAGE_KEY } from "@/components/player/EpisodeUnlockModal";
+import LoginRequiredModal from "@/components/LoginRequiredModal";
 import {
   type GuestEngagementTrigger,
   isGuestPromptDismissed,
 } from "@/lib/analytics/guest-engagement";
 import type { Title, Episode, PlaybackSource } from "@/types/content";
+import type { WalletInfo } from "@/types/wallet";
 import { getEpisodePlayback } from "@/lib/services/content.service";
+import { getClientWallet, unlockEpisodeClient } from "@/lib/services/wallet.service";
 import { useAuth } from "@/contexts/AuthContext";
 import {
   getWatchProgress,
@@ -34,6 +38,8 @@ import {
   trackPlaybackProgress,
   trackPlaybackComplete,
   trackPlaybackSkip,
+  trackEpisodeUnlock,
+  trackPaywallView,
   flushEvents,
 } from "@/lib/analytics/track";
 
@@ -121,6 +127,45 @@ export default function WatchPlayerIsland({
   const [isEpisodeSheetOpen, setIsEpisodeSheetOpen] = useState(false);
   const [guestPromptOpen, setGuestPromptOpen] = useState(false);
   const [guestPromptTrigger, setGuestPromptTrigger] = useState<GuestEngagementTrigger>("episode_3");
+
+  // Phase 8: Wallet & Paywall states
+  const [userWallet, setUserWallet] = useState<WalletInfo | null>(null);
+  const [unlockedEpisodeNumbers, setUnlockedEpisodeNumbers] = useState<Set<number>>(new Set());
+  const [isUnlockModalOpen, setIsUnlockModalOpen] = useState(false);
+  const [isLoginRequiredModalOpen, setIsLoginRequiredModalOpen] = useState(false);
+  const [pendingLockedEpisode, setPendingLockedEpisode] = useState<number | null>(null);
+  const [autoUnlockToast, setAutoUnlockToast] = useState<string | null>(null);
+
+  // Fetch user wallet and unlocked episodes for this drama
+  useEffect(() => {
+    if (!user) {
+      setUserWallet(null);
+      setUnlockedEpisodeNumbers(new Set());
+      return;
+    }
+
+    let isMounted = true;
+    getClientWallet(drama.id).then((res) => {
+      if (!isMounted || !res) return;
+      if (res.wallet) setUserWallet(res.wallet);
+      if (res.unlockedEpisodes && res.unlockedEpisodes.length > 0) {
+        setUnlockedEpisodeNumbers(new Set(res.unlockedEpisodes));
+      }
+    });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [user, drama.id]);
+
+  const freeLimit = drama.freeEpisodesCount ?? 5;
+  const remainingLockedCount = useMemo(() => {
+    return dbEpisodes.filter((ep) => {
+      const isFree = ep.isFree ?? (ep.episodeNumber <= freeLimit);
+      const isUnlocked = Boolean(userWallet?.isVip || unlockedEpisodeNumbers.has(ep.episodeNumber));
+      return !isFree && !isUnlocked;
+    }).length;
+  }, [dbEpisodes, freeLimit, userWallet?.isVip, unlockedEpisodeNumbers]);
 
   // Synchronize when initialEpisodes changes
   useEffect(() => {
@@ -259,7 +304,7 @@ export default function WatchPlayerIsland({
     [user, drama.slug]
   );
 
-  const handleSelectEpisode = useCallback(
+  const proceedToSelectEpisode = useCallback(
     (ep: number) => {
       // Task 15.2: Track skip if current episode was started but not finished
       if (
@@ -306,6 +351,63 @@ export default function WatchPlayerIsland({
       recordProgress(ep, 0, 0, 0);
     },
     [maxTab, recordProgress, drama.slug]
+  );
+
+  const handleSelectEpisode = useCallback(
+    async (ep: number) => {
+      const targetEpData = dbEpisodes.find((e) => e.episodeNumber === ep);
+      const freeThreshold = drama.freeEpisodesCount ?? 5;
+      const isFree = targetEpData?.isFree ?? (ep <= freeThreshold);
+      const isUnlocked = Boolean(userWallet?.isVip || unlockedEpisodeNumbers.has(ep));
+
+      if (!isFree && !isUnlocked) {
+        if (!user) {
+          setPendingLockedEpisode(ep);
+          setIsLoginRequiredModalOpen(true);
+          return;
+        }
+
+        const autoUnlock =
+          typeof window !== "undefined" &&
+          localStorage.getItem(AUTO_UNLOCK_STORAGE_KEY) === "true";
+
+        if (autoUnlock && targetEpData?.id && (userWallet?.balance ?? 0) >= 10) {
+          const res = await unlockEpisodeClient({
+            dramaId: drama.id,
+            dramaSlug: drama.slug,
+            episodeId: targetEpData.id,
+            episodeNumber: ep,
+            cost: 10,
+          });
+
+          if (res.success) {
+            setUserWallet((prev) => (prev ? { ...prev, balance: res.newBalance } : null));
+            setUnlockedEpisodeNumbers((prev) => new Set([...prev, ep]));
+            setAutoUnlockToast(`Episode ${ep} auto-unlocked (-10 coins)`);
+            setTimeout(() => setAutoUnlockToast(null), 3000);
+
+            trackEpisodeUnlock({
+              titleSlug: drama.slug,
+              episodeNumber: ep,
+              coinsSpent: res.coinsSpent,
+              isBundle: false,
+              episodesCount: 1,
+              isVip: res.isVipUnlock,
+            });
+
+            proceedToSelectEpisode(ep);
+            return;
+          }
+        }
+
+        setPendingLockedEpisode(ep);
+        setIsUnlockModalOpen(true);
+        return;
+      }
+
+      proceedToSelectEpisode(ep);
+    },
+    [dbEpisodes, drama.id, drama.slug, drama.freeEpisodesCount, userWallet, unlockedEpisodeNumbers, user, proceedToSelectEpisode]
   );
 
   const handleTimeUpdate = useCallback(
@@ -562,14 +664,51 @@ export default function WatchPlayerIsland({
       if (res.success && res.data) {
         setPlaybackSource(res.data);
       } else {
-        setPlaybackError(res.error || "Failed to load video stream.");
+        const isPaywallError =
+          res.error?.includes("PAYMENT_REQUIRED") ||
+          res.error?.includes("requires 10 coins") ||
+          res.error?.includes("unlock this episode");
+
+        if (isPaywallError) {
+          if (!user) {
+            setPendingLockedEpisode(currentEpisode);
+            setIsLoginRequiredModalOpen(true);
+          } else {
+            setPendingLockedEpisode(currentEpisode);
+            setIsUnlockModalOpen(true);
+          }
+        } else {
+          setPlaybackError(res.error || "Failed to load video stream.");
+        }
       }
     });
 
     return () => {
       isMounted = false;
     };
-  }, [currentEpData?.id, retryNonce]);
+  }, [currentEpData?.id, retryNonce, user, currentEpisode]);
+
+  const handleModalUnlocked = useCallback(
+    (newBalance: number, isBundle?: boolean) => {
+      setUserWallet((prev) => (prev ? { ...prev, balance: newBalance } : null));
+      if (isBundle) {
+        setUnlockedEpisodeNumbers(
+          new Set(Array.from({ length: totalEps }, (_, i) => i + 1))
+        );
+      } else {
+        const epToUnlock = pendingLockedEpisode || currentEpisode;
+        setUnlockedEpisodeNumbers((prev) => new Set([...prev, epToUnlock]));
+      }
+      setIsUnlockModalOpen(false);
+
+      if (pendingLockedEpisode && pendingLockedEpisode !== currentEpisode) {
+        proceedToSelectEpisode(pendingLockedEpisode);
+      } else {
+        handleRetryPlayback();
+      }
+    },
+    [pendingLockedEpisode, currentEpisode, totalEps, proceedToSelectEpisode, handleRetryPlayback]
+  );
 
   const handleToggleFullscreen = useCallback(() => {
     const vid = document.querySelector("video");
@@ -873,20 +1012,35 @@ export default function WatchPlayerIsland({
                 );
               }
 
+              const isUnlocked = Boolean(userWallet?.isVip || unlockedEpisodeNumbers.has(ep));
+              const isFree = epData?.isFree ?? (ep <= freeLimit);
+              const isLocked = isAvailable && !isFree && !isUnlocked;
+
               return (
                 <button
                   key={ep}
                   type="button"
                   onClick={() => handleSelectEpisode(ep)}
                   aria-current={active}
-                  aria-label={active ? `Episode ${ep}, currently playing` : `Episode ${ep}`}
-                  className={`aspect-square rounded-lg text-xs font-bold transition-all duration-150 focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none ${
+                  aria-label={
+                    active
+                      ? `Episode ${ep}, currently playing`
+                      : isLocked
+                      ? `Episode ${ep}, locked`
+                      : `Episode ${ep}`
+                  }
+                  className={`relative aspect-square rounded-lg text-xs font-bold transition-all duration-150 focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none ${
                     active
                       ? "bg-btn-primary text-btn-primary-text ring-2 ring-primary ring-offset-2 ring-offset-bg shadow-md scale-105"
                       : "bg-bg border border-border text-text-muted hover:text-text hover:border-primary/50 hover:bg-surface-elevated"
                   }`}
                 >
-                  {ep}
+                  <span>{ep}</span>
+                  {isLocked && !active && (
+                    <span className="absolute top-1 right-1 text-text-muted">
+                      <Lock size={10} />
+                    </span>
+                  )}
                 </button>
               );
             })}
@@ -903,6 +1057,68 @@ export default function WatchPlayerIsland({
         episodes={dbEpisodes}
         onSelectEpisode={handleSelectEpisode}
         dramaTitle={drama.title}
+        unlockedEpisodeNumbers={unlockedEpisodeNumbers}
+        freeEpisodesCount={freeLimit}
+        isVip={Boolean(userWallet?.isVip)}
+        onSelectLockedEpisode={handleSelectEpisode}
+      />
+
+      {/* Auto-Unlock Notification Toast */}
+      {autoUnlockToast && (
+        <div
+          role="status"
+          aria-live="polite"
+          className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 px-4 py-2 rounded-full bg-amber-500 text-black font-bold text-xs shadow-xl flex items-center gap-1.5 animate-in fade-in slide-in-from-bottom duration-200"
+        >
+          <Coins size={14} />
+          <span>{autoUnlockToast}</span>
+        </div>
+      )}
+
+      {/* Episode Coin Unlock Modal (Task 8.3) */}
+      {(() => {
+        const epForModal = pendingLockedEpisode
+          ? dbEpisodes.find((e) => e.episodeNumber === pendingLockedEpisode) || {
+              id: `ep-${pendingLockedEpisode}`,
+              episodeNumber: pendingLockedEpisode,
+              title: `Episode ${pendingLockedEpisode}`,
+            }
+          : currentEpData || {
+              id: `ep-${currentEpisode}`,
+              episodeNumber: currentEpisode,
+              title: `Episode ${currentEpisode}`,
+            };
+
+        return (
+          <EpisodeUnlockModal
+            open={isUnlockModalOpen}
+            onClose={() => setIsUnlockModalOpen(false)}
+            drama={{
+              id: drama.id,
+              slug: drama.slug,
+              title: drama.title,
+              poster: drama.poster,
+            }}
+            episode={{
+              id: epForModal.id,
+              episodeNumber: epForModal.episodeNumber,
+              title: epForModal.title,
+            }}
+            remainingLockedCount={remainingLockedCount}
+            userBalance={userWallet?.balance ?? 0}
+            isVip={Boolean(userWallet?.isVip)}
+            onUnlocked={handleModalUnlocked}
+          />
+        );
+      })()}
+
+      {/* Guest Login Required Modal (Task 8.3) */}
+      <LoginRequiredModal
+        open={isLoginRequiredModalOpen}
+        onClose={() => setIsLoginRequiredModalOpen(false)}
+        message={`Sign in or create an account to unlock Episode ${
+          pendingLockedEpisode || currentEpisode
+        } of ${drama.title}.`}
       />
 
       {/* Guest Soft Engagement Modal (Task 14.8) */}

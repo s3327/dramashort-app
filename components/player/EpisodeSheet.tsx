@@ -14,6 +14,10 @@ export default function EpisodeSheet({
   episodes,
   onSelectEpisode,
   dramaTitle,
+  unlockedEpisodeNumbers,
+  freeEpisodesCount = 5,
+  isVip = false,
+  onSelectLockedEpisode,
 }: EpisodeSheetProps) {
   const maxTab = Math.max(0, Math.ceil(totalEpisodes / EPISODES_PER_TAB) - 1);
   const [activeTab, setActiveTab] = useState<number>(() => {
@@ -140,8 +144,9 @@ export default function EpisodeSheet({
               const isAvailable = Boolean(
                 (epData?.videoUrl && epData.videoUrl.trim() !== "") || epData?.id
               );
-              // Phase 8 paywall ready placeholder: ep > 5 and not isFree
-              const isLocked = Boolean(epData && epData.isFree === false && ep > 5);
+              const isUnlocked = isVip || (unlockedEpisodeNumbers ? unlockedEpisodeNumbers.has(ep) : false);
+              const isFree = epData?.isFree ?? (ep <= freeEpisodesCount);
+              const isLocked = isAvailable && !isFree && !isUnlocked;
 
               if (!isAvailable) {
                 return (
@@ -165,7 +170,11 @@ export default function EpisodeSheet({
                   key={ep}
                   type="button"
                   onClick={() => {
-                    onSelectEpisode(ep);
+                    if (isLocked && onSelectLockedEpisode) {
+                      onSelectLockedEpisode(ep);
+                    } else {
+                      onSelectEpisode(ep);
+                    }
                     onClose();
                   }}
                   aria-current={active}
