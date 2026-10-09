@@ -3384,3 +3384,33 @@
   - TypeScript compiler check (`npx tsc --noEmit`): 0 type errors.
   - Architecture boundaries (`__tests__/architecture/service-layer-split.test.ts`): 25 / 25 tests pass with 0 client-server leakage.
   - Next.js production build (`npm run build`): cleanly compiles all 92 static and dynamic routes.
+---
+
+## [2026-10-09] Task 9.4: Picture-in-Picture (PiP) & Native Media Session API
+* **Milestone**: Phase 9 (Mobile PWA & Advanced Video Player UX) — Task 9.4
+* **Goal**: Deliver deep operating system and hardware integration for DramaShort via the native Media Session API (`navigator.mediaSession`) and reactive Picture-in-Picture (PiP) lifecycle management, enabling lock-screen metadata, smartwatch controls, Bluetooth headphone clickers, and background streaming.
+* **Implementation Steps Taken**:
+  1. **Native OS Media Session API Hook (`hooks/useMediaSession.ts`)**:
+     - Built `useMediaSession` hook with defensive guards for browser environments without `navigator.mediaSession`.
+     - Built `generateArtworkList()` creating 6 standard resolution images (96x96, 128x128, 192x192, 256x256, 384x384, 512x512) from the drama poster with MIME detection (`image/jpeg`, `image/png`, `image/webp`) and fallback to PWA icons.
+     - Built `clampPositionState()` guaranteeing bounded duration, position, and playbackRate parameters, defending against NaN and Infinity.
+     - Synchronized `MediaMetadata` with episode title, drama title, and channel publisher name.
+     - Registered hardware & lock-screen peripheral action handlers (`play`, `pause`, `previoustrack`, `nexttrack`, `seekbackward`, `seekforward`, `seekto`, `stop`).
+     - Added automatic teardown resetting all action handlers to `null` to eliminate memory leaks.
+  2. **Picture-in-Picture (PiP) Lifecycle & Capabilities (`components/VideoPlayer.tsx`)**:
+     - Integrated feature detection for `document.pictureInPictureEnabled` and iOS Safari `webkitSetPresentationMode`.
+     - Synchronized reactive `isPiP` boolean state with `enterpictureinpicture` and `leavepictureinpicture` event listeners on the `<video>` element.
+     - Dispatched HUD badges ("Picture in Picture Active" and "Picture in Picture Closed") on transitions.
+     - Highlighted PiP button with active theme accent (`bg-primary/20 text-primary border border-primary/30`) when PiP is engaged, and toggled tooltip between "Exit Picture in Picture" and "Picture in Picture".
+  3. **Domain Model & Watch Island Wiring (`components/watch/WatchPlayerIsland.tsx`, `hooks/index.ts`)**:
+     - Extended `VideoPlayerProps` with optional `channelName?: string`.
+     - Wired `drama.channel` to `VideoPlayer` in `WatchPlayerIsland.tsx`.
+     - Re-exported `useMediaSession`, `generateArtworkList`, and `clampPositionState` in `hooks/index.ts`.
+  4. **Automated Verification Test Suite (`__tests__/player/media-session-and-pip.test.ts`)**:
+     - Authored 15 automated unit and integration tests covering multi-resolution artwork creation, MIME resolution, PWA fallback icons, position state bounding math, action handler dispatching, episode boundary enforcement, relative seek math, and PiP presentation mode detection.
+* **Regression Analysis & Verification Record**:
+  - `__tests__/player/media-session-and-pip.test.ts`: 15 / 15 tests pass (100%).
+  - Full test runner `npm test`: all 1,084 tests pass across 308 suites with 0 failures (100% pass rate).
+  - TypeScript compiler check (`npx tsc --noEmit`): 0 type errors.
+  - Architecture boundaries (`__tests__/architecture/service-layer-split.test.ts`): 25 / 25 tests pass with 0 client-server leakage.
+  - Next.js production build (`npm run build`): cleanly compiles all 92 static and dynamic routes.

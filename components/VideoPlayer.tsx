@@ -33,6 +33,7 @@ import SubtitleOverlay from "@/components/player/SubtitleOverlay";
 import SubtitleSettingsModal from "@/components/player/SubtitleSettingsModal";
 import PlayerHud, { type PlayerHudState, type PlayerHudActionType } from "@/components/player/PlayerHud";
 import KeyboardShortcutsModal from "@/components/player/KeyboardShortcutsModal";
+import { useMediaSession } from "@/hooks/useMediaSession";
 import type { SubtitleTrack, SubtitleCue, SubtitleSettings } from "@/types/subtitles";
 import { loadSubtitleSettings, saveSubtitleSettings } from "@/types/subtitles";
 import { getDefaultDemoTracks, findActiveCue, parseVtt } from "@/lib/player/subtitles";
@@ -65,6 +66,7 @@ export interface VideoPlayerProps {
   poster?: string;
   title?: string;
   dramaTitle?: string;
+  channelName?: string;
   currentEpisode: number;
   totalEpisodes: number;
   initialProgressSeconds?: number;
@@ -98,6 +100,7 @@ export default function VideoPlayer({
   poster,
   title,
   dramaTitle,
+  channelName,
   currentEpisode,
   totalEpisodes,
   initialProgressSeconds = 0,
@@ -756,20 +759,92 @@ export default function VideoPlayer({
     await toggleFullscreenAdapter(container, video, { aspectMode });
   }, [aspectMode]);
 
-  // Picture in Picture
-  const togglePiP = async () => {
+  // Picture in Picture (PiP) State & Capabilities (Task 9.4)
+  const [isPiP, setIsPiP] = useState(false);
+  const [isPiPSupported, setIsPiPSupported] = useState(false);
+
+  useEffect(() => {
+    const isSupported =
+      typeof document !== "undefined" &&
+      (Boolean(document.pictureInPictureEnabled) ||
+        Boolean(videoRef.current && "webkitSetPresentationMode" in videoRef.current));
+    setIsPiPSupported(isSupported);
+  }, []);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    const handleEnterPiP = () => {
+      setIsPiP(true);
+      triggerHud("fullscreen", "Picture in Picture Active");
+    };
+
+    const handleLeavePiP = () => {
+      setIsPiP(false);
+      triggerHud("fullscreen_exit", "Picture in Picture Exited");
+    };
+
+    video.addEventListener("enterpictureinpicture", handleEnterPiP);
+    video.addEventListener("leavepictureinpicture", handleLeavePiP);
+
+    return () => {
+      video.removeEventListener("enterpictureinpicture", handleEnterPiP);
+      video.removeEventListener("leavepictureinpicture", handleLeavePiP);
+    };
+  }, [triggerHud]);
+
+  const togglePiP = useCallback(async () => {
     const video = videoRef.current;
     if (!video) return;
     try {
       if (document.pictureInPictureElement) {
         await document.exitPictureInPicture();
-      } else {
+      } else if (video.requestPictureInPicture) {
         await video.requestPictureInPicture();
+      } else if ("webkitSetPresentationMode" in video) {
+        const currentMode = (video as any).webkitPresentationMode;
+        (video as any).webkitSetPresentationMode(
+          currentMode === "picture-in-picture" ? "inline" : "picture-in-picture"
+        );
       }
     } catch (err) {
       console.warn("PiP not supported or rejected:", err);
     }
-  };
+  }, []);
+
+  // Native OS Media Session API Integration (Task 9.4)
+  useMediaSession({
+    videoRef,
+    title,
+    dramaTitle,
+    channelName,
+    poster,
+    currentEpisode,
+    totalEpisodes,
+    isPlaying,
+    currentTime,
+    duration,
+    playbackRate,
+    onPlay: () => {
+      if (videoRef.current?.paused) {
+        togglePlay();
+      }
+    },
+    onPause: () => {
+      if (!videoRef.current?.paused) {
+        togglePlay();
+      }
+    },
+    onNextEpisode: goToNextEpisode,
+    onPrevEpisode: goToPrevEpisode,
+    onSeek: (seconds) => {
+      if (videoRef.current) {
+        videoRef.current.currentTime = seconds;
+        setCurrentTime(seconds);
+      }
+    },
+  });
 
   // Scrub bar handlers
   const handleScrubMove = (e: React.MouseEvent<HTMLDivElement>) => {
@@ -1905,16 +1980,22 @@ export default function VideoPlayer({
               )}
             </div>
 
-            {/* Picture in Picture */}
-            <button
-              type="button"
-              title="Picture in Picture"
-              aria-label="Picture in Picture"
-              onClick={togglePiP}
-              className="p-1.5 sm:p-2 rounded-md hover:bg-white/15 text-white transition-colors focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none"
-            >
-              <PictureInPicture2 size={17} />
-            </button>
+            {/* Picture in Picture (Task 9.4) */}
+            {isPiPSupported && (
+              <button
+                type="button"
+                title={isPiP ? "Exit Picture in Picture" : "Picture in Picture"}
+                aria-label={isPiP ? "Exit Picture in Picture" : "Picture in Picture"}
+                onClick={togglePiP}
+                className={`p-1.5 sm:p-2 rounded-md transition-colors focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none ${
+                  isPiP
+                    ? "bg-primary/20 text-primary border border-primary/30 hover:bg-primary/30"
+                    : "hover:bg-white/15 text-white"
+                }`}
+              >
+                <PictureInPicture2 size={17} />
+              </button>
+            )}
 
             {/* Fullscreen */}
             <button

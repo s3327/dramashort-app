@@ -995,21 +995,34 @@ To eliminate ambiguity across product requirements, admin CMS, and codebase inte
      - Production build: Clean compilation across all 92 routes.
 
 ### Task 9.4: Picture-in-Picture (PiP) & Native Media Session API
-* **Status**: ⏳ Planned
-* **Target Files**: `components/WatchVideo.tsx`, `hooks/useMediaSession.ts`
-* **Planned Specifications**:
-  1. Picture-in-Picture (PiP):
-     - Native `HTMLVideoElement.requestPictureInPicture()` integration with fallback for unsupported browsers.
-     - Floating PiP toggle button in player control bar.
-  2. Native OS Media Session API (`navigator.mediaSession`):
-     - Metadata integration:
-       - `title`: Current episode title (e.g., "Episode 4").
-       - `artist`: Drama title (e.g., "The CEO's Secret Wife").
-       - `album`: Channel name (e.g., "DramaBox Originals").
-       - `artwork`: 96x96, 128x128, 256x256, 512x512 drama poster images.
-     - Lock Screen & Peripheral Controls:
-       - Handles `play`, `pause`, `previoustrack`, `nexttrack`, `seekto`.
-       - Enables seamless playback control from smartphone lockscreens, smartwatch widgets, and Bluetooth car/headphone buttons.
+* **Status**: ✅ Completed
+* **Target Files**: `hooks/useMediaSession.ts`, `hooks/index.ts`, `components/VideoPlayer.tsx`, `components/watch/WatchPlayerIsland.tsx`, `__tests__/player/media-session-and-pip.test.ts`
+* **Delivered Specifications**:
+  1. Native OS Media Session API Hook (`hooks/useMediaSession.ts`):
+     - Synchronizes `MediaMetadata` with `title` (episode name), `artist` (drama title), `album` (channel/publisher name), and 6 multi-resolution artwork representations (96x96, 128x128, 192x192, 256x256, 384x384, 512x512) generated via `generateArtworkList()`.
+     - Synchronizes playback state (`"playing"` | `"paused"`) and position state (`duration`, `position`, `playbackRate`) with bounds checking and NaN/Infinity defense via `clampPositionState()`.
+     - Registers OS and peripheral action handlers wrapped in defensive error guards:
+       - `play`: resumes video playback.
+       - `pause`: pauses video playback.
+       - `previoustrack`: navigates to previous episode (guarded by `currentEpisode > 1`).
+       - `nexttrack`: navigates to next episode (guarded by `currentEpisode < totalEpisodes`).
+       - `seekbackward`: scrubs backward by offset or 10s default.
+       - `seekforward`: scrubs forward by offset or 10s default.
+       - `seekto`: scrubs to exact position with `fastSeek` acceleration when available.
+       - `stop`: pauses and rewinds to 0:00.
+     - Automatically resets all action listeners to `null` on hook teardown to prevent memory leaks and zombie listeners.
+  2. Picture-in-Picture (PiP) Lifecycle & Capabilities:
+     - Detects `document.pictureInPictureEnabled` and iOS Safari `webkitSetPresentationMode` capabilities.
+     - Dynamically tracks active PiP state via `enterpictureinpicture` and `leavepictureinpicture` event listeners on the `<video>` element.
+     - Renders responsive HUD feedback badges ("Picture in Picture Active" and "Picture in Picture Closed") upon transitions.
+     - Controls bar button highlights with active theme styling (`bg-primary/20 text-primary border border-primary/30`) and toggles tooltip between "Exit Picture in Picture" and "Picture in Picture".
+  3. Domain Wiring (`components/watch/WatchPlayerIsland.tsx`):
+     - Extended `VideoPlayerProps` with `channelName?: string` and wired `drama.channel` to populate the `album` field for OS media notifications.
+  4. Verification & Clean Architecture:
+     - `__tests__/player/media-session-and-pip.test.ts`: 15/15 unit and integration tests passing.
+     - Architecture split: 25/25 tests passing with 0 client-server boundary leakage.
+     - Full test suite: 1,084/1,084 tests passing across 308 suites with 0 regressions.
+     - Production build: Clean compilation across all 92 routes.
 
 ### Task 9.5: Automated Testing Suite Expansion
 * **Status**: ⏳ Planned

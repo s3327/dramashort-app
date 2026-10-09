@@ -795,6 +795,7 @@ export default function WatchPlayerIsland({
               poster={drama.poster}
               title={currentEpData?.title || `Episode ${currentEpisode}`}
               dramaTitle={drama.title}
+              channelName={drama.channel}
               currentEpisode={currentEpisode}
               totalEpisodes={totalEps}
               initialProgressRatio={savedProgressRatio}
