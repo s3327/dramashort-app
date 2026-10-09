@@ -298,8 +298,8 @@ export default function EpisodeUnlockModal({
                 <p className="text-text-muted leading-relaxed mb-3">
                   Claim your free daily check-in coins or top up your wallet to continue watching.
                 </p>
-                <div className="flex items-center gap-2">
-                  {onOpenCheckIn ? (
+                <div className="flex flex-wrap items-center gap-2">
+                  {onOpenCheckIn && (
                     <button
                       type="button"
                       onClick={() => {
@@ -310,15 +310,14 @@ export default function EpisodeUnlockModal({
                     >
                       Daily Free Coins
                     </button>
-                  ) : (
-                    <Link
-                      href="/account"
-                      onClick={onClose}
-                      className="px-3 py-1.5 rounded-full bg-amber-500 hover:bg-amber-400 text-black font-bold text-xs transition-colors shadow-sm"
-                    >
-                      Visit Wallet
-                    </Link>
                   )}
+                  <Link
+                    href="/account/wallet"
+                    onClick={onClose}
+                    className="px-3 py-1.5 rounded-full bg-surface-elevated hover:bg-surface border border-border text-text font-bold text-xs transition-colors shadow-sm"
+                  >
+                    Top Up Coins
+                  </Link>
                   <button
                     type="button"
                     onClick={onClose}

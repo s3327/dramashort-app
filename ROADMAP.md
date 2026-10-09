@@ -870,19 +870,30 @@ To eliminate ambiguity across product requirements, admin CMS, and codebase inte
      - Production build (`npm run build`): All 89 routes compiled cleanly with 0 errors.
 
 ### Task 8.5: Coin Top-Up Shop & Transaction Architecture
-* **Status**: ⏳ Planned
-* **Target Files**: `app/account/wallet/page.tsx`, `components/wallet/CoinPurchaseModal.tsx`, `app/api/payments/webhook/route.ts`
-* **Planned Specifications**:
-  1. Coin Packages:
+* **Status**: ✅ Completed
+* **Target Files**: `lib/payments/packages.ts`, `components/wallet/CoinPurchaseModal.tsx`, `app/account/wallet/page.tsx`, `components/account/AccountSidebar.tsx`, `app/api/payments/create-checkout/route.ts`, `app/api/payments/webhook/route.ts`, `__tests__/monetization/coin-top-up-and-transactions.test.ts`
+* **Delivered Specifications**:
+  1. Coin Packages Definition (`lib/payments/packages.ts`, `types/wallet.ts`):
      - Pocket Starter: 100 Coins (\$0.99)
      - Popular Pack: 350 Coins (\$2.99) — *(+50 Free Bonus)*
      - Drama Binge: 800 Coins (\$5.99) — *(+200 Free Bonus)*
      - VIP Weekly Pass: Unlimited Streaming 7 Days (\$9.99)
-  2. Payment Architecture:
-     - Modular payment adapter supporting Stripe / LemonSqueezy / digital wallets.
-     - Webhook handler with idempotency check (`reference_id` deduplication) ensuring no double-crediting.
-  3. Wallet Overview in `/account/wallet`:
-     - Displays current balance, transaction ledger (all purchases and episode spends), and refund/support contact.
+  2. Server Operations & Idempotent Fulfillment (`lib/server/wallet.ts`):
+     - `grantVipAccessServer`: Grants 7-day VIP pass or extends existing active VIP pass, recording purchase in ledger.
+     - `processPaymentFulfillmentServer`: Idempotent fulfillment checking `reference_id` against `coin_transactions` to strictly prevent double-crediting.
+  3. REST Route Endpoints:
+     - `POST /api/payments/create-checkout`: Authenticated session validation, package resolution, unique order reference generation, and instant fulfillment.
+     - `POST /api/payments/webhook`: Webhook endpoint with optional signature verification support, payload validation, and idempotent processing.
+  4. UI Components & Wallet Dashboard:
+     - `CoinPurchaseModal.tsx`: Card grid featuring all 4 packages, visual badges ("Most Popular", "Best Value", "Unlimited"), purchase action with loading spinner, and guest sign-in CTA.
+     - `app/account/wallet/page.tsx`: Full wallet dashboard with balance overview, VIP status indicator with expiration date, filterable transaction ledger (All, Purchases, Unlocks, Rewards), pagination, and support/refund policy links.
+     - `AccountSidebar.tsx`: Added `Wallet & Coins` link with `Coins` icon to navigation list.
+     - `EpisodeUnlockModal.tsx`: Added direct `Top Up Coins` button routing to `/account/wallet`.
+  5. Verification & Clean Architecture:
+     - `__tests__/monetization/coin-top-up-and-transactions.test.ts`: 13 automated unit and integration tests passing.
+     - `service-layer-split.test.ts`: Zero client-to-server boundary leakage verified across all wallet components.
+     - Full test runner (`npm test`): 1,028/1,028 tests passing across 286 suites with 0 regressions.
+     - Next.js production build (`npm run build`): All 91 routes compiled cleanly with 0 errors.
 
 ---
 

@@ -15,7 +15,10 @@ import {
   type BulkUnlockResult,
   type DramaEpisodesLockSummary,
   type EpisodeLockStatus,
+  type CoinPackageId,
+  type WebhookProcessingResult,
 } from "@/types/wallet";
+import { getCoinPackageById } from "@/lib/payments/packages";
 
 const DAILY_REWARD_SCHEDULE: Record<number, number> = {
   1: 5,
@@ -889,6 +892,144 @@ export async function unlockRemainingEpisodesServer(
     discountPercent: 20,
     newBalance,
     isVipUnlock: isVipActive,
+  });
+}
+
+/**
+ * Grants or extends VIP pass status for a user.
+ */
+export async function grantVipAccessServer(
+  userId: string,
+  durationDays = 7,
+  referenceId?: string | null,
+  injectedClient?: any
+): Promise<Result<{ isVip: boolean; vipExpiresAt: string; transactionId?: string }, string>> {
+  if (!userId) return err("User ID is required");
+  if (durationDays <= 0) return err("Duration must be at least 1 day");
+
+  const client = injectedClient || (await createUserServiceRoleClient());
+  const walletRes = await getUserWalletServer(userId, client);
+  if (!walletRes.ok) return err(walletRes.error);
+
+  const wallet = walletRes.value;
+  const nowMs = Date.now();
+  let baseMs = nowMs;
+
+  if (wallet.isVip && wallet.vipExpiresAt) {
+    const currentExpiryMs = new Date(wallet.vipExpiresAt).getTime();
+    if (currentExpiryMs > nowMs) {
+      baseMs = currentExpiryMs;
+    }
+  }
+
+  const durationMs = durationDays * 24 * 60 * 60 * 1000;
+  const newVipExpiresAt = new Date(baseMs + durationMs).toISOString();
+  const nowIso = new Date().toISOString();
+
+  const { error: updateError } = await client
+    .from("wallets")
+    .update({
+      is_vip: true,
+      vip_expires_at: newVipExpiresAt,
+      updated_at: nowIso,
+    })
+    .eq("user_id", userId);
+
+  if (updateError) {
+    return err(`Failed to update VIP status: ${updateError.message}`);
+  }
+
+  const { data: txRow } = await client
+    .from("coin_transactions")
+    .insert({
+      user_id: userId,
+      amount: 0,
+      balance_after: wallet.balance,
+      transaction_type: "purchase",
+      reference_id: referenceId || null,
+      description: `VIP Pass (${durationDays} Days)`,
+      created_at: nowIso,
+    })
+    .select("id")
+    .maybeSingle();
+
+  return ok({
+    isVip: true,
+    vipExpiresAt: newVipExpiresAt,
+    transactionId: txRow?.id,
+  });
+}
+
+/**
+ * Idempotently fulfills coin purchases and VIP passes.
+ * Deduplicates using referenceId to prevent double-crediting.
+ */
+export async function processPaymentFulfillmentServer(
+  userId: string,
+  packageId: CoinPackageId,
+  referenceId: string,
+  injectedClient?: any
+): Promise<Result<WebhookProcessingResult, string>> {
+  if (!userId) return err("User ID is required");
+  if (!packageId) return err("Package ID is required");
+  if (!referenceId) return err("Reference ID is required");
+
+  const client = injectedClient || (await createUserServiceRoleClient());
+
+  // 1. Idempotency Check: see if reference_id already recorded
+  const { data: existingTx } = await client
+    .from("coin_transactions")
+    .select("id, amount, balance_after")
+    .eq("reference_id", referenceId)
+    .maybeSingle();
+
+  if (existingTx) {
+    const walletRes = await getUserWalletServer(userId, client);
+    return ok({
+      success: true,
+      duplicate: true,
+      coinsCredited: existingTx.amount,
+      newBalance: walletRes.ok ? walletRes.value.balance : existingTx.balance_after,
+    });
+  }
+
+  // 2. Validate package
+  const pkg = getCoinPackageById(packageId);
+  if (!pkg) {
+    return err(`Invalid coin package ID: ${packageId}`);
+  }
+
+  // 3. Fulfill VIP Pass vs Coin Package
+  if (pkg.isVipPass) {
+    const vipRes = await grantVipAccessServer(userId, pkg.vipDays || 7, referenceId, client);
+    if (!vipRes.ok) return err(vipRes.error);
+
+    const walletRes = await getUserWalletServer(userId, client);
+    return ok({
+      success: true,
+      duplicate: false,
+      vipGranted: true,
+      newBalance: walletRes.ok ? walletRes.value.balance : 0,
+    });
+  }
+
+  // 4. Credit Coins
+  const creditRes = await creditWalletCoinsServer(
+    userId,
+    pkg.totalCoins,
+    "purchase",
+    referenceId,
+    `Purchase: ${pkg.name} (+${pkg.totalCoins} Coins)`,
+    client
+  );
+
+  if (!creditRes.ok) return err(creditRes.error);
+
+  return ok({
+    success: true,
+    duplicate: false,
+    coinsCredited: pkg.totalCoins,
+    newBalance: creditRes.value.newBalance,
   });
 }
 

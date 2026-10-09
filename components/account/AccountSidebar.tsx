@@ -1,12 +1,13 @@
 "use client";
 
-import { UserRound, Heart, History, Settings, LogOut } from "lucide-react";
+import { UserRound, Heart, History, Settings, LogOut, Coins } from "lucide-react";
 import { useRouter } from "next/navigation";
 import SidebarNavList from "@/components/SidebarNavList";
 import { useAuth } from "@/contexts/AuthContext";
 
 const accountNavItems = [
   { label: "Account", href: "/account", Icon: UserRound },
+  { label: "Wallet & Coins", href: "/account/wallet", Icon: Coins },
   { label: "Favorite", href: "/account/favorite", Icon: Heart },
   { label: "History", href: "/account/history", Icon: History },
   { label: "Setting", href: "/account/settings", Icon: Settings },

@@ -131,3 +131,60 @@ export interface DramaEpisodesLockSummary {
   episodes: EpisodeLockStatus[];
 }
 
+export type CoinPackageId =
+  | "coins_starter_100"
+  | "coins_popular_350"
+  | "coins_binge_800"
+  | "vip_weekly_pass";
+
+export interface CoinPackage {
+  id: CoinPackageId;
+  name: string;
+  coins: number;
+  bonusCoins: number;
+  totalCoins: number;
+  priceUsd: number;
+  formattedPrice: string;
+  badge?: string;
+  isVipPass?: boolean;
+  vipDays?: number;
+  popular?: boolean;
+  bestValue?: boolean;
+  description: string;
+}
+
+export interface CreateCheckoutSessionInput {
+  packageId: CoinPackageId;
+  returnUrl?: string;
+}
+
+export interface CreateCheckoutSessionResult {
+  success: boolean;
+  checkoutUrl?: string;
+  sessionId?: string;
+  referenceId: string;
+  simulatedInstantSuccess?: boolean;
+  newBalance?: number;
+  isVip?: boolean;
+  error?: string;
+}
+
+export interface PaymentWebhookPayload {
+  eventId: string;
+  eventType: "payment.completed" | "payment.failed" | "payment.refunded";
+  userId: string;
+  packageId: CoinPackageId;
+  referenceId: string;
+  amountUsd: number;
+  createdAt: string;
+}
+
+export interface WebhookProcessingResult {
+  success: boolean;
+  duplicate: boolean;
+  coinsCredited?: number;
+  vipGranted?: boolean;
+  newBalance?: number;
+  error?: string;
+}
+

@@ -7,7 +7,14 @@ import {
   type CoinTransaction,
   type BulkUnlockResult,
   type BulkUnlockRemainingInput,
+  type CoinPackage,
+  type CoinPackageId,
+  type CreateCheckoutSessionInput,
+  type CreateCheckoutSessionResult,
 } from "@/types/wallet";
+import { COIN_PACKAGES, getCoinPackageById, isValidCoinPackageId } from "@/lib/payments/packages";
+
+export { COIN_PACKAGES, getCoinPackageById, isValidCoinPackageId };
 
 /**
  * Client service layer for interacting with wallet, entitlements, and check-in APIs.
@@ -207,3 +214,33 @@ export async function getClientCoinTransactions(options?: {
     return { items: [], total: 0, totalPages: 0 };
   }
 }
+
+export async function createCheckoutSessionClient(
+  input: CreateCheckoutSessionInput
+): Promise<CreateCheckoutSessionResult> {
+  try {
+    const res = await fetch("/api/payments/create-checkout", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    });
+
+    const json = await res.json();
+    if (!res.ok) {
+      return {
+        success: false,
+        referenceId: "",
+        error: json.message || json.error || "Failed to initiate payment session",
+      };
+    }
+
+    return json;
+  } catch (err: any) {
+    return {
+      success: false,
+      referenceId: "",
+      error: err?.message || "Network error",
+    };
+  }
+}
+

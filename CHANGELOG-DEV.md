@@ -3240,3 +3240,34 @@
   - TypeScript compiler check (`npx tsc --noEmit`): 0 type errors.
   - Architecture boundaries (`__tests__/architecture/service-layer-split.test.ts`): 25 / 25 tests pass with 0 client-server leakage.
   - Next.js production build (`npm run build`): cleanly compiles all 89 static and dynamic routes.
+
+---
+
+## [2026-10-09] Task 8.5: Coin Top-Up Shop & Transaction Architecture
+* **Milestone**: Phase 8 (Short Drama Monetization Engine — Freemium Coin Economy) — Task 8.5
+* **Goal**: Deliver the real-money coin top-up shop, modular payment checkout adapter, idempotent webhook fulfillment architecture, responsive coin purchase modal, account wallet overview dashboard, filterable transaction ledger, and navigation wiring.
+* **Implementation Steps Taken**:
+  1. **Coin Package Tier Definitions (`lib/payments/packages.ts`, `types/wallet.ts`)**:
+     - Pocket Starter: 100 Coins (\$0.99).
+     - Popular Pack: 350 Coins (\$2.99) with +50 Free Bonus and "Most Popular" badge.
+     - Drama Binge: 800 Coins (\$5.99) with +200 Free Bonus and "Best Value" badge.
+     - VIP Weekly Pass: Unlimited Streaming 7 Days (\$9.99) with "Unlimited" badge.
+  2. **Server Operations & Idempotent Fulfillment (`lib/server/wallet.ts`)**:
+     - `grantVipAccessServer`: Grants 7-day VIP pass or extends existing active VIP pass, recording purchase in ledger.
+     - `processPaymentFulfillmentServer`: Idempotent fulfillment checking `reference_id` against `coin_transactions` to strictly prevent double-crediting.
+  3. **REST Route Endpoints**:
+     - `POST /api/payments/create-checkout`: Authenticated session validation, package resolution, unique order reference generation, and instant fulfillment.
+     - `POST /api/payments/webhook`: Webhook endpoint with optional signature verification support, payload validation, and idempotent processing.
+  4. **Client Services & UI Components**:
+     - `CoinPurchaseModal.tsx`: Card grid featuring all 4 packages, visual badges, purchase action with loading spinner, and guest sign-in CTA.
+     - `app/account/wallet/page.tsx`: Full wallet dashboard with balance overview, VIP status indicator with expiration date, filterable transaction ledger (All, Purchases, Unlocks, Rewards), pagination, and support/refund policy links.
+     - `AccountSidebar.tsx`: Added `Wallet & Coins` link with `Coins` icon to navigation list.
+     - `EpisodeUnlockModal.tsx`: Added direct `Top Up Coins` button routing to `/account/wallet`.
+  5. **Automated Verification Test Suite (`__tests__/monetization/coin-top-up-and-transactions.test.ts`)**:
+     - Authored 13 automated unit and integration tests covering package validation, VIP extension, idempotent fulfillment deduplication, route handlers, and architectural boundaries.
+* **Regression Analysis & Verification Record**:
+  - `__tests__/monetization/coin-top-up-and-transactions.test.ts`: 13 / 13 tests pass (100%).
+  - Full test runner `npm test`: all 1,028 tests pass across 286 suites with 0 failures (100% pass rate).
+  - TypeScript compiler check (`npx tsc --noEmit`): 0 type errors.
+  - Architecture boundaries (`__tests__/architecture/service-layer-split.test.ts`): 25 / 25 tests pass with 0 client-server leakage.
+  - Next.js production build (`npm run build`): cleanly compiles all 91 static and dynamic routes.
