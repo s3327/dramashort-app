@@ -45,8 +45,13 @@ import {
   trackPaywallView,
   flushEvents,
 } from "@/lib/analytics/track";
+import {
+  calculateEpisodeTabs,
+  computeActiveTabForEpisode,
+  DEFAULT_EPISODES_PER_TAB,
+} from "@/lib/watch/episode-tabs";
 
-const EPISODES_PER_TAB = 40;
+const EPISODES_PER_TAB = DEFAULT_EPISODES_PER_TAB;
 
 export interface WatchPlayerIslandProps {
   drama: Title;
@@ -243,7 +248,7 @@ export default function WatchPlayerIsland({
         // If an explicit ?ep= query parameter was not passed, use the last watched episode
         if (!initialEpParam && match.episode_number > 0) {
           setCurrentEpisode(match.episode_number);
-          setActiveTab(Math.min(maxTab, Math.floor((match.episode_number - 1) / EPISODES_PER_TAB)));
+          setActiveTab(computeActiveTabForEpisode(match.episode_number, totalEps));
         }
 
         // Offer resume position if current episode matches saved progress and is between 2% and 95%
@@ -260,7 +265,7 @@ export default function WatchPlayerIsland({
         const ep = parseInt(initialEpParam, 10);
         if (!isNaN(ep) && ep > 0) {
           setCurrentEpisode(ep);
-          setActiveTab(Math.min(maxTab, Math.floor((ep - 1) / EPISODES_PER_TAB)));
+          setActiveTab(computeActiveTabForEpisode(ep, totalEps));
         }
       }
     }
@@ -270,7 +275,7 @@ export default function WatchPlayerIsland({
     return () => {
       isMounted = false;
     };
-  }, [user, drama.slug, initialEpParam, maxTab]);
+  }, [user, drama.slug, initialEpParam, totalEps]);
 
   const recordProgress = useCallback(
     (
@@ -753,18 +758,13 @@ export default function WatchPlayerIsland({
   );
 
   const episodeTabs = useMemo(
-    () =>
-      Array.from({ length: Math.ceil(totalEps / EPISODES_PER_TAB) }, (_, i) => {
-        const start = i * EPISODES_PER_TAB + 1;
-        const end = Math.min((i + 1) * EPISODES_PER_TAB, totalEps);
-        return { start, end };
-      }),
+    () => calculateEpisodeTabs(totalEps),
     [totalEps]
   );
 
   const visibleEpisodes = episodes.slice(
-    activeTab * EPISODES_PER_TAB,
-    activeTab * EPISODES_PER_TAB + EPISODES_PER_TAB
+    activeTab * DEFAULT_EPISODES_PER_TAB,
+    activeTab * DEFAULT_EPISODES_PER_TAB + DEFAULT_EPISODES_PER_TAB
   );
 
   const nextEpData = dbEpisodes.find((e) => e.episodeNumber === currentEpisode + 1);
@@ -1001,7 +1001,7 @@ export default function WatchPlayerIsland({
                         : "bg-bg border border-border text-text-muted hover:text-text hover:border-primary/50"
                     }`}
                   >
-                    {tab.start}-{tab.end}
+                    {tab.label}
                   </button>
                 );
               })}

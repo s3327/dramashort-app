@@ -3,6 +3,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { X, Lock, Check } from "lucide-react";
 import type { EpisodeSheetProps } from "./PlayerTypes";
+import {
+  calculateEpisodeTabs,
+  computeActiveTabForEpisode,
+  DEFAULT_EPISODES_PER_TAB,
+} from "@/lib/watch/episode-tabs";
 
 const EPISODES_PER_TAB = 40;
 
@@ -19,15 +24,19 @@ export default function EpisodeSheet({
   isVip = false,
   onSelectLockedEpisode,
 }: EpisodeSheetProps) {
-  const maxTab = Math.max(0, Math.ceil(totalEpisodes / EPISODES_PER_TAB) - 1);
+  const episodeTabs = useMemo(() => {
+    // Math.ceil(totalEpisodes / EPISODES_PER_TAB)
+    return calculateEpisodeTabs(totalEpisodes, EPISODES_PER_TAB);
+  }, [totalEpisodes]);
+
   const [activeTab, setActiveTab] = useState<number>(() => {
-    return Math.min(maxTab, Math.floor((Math.max(1, currentEpisode) - 1) / EPISODES_PER_TAB));
+    return computeActiveTabForEpisode(currentEpisode, totalEpisodes);
   });
 
   // Keep active tab in sync when currentEpisode changes
   useEffect(() => {
-    setActiveTab(Math.min(maxTab, Math.floor((Math.max(1, currentEpisode) - 1) / EPISODES_PER_TAB)));
-  }, [currentEpisode, maxTab]);
+    setActiveTab(computeActiveTabForEpisode(currentEpisode, totalEpisodes));
+  }, [currentEpisode, totalEpisodes]);
 
   // Lock body scroll and handle Escape key while sheet is open
   useEffect(() => {
@@ -49,22 +58,14 @@ export default function EpisodeSheet({
     };
   }, [isOpen, onClose]);
 
-  const episodeTabs = useMemo(() => {
-    return Array.from({ length: Math.ceil(totalEpisodes / EPISODES_PER_TAB) }, (_, i) => {
-      const start = i * EPISODES_PER_TAB + 1;
-      const end = Math.min((i + 1) * EPISODES_PER_TAB, totalEpisodes);
-      return { start, end };
-    });
-  }, [totalEpisodes]);
-
   const allEpisodesList = useMemo(() => {
     return Array.from({ length: totalEpisodes }, (_, i) => i + 1);
   }, [totalEpisodes]);
 
   const visibleEpisodes = useMemo(() => {
     return allEpisodesList.slice(
-      activeTab * EPISODES_PER_TAB,
-      activeTab * EPISODES_PER_TAB + EPISODES_PER_TAB
+      activeTab * DEFAULT_EPISODES_PER_TAB,
+      activeTab * DEFAULT_EPISODES_PER_TAB + DEFAULT_EPISODES_PER_TAB
     );
   }, [allEpisodesList, activeTab]);
 

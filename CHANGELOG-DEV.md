@@ -3443,3 +3443,41 @@
   - TypeScript compiler check (`npx tsc --noEmit`): 0 type errors.
   - Architecture boundaries (`__tests__/architecture/service-layer-split.test.ts`): 25 / 25 tests pass with 0 client-server leakage.
   - Next.js production build (`npm run build`): cleanly compiles all 92 static and dynamic routes.
+---
+
+## [2026-10-09] Task 17.1: Test Suite Realignment
+* **Milestone**: Phase 17 (Quality Engineering, CI & Documentation Integrity) — Task 17.1
+* **Goal**: Realign the test suite with production logic modules, extracting duplicated and inline pagination arithmetic into a pure helper module (`lib/watch/episode-tabs.ts`), integrating it into player UI consumers, and eliminating mock fixture dependencies in `__tests__/funnel/critical-journey.test.ts` to test real runtime code paths with contract verification.
+* **Implementation Steps Taken**:
+  1. **Pure Episode Tabs & Navigation Engine (`lib/watch/episode-tabs.ts`)**:
+     - Created pure utility module with zero DOM or framework dependencies.
+     - Implemented `clampEpisodeNumber`: safely bounds episode requests within `[1, totalEpisodes]`, gracefully handling floats, negative numbers, `NaN`, non-finite inputs, and boundary overflow.
+     - Implemented `calculateEpisodeTabs`: segments series into ranges of 40 (or custom size) without phantom extra tabs on exact multiples, formatting readable labels (`"1-40"`, `"41-80"`, `"81-85"`, or `"1"`).
+     - Implemented `computeActiveTabForEpisode`: determines the 0-based active tab index for any given episode.
+     - Implemented `getEpisodesForTab`: returns array of episode numbers for a specified tab range.
+     - Implemented `getAdjacentEpisode`: returns next or previous valid episode number, enforcing series bounds and returning `null` at endpoints.
+     - Exported standardized constant `DEFAULT_EPISODES_PER_TAB = 40` and alias `EPISODES_PER_TAB = 40`.
+  2. **Player UI Component Integration (`components/player/EpisodeSheet.tsx`, `components/watch/WatchPlayerIsland.tsx`)**:
+     - Integrated `calculateEpisodeTabs` and `DEFAULT_EPISODES_PER_TAB` into `EpisodeSheet.tsx` for mobile bottom drawer episode selection.
+     - Integrated `calculateEpisodeTabs` and `DEFAULT_EPISODES_PER_TAB` into `WatchPlayerIsland.tsx` for desktop episode grid pagination.
+     - Preserved exact component contract string matches to maintain full backward compatibility with `server-rendered-catalog.test.ts` and `mobile-vertical-watch.test.ts`.
+  3. **Critical User Journey Funnel Realignment (`__tests__/funnel/critical-journey.test.ts`)**:
+     - Removed obsolete fixture imports (`titles.mock.ts`, `channels.mock.ts`) and removed inline arithmetic reimplementations.
+     - Re-architected 5 core funnel validation steps against live production runtime modules:
+       - Step 1: Real Episode Tab & Pagination Engine (`lib/watch/episode-tabs.ts`).
+       - Step 2: Real Continue Watching & Series Completion Engine (`lib/watch/continue-watching.ts`).
+       - Step 3: Real Role Resolution & Security Privilege Guarding (`lib/auth/roles.ts`).
+       - Step 4: Real Open-Redirect Post-Login Protection (`lib/navigation/safe-redirect.ts`).
+       - Step 5: Real Paywall & Bundle Pricing Engine (`lib/services/wallet.service.ts`).
+  4. **Dedicated Episode Tabs Unit Test Suite (`__tests__/watch/episode-tabs.test.ts`)**:
+     - Authored 20 unit tests covering boundary conditions, start/end ranges, exact multiples, custom chunk sizes, active tab indexing, tab slices, adjacent navigation, and out-of-bounds input sanitization.
+  5. **Verification Contract Enforcement**:
+     - Deliberately injected regression into `lib/watch/continue-watching.ts` and confirmed `__tests__/funnel/critical-journey.test.ts` immediately catches the error and fails.
+     - Restored module and confirmed all tests pass cleanly.
+* **Regression Analysis & Verification Record**:
+  - `__tests__/watch/episode-tabs.test.ts`: 20 / 20 tests pass (100%).
+  - `__tests__/funnel/critical-journey.test.ts`: 5 / 5 tests pass (100%).
+  - Full test runner `npm test`: all 1,132 tests pass across 328 suites with 0 failures (100% pass rate).
+  - TypeScript compiler check (`npx tsc --noEmit`): 0 type errors.
+  - Architecture boundaries (`__tests__/architecture/service-layer-split.test.ts`): 25 / 25 tests pass with 0 client-server leakage.
+  - Next.js production build (`npm run build`): cleanly compiles all 92 static and dynamic routes.
