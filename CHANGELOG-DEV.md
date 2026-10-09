@@ -3088,3 +3088,54 @@
   - Full test runner `npm test`: all 945 tests pass across 258 suites with 0 failures (100% pass rate).
   - TypeScript compiler check (`npx tsc --noEmit`): 0 type errors.
   - Next.js production build (`npm run build`): cleanly compiles all 84 static and dynamic routes.
+---
+
+## [2026-10-09] Task 8.1: Monetization Database Schema, Wallets, Entitlements & Daily Rewards
+* **Milestone**: Phase 8 (Short Drama Monetization Engine — Freemium Coin Economy) — Task 8.1
+* **Goal**: Deliver the foundational database architecture, security constraints, atomic PostgreSQL RPC procedures, domain models, server operations layer, and server-side paywall gatekeeper for Phase 8 monetization; enforce strict non-writable balance isolation in dedicated `wallets` table; provide immutable financial ledger in `coin_transactions`; establish permanent episode unlocks in `user_unlocked_episodes`; implement 7-day progressive daily check-in streaks in `daily_checkins`; and integrate server-side paywall enforcement in `canAccessEpisode()`.
+* **Implementation Steps Taken**:
+  1. **Dual Database Migrations (`supabase/user/supabase/migrations/20261009220000_monetization_wallets_and_entitlements.sql` & `supabase/content/supabase/migrations/20261009220000_monetization_wallets_and_entitlements.sql`)**:
+     - Added `coin_balance INT NOT NULL DEFAULT 0 CHECK (coin_balance >= 0)`, `is_vip BOOLEAN NOT NULL DEFAULT false`, and `vip_expires_at TIMESTAMPTZ` to `public.profiles`.
+     - Created `public.wallets` dedicated table (`user_id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE`, `balance INT NOT NULL DEFAULT 0 CHECK (balance >= 0)`, `is_vip BOOLEAN NOT NULL DEFAULT false`, `vip_expires_at TIMESTAMPTZ`, `created_at`, `updated_at`).
+     - Added trigger `trg_wallets_sync_profiles` and function `fn_sync_wallet_to_profile()` auto-updating `updated_at` and mirroring balance/VIP to `public.profiles`.
+     - Created `public.coin_transactions` immutable ledger (`id UUID PRIMARY KEY`, `user_id UUID`, `amount INT`, `balance_after INT CHECK (balance_after >= 0)`, `transaction_type TEXT CHECK (transaction_type IN ('purchase', 'episode_unlock', 'daily_checkin', 'streak_bonus', 'referral', 'admin_grant', 'refund'))`, `reference_id TEXT`, `description TEXT`, `created_at TIMESTAMPTZ`).
+     - Created `public.user_unlocked_episodes` entitlement table (`id UUID PRIMARY KEY`, `user_id UUID`, `drama_id UUID`, `drama_slug TEXT`, `episode_id UUID`, `episode_number INT`, `coins_spent INT`, `unlocked_at TIMESTAMPTZ`, `CONSTRAINT uq_user_drama_episode UNIQUE (user_id, drama_id, episode_number)`) with indexes on `(user_id, drama_slug)`, `(drama_id)`, `(episode_id)`, and `(user_id)`.
+     - Created `public.daily_checkins` streak table (`id UUID PRIMARY KEY`, `user_id UUID`, `streak_count INT CHECK (streak_count BETWEEN 1 AND 7)`, `last_checkin_date DATE DEFAULT CURRENT_DATE`, `coins_awarded INT`, `created_at TIMESTAMPTZ`, `CONSTRAINT uq_daily_checkin_user_date UNIQUE (user_id, last_checkin_date)`) with index on `(user_id, last_checkin_date DESC)`.
+  2. **Row-Level Security & Security Hardening (Least Privilege)**:
+     - Enabled RLS across `wallets`, `coin_transactions`, `user_unlocked_episodes`, and `daily_checkins`.
+     - Revoked all direct `INSERT`, `UPDATE`, `DELETE` operations from `anon` and `authenticated` roles to eliminate client-side balance tampering.
+     - Granted `SELECT` to `authenticated` users restricted to `(select auth.uid()) = user_id`.
+     - Granted full privileges to `service_role`.
+  3. **Atomic PostgreSQL Stored Procedures (`SECURITY DEFINER` with fixed `search_path = public, auth`)**:
+     - `ensure_user_wallet(p_user_id)`: Initializes a 0-balance wallet if none exists.
+     - `credit_wallet_coins(p_user_id, p_amount, p_type, p_ref_id, p_description)`: Atomic row locking via `FOR UPDATE`, credits balance, updates profile mirror, and appends transaction ledger row.
+     - `debit_wallet_coins(p_user_id, p_amount, p_type, p_ref_id, p_description)`: Atomic row locking, rejects with `INSUFFICIENT_COINS` if balance is too low, decrements balance, and records transaction.
+     - `unlock_episode_with_coins(p_user_id, p_drama_id, p_drama_slug, p_episode_id, p_episode_number, p_cost)`: Idempotent unlock checking existing entitlements, evaluating VIP bypass, deducting coins, and creating unlock record.
+     - `claim_daily_checkin(p_user_id)`: Enforces consecutive-day UTC streak progression (Day 1..7 reward schedule: 5, 10, 10, 15, 15, 20, 50 coins), rejects same-day duplicate claims with `ALREADY_CHECKED_IN_TODAY`, and auto-credits coins.
+  4. **Domain Modeling & Typings (`types/wallet.ts`, `types/supabase-user.ts`)**:
+     - Authored domain interfaces: `WalletInfo`, `CoinTransaction`, `CoinTransactionType`, `UnlockedEpisode`, `DailyCheckInStatus`, `DailyCheckInResult`, `UnlockEpisodeResult`, `EpisodeLockStatus`, `UnlockEpisodeInput`.
+     - Updated `types/supabase-user.ts` to include `wallets`, `coin_transactions`, `user_unlocked_episodes`, `daily_checkins` in `Tables` and RPC definitions in `Functions`.
+  5. **Server Operations Layer (`lib/server/wallet.ts`, `lib/services/wallet.service.ts`)**:
+     - Implemented `getUserWalletServer`, `creditWalletCoinsServer`, `debitWalletCoinsServer`, `unlockEpisodeServer`, `isEpisodeUnlockedServer`, `getDailyCheckInStatusServer`, `claimDailyCheckinServer`, and `getCoinTransactionsServer`.
+     - Created client service layer `lib/services/wallet.service.ts` for unified frontend integration.
+  6. **Server-Side Paywall Gatekeeper Integration (`lib/server/playback.ts`)**:
+     - Connected `canAccessEpisode(user, episode)`:
+       - Free episodes (`isFree: true`) accessible to all viewers.
+       - Locked episodes (`isFree: false`) deny guests with HTTP 403 `PAYMENT_REQUIRED` ("Sign in to watch locked episodes.").
+       - Allows staff (`admin`/`editor`) bypass.
+       - Allows users with active VIP pass (`is_vip: true` and non-expired).
+       - Allows users with recorded entitlement in `user_unlocked_episodes`.
+       - Rejects unentitled users with HTTP 403 `PAYMENT_REQUIRED` ("This episode requires 10 coins to unlock.").
+  7. **Secured REST API Endpoints (`app/api/user/wallet/route.ts`, `app/api/user/wallet/unlock/route.ts`, `app/api/user/wallet/checkin/route.ts`)**:
+     - `GET /api/user/wallet`: Fetches current wallet balance, VIP status, and paginated transaction ledger.
+     - `POST /api/user/wallet/unlock`: Executes episode unlock with balance verification.
+     - `GET /api/user/wallet/checkin`: Returns check-in status and 7-day reward schedule.
+     - `POST /api/user/wallet/checkin`: Claims today's daily reward.
+  8. **Automated Verification Test Suite (`__tests__/monetization/wallet-and-entitlements.test.ts`)**:
+     - Authored 26 automated unit and integration tests covering migration SQL invariants, RLS grants, wallet initialization, credit/debit operations, unlock idempotency, VIP bypass, 7-day streak rewards, `canAccessEpisode` paywall gatekeeper, and REST API route security.
+* **Regression Analysis & Verification Record**:
+  - `__tests__/monetization/wallet-and-entitlements.test.ts`: 26 / 26 tests pass (100%).
+  - Playback and access control test suites (`__tests__/playback/playback.test.ts` & `__tests__/security/playback-access-control.test.ts`): 23 / 23 tests pass (100%).
+  - Full test runner `npm test`: all 971 tests pass across 265 suites with 0 failures (100% pass rate).
+  - TypeScript compiler check (`npx tsc --noEmit`): 0 type errors.
+  - Next.js production build (`npm run build`): cleanly compiles all 87 static and dynamic routes.

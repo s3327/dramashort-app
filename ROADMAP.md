@@ -41,7 +41,7 @@
 | **Phase 7** | 🟢 Low | L4: Add root application error boundary (`app/error.tsx`) | ✅ Done | Catches unhandled runtime crashes globally |
 | **Phase 7** | 🟢 Low | L5: Audit `design-tokens/` CSS variables and unused tokens | ✅ Done | Maintains lean, consistent token foundation |
 | **Phase 7** | 🟢 Low | L6: Implement automated test suite (Auth, services, critical journeys) | ✅ Done | Regression prevention and verified end-to-end reliability |
-| **Phase 8** | 🔴 Critical | Monetization Engine: Freemium Paywall & Coin Economy | ⏳ Planned · 🔒 Blocked by 10, 13.1, 15, 16 | Direct monetization, unlocks Ep 6+, daily streak rewards |
+| **Phase 8** | 🔴 Critical | Monetization Engine: Freemium Paywall & Coin Economy | 🚧 In progress (8.1 ✅) | Direct monetization, unlocks Ep 6+, daily streak rewards |
 | **Phase 9** | 🟠 High | Mobile PWA & Advanced Video Player UX | ⏳ Planned · 🔒 Blocked by 14 | Native app-like PWA, subtitles/VTT, keyboard hotkeys, PiP |
 | **Phase 10** | 🔴 Critical | Security Hardening & Access Control (admin role escalation, RLS & grants, admin API auth, subdomain guard, open redirect, episode media lockdown, CI gate) | ✅ Completed (10.1–10.9 ✅) | Closes privilege escalation and data exposure; gate for all further work |
 | **Phase 11** | 🔴 Critical | Complete Stubbed User Flows (email verification, password recovery, account deletion, support pipeline, real 404s) | ✅ Completed (11.1–11.7 ✅) | Every visible action performs a real operation |
@@ -702,55 +702,64 @@ To eliminate ambiguity across product requirements, admin CMS, and codebase inte
 > * The player target file is `components/VideoPlayer.tsx` (split into `components/player/*` by Task 14.1); `components/WatchVideo.tsx` does not exist.
 
 ### Task 8.1: Database Schema & Migration (User Database)
-* **Status**: ⏳ Planned
-* **Target Database**: User Database (`bpidsbcrvpkavvdvtpgh`)
-* **Planned Schema Changes**:
-  1. Add `coin_balance INTEGER NOT NULL DEFAULT 0` and `is_vip BOOLEAN NOT NULL DEFAULT false` to `public.profiles`.
-  2. Create `public.user_unlocked_episodes`:
-     ```sql
-     CREATE TABLE IF NOT EXISTS public.user_unlocked_episodes (
-         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-         user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-         drama_id UUID NOT NULL REFERENCES content.titles(id) ON DELETE CASCADE,
-         drama_slug TEXT NOT NULL,
-         episode_id UUID NOT NULL REFERENCES content.episodes(id) ON DELETE CASCADE,
-         episode_number INTEGER NOT NULL,
-         coins_spent INTEGER NOT NULL DEFAULT 10,
-         unlocked_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now()),
-         UNIQUE(user_id, drama_id, episode_number)
-     );
-     CREATE INDEX IF NOT EXISTS idx_unlocked_user_drama ON public.user_unlocked_episodes(user_id, drama_slug);
-     CREATE INDEX IF NOT EXISTS idx_unlocked_drama_id ON public.user_unlocked_episodes(drama_id);
-     CREATE INDEX IF NOT EXISTS idx_unlocked_episode_id ON public.user_unlocked_episodes(episode_id);
-     ```
-  3. Create `public.coin_transactions` for audit and financial tracking:
-     ```sql
-     CREATE TABLE IF NOT EXISTS public.coin_transactions (
-         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-         user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-         amount INTEGER NOT NULL, -- positive for credit, negative for debit
-         balance_after INTEGER NOT NULL,
-         transaction_type TEXT NOT NULL, -- 'purchase', 'episode_unlock', 'daily_checkin', 'referral', 'admin_grant'
-         reference_id TEXT, -- e.g. payment intent id or episode id
-         description TEXT NOT NULL,
-         created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now())
-     );
-     ```
-  4. Create `public.daily_checkins` for streak persistence:
-     ```sql
-     CREATE TABLE IF NOT EXISTS public.daily_checkins (
-         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-         user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-         streak_count INTEGER NOT NULL DEFAULT 1,
-         last_checkin_date DATE NOT NULL DEFAULT CURRENT_DATE,
-         coins_awarded INTEGER NOT NULL DEFAULT 5,
-         created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now()),
-         UNIQUE(user_id, last_checkin_date)
-     );
-     ```
-  5. Row Level Security (RLS) policies:
-     - `profiles.coins_balance` read-only by user; mutations executed strictly via verified RPC or server-side service role.
-     - `user_unlocked_episodes` readable by owner (`auth.uid() = user_id`).
+* **Status**: ✅ Completed
+* **Target Files**:
+  - `supabase/user/supabase/migrations/20261009220000_monetization_wallets_and_entitlements.sql`
+  - `supabase/content/supabase/migrations/20261009220000_monetization_wallets_and_entitlements.sql`
+  - `types/wallet.ts`
+  - `types/supabase-user.ts`
+  - `lib/server/wallet.ts`
+  - `lib/services/wallet.service.ts`
+  - `lib/server/playback.ts`
+  - `app/api/user/wallet/route.ts`
+  - `app/api/user/wallet/unlock/route.ts`
+  - `app/api/user/wallet/checkin/route.ts`
+  - `__tests__/monetization/wallet-and-entitlements.test.ts`
+* **Delivered Capabilities**:
+  1. Database Schema & Dual Migrations:
+     - Authored `20261009220000_monetization_wallets_and_entitlements.sql` across User and Content databases.
+     - Added `coin_balance INT NOT NULL DEFAULT 0 CHECK (coin_balance >= 0)`, `is_vip BOOLEAN NOT NULL DEFAULT false`, and `vip_expires_at TIMESTAMPTZ` to `public.profiles`.
+     - Created `public.wallets` dedicated table (`user_id UUID PRIMARY KEY`, `balance INT`, `is_vip BOOLEAN`, `vip_expires_at TIMESTAMPTZ`, `created_at`, `updated_at`) with trigger `trg_wallets_sync_profiles` mirroring balance and VIP state to `profiles`.
+     - Created `public.coin_transactions` immutable financial ledger (`id`, `user_id`, `amount`, `balance_after`, `transaction_type`, `reference_id`, `description`, `created_at`).
+     - Created `public.user_unlocked_episodes` entitlement table (`id`, `user_id`, `drama_id`, `drama_slug`, `episode_id`, `episode_number`, `coins_spent`, `unlocked_at`) with unique constraint on `(user_id, drama_id, episode_number)` and fast lookup indexes.
+     - Created `public.daily_checkins` streak table (`id`, `user_id`, `streak_count`, `last_checkin_date`, `coins_awarded`, `created_at`) with unique constraint on `(user_id, last_checkin_date)`.
+  2. Security Hardening & Least-Privilege Grants:
+     - Enabled Row-Level Security across all 4 tables.
+     - Explicitly revoked all direct `INSERT`, `UPDATE`, `DELETE` operations from `anon` and `authenticated` roles.
+     - Granted `SELECT` only to `authenticated` with `auth.uid() = user_id` ownership policies.
+     - Granted full access to `service_role`.
+  3. Atomic PostgreSQL Stored Procedures (`SECURITY DEFINER` with fixed `search_path = public, auth`):
+     - `ensure_user_wallet(p_user_id)`: Initializes 0-balance wallet if none exists.
+     - `credit_wallet_coins(p_user_id, p_amount, p_type, p_ref_id, p_description)`: Atomic row locking via `FOR UPDATE`, credits balance, updates profile mirror, and appends transaction ledger row.
+     - `debit_wallet_coins(p_user_id, p_amount, p_type, p_ref_id, p_description)`: Atomic row locking, rejects with `INSUFFICIENT_COINS` if balance is too low, decrements balance, and records transaction.
+     - `unlock_episode_with_coins(p_user_id, p_drama_id, p_drama_slug, p_episode_id, p_episode_number, p_cost)`: Idempotent unlock checking existing entitlements, evaluating VIP bypass, deducting coins, and creating unlock record.
+     - `claim_daily_checkin(p_user_id)`: Enforces consecutive-day UTC streak progression (Day 1..7 reward schedule), rejects same-day duplicate claims with `ALREADY_CHECKED_IN_TODAY`, and auto-credits coins.
+  4. Domain Modeling & Supabase Typings:
+     - Created `types/wallet.ts` with `WalletInfo`, `CoinTransaction`, `UnlockedEpisode`, `DailyCheckInStatus`, `DailyCheckInResult`, `UnlockEpisodeResult`, and `EpisodeLockStatus`.
+     - Updated `types/supabase-user.ts` with table definitions and RPC signatures.
+  5. Server & Client Operations Layer:
+     - `lib/server/wallet.ts`: Server operations for wallet queries, credit, debit, unlock execution, streak status evaluation, and check-in claims.
+     - `lib/services/wallet.service.ts`: Client service layer for frontend consumption.
+  6. Server-Side Paywall Gatekeeper Integration (`lib/server/playback.ts`):
+     - Upgraded `canAccessEpisode(user, episode)`:
+       - Free episodes (`isFree: true`) accessible to all viewers.
+       - Locked episodes (`isFree: false`) deny guests with HTTP 403 `PAYMENT_REQUIRED` ("Sign in to watch locked episodes.").
+       - Allows staff (`admin`/`editor`) bypass.
+       - Allows users with active VIP pass.
+       - Allows users with recorded entitlement in `user_unlocked_episodes`.
+       - Rejects unentitled users with HTTP 403 `PAYMENT_REQUIRED` ("This episode requires 10 coins to unlock.").
+  7. Secured REST API Endpoints:
+     - `GET /api/user/wallet`: Fetches current wallet balance, VIP status, and paginated transaction ledger.
+     - `POST /api/user/wallet/unlock`: Executes episode unlock.
+     - `GET /api/user/wallet/checkin`: Returns check-in status and 7-day reward schedule.
+     - `POST /api/user/wallet/checkin`: Claims today's daily reward.
+  8. Automated Verification Test Suite (`__tests__/monetization/wallet-and-entitlements.test.ts`):
+     - 26 automated unit and integration tests covering migration SQL invariants, RLS grants, wallet initialization, credit/debit operations, unlock idempotency, VIP bypass, 7-day streak rewards, `canAccessEpisode` paywall gatekeeper, and REST API route security.
+* **Verification**:
+  - `npx tsc --noEmit` passed with 0 errors.
+  - `__tests__/monetization/wallet-and-entitlements.test.ts` passed 26/26 tests (100%).
+  - Existing playback and security test suites passed 23/23 tests with 0 regressions.
+  - Next.js production build (`npm run build`) compiled all 87 routes cleanly including `/api/user/wallet`, `/api/user/wallet/unlock`, `/api/user/wallet/checkin`.
 
 ### Task 8.2: Episode Lock & Paywall Rules Engine
 * **Status**: ⏳ Planned

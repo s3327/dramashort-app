@@ -122,6 +122,9 @@ export type Database = {
           is_banned: boolean
           banned_until: string | null
           ban_reason: string | null
+          coin_balance: number
+          is_vip: boolean
+          vip_expires_at: string | null
         }
         Insert: {
           avatar_url?: string | null
@@ -133,6 +136,9 @@ export type Database = {
           is_banned?: boolean
           banned_until?: string | null
           ban_reason?: string | null
+          coin_balance?: number
+          is_vip?: boolean
+          vip_expires_at?: string | null
         }
         Update: {
           avatar_url?: string | null
@@ -144,6 +150,9 @@ export type Database = {
           is_banned?: boolean
           banned_until?: string | null
           ban_reason?: string | null
+          coin_balance?: number
+          is_vip?: boolean
+          vip_expires_at?: string | null
         }
         Relationships: []
       }
@@ -235,12 +244,170 @@ export type Database = {
           },
         ]
       }
+      wallets: {
+        Row: {
+          user_id: string
+          balance: number
+          is_vip: boolean
+          vip_expires_at: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          user_id: string
+          balance?: number
+          is_vip?: boolean
+          vip_expires_at?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          user_id?: string
+          balance?: number
+          is_vip?: boolean
+          vip_expires_at?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      coin_transactions: {
+        Row: {
+          id: string
+          user_id: string
+          amount: number
+          balance_after: number
+          transaction_type: string
+          reference_id: string | null
+          description: string
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          amount: number
+          balance_after: number
+          transaction_type: string
+          reference_id?: string | null
+          description: string
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          amount?: number
+          balance_after?: number
+          transaction_type?: string
+          reference_id?: string | null
+          description?: string
+          created_at?: string
+        }
+        Relationships: []
+      }
+      user_unlocked_episodes: {
+        Row: {
+          id: string
+          user_id: string
+          drama_id: string
+          drama_slug: string
+          episode_id: string
+          episode_number: number
+          coins_spent: number
+          unlocked_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          drama_id: string
+          drama_slug: string
+          episode_id: string
+          episode_number: number
+          coins_spent?: number
+          unlocked_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          drama_id?: string
+          drama_slug?: string
+          episode_id?: string
+          episode_number?: number
+          coins_spent?: number
+          unlocked_at?: string
+        }
+        Relationships: []
+      }
+      daily_checkins: {
+        Row: {
+          id: string
+          user_id: string
+          streak_count: number
+          last_checkin_date: string
+          coins_awarded: number
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          streak_count?: number
+          last_checkin_date?: string
+          coins_awarded?: number
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          streak_count?: number
+          last_checkin_date?: string
+          coins_awarded?: number
+          created_at?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      ensure_user_wallet: {
+        Args: { p_user_id: string }
+        Returns: Json
+      }
+      credit_wallet_coins: {
+        Args: {
+          p_user_id: string
+          p_amount: number
+          p_type: string
+          p_ref_id?: string | null
+          p_description?: string
+        }
+        Returns: Json
+      }
+      debit_wallet_coins: {
+        Args: {
+          p_user_id: string
+          p_amount: number
+          p_type: string
+          p_ref_id?: string | null
+          p_description?: string
+        }
+        Returns: Json
+      }
+      unlock_episode_with_coins: {
+        Args: {
+          p_user_id: string
+          p_drama_id: string
+          p_drama_slug: string
+          p_episode_id: string
+          p_episode_number: number
+          p_cost?: number
+        }
+        Returns: Json
+      }
+      claim_daily_checkin: {
+        Args: { p_user_id: string }
+        Returns: Json
+      }
     }
     Enums: {
       [_ in never]: never

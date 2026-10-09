@@ -41,6 +41,8 @@ export interface ResolvedPlayback {
   durationSeconds: number;
 }
 
+import { createUserServiceRoleClient } from "@/lib/supabase/user-server";
+
 /**
  * Determines whether a user (or guest) is entitled to stream an episode.
  * 
@@ -48,14 +50,18 @@ export interface ResolvedPlayback {
  * 1. Title must be 'Published' for general public/guest access.
  *    If the title is in 'Draft', 'Scheduled', or 'Archived' status, access is denied
  *    unless the user possesses an administrative role ('admin' or 'editor').
- * 2. Freemium / Monetization Gate (Phase 8 Hook):
- *    - Currently, all episodes of published titles are accessible.
- *    - In Phase 8, this single function evaluates user coin balances, daily passes,
- *      and unlocked episode records in the User DB.
+ * 2. Freemium / Monetization Gate (Phase 8):
+ *    - Free episodes (isFree === true) are accessible to all viewers of published titles.
+ *    - Locked episodes (isFree === false) require:
+ *      a) Authenticated user (guests receive PAYMENT_REQUIRED: 'Sign in to watch locked episodes.')
+ *      b) Staff bypass ('admin' or 'editor')
+ *      c) Active VIP pass (wallets.is_vip === true and vip_expires_at in future)
+ *      d) Entitlement in user_unlocked_episodes for (user_id, drama_id, episode_number)
  */
 export async function canAccessEpisode(
   user: User | null,
-  episode: EpisodePlaybackInfo
+  episode: EpisodePlaybackInfo,
+  userDbClient?: any
 ): Promise<PlaybackAccessResult> {
   const isTitlePublished = episode.titleStatus === "Published";
 
@@ -72,9 +78,63 @@ export async function canAccessEpisode(
     }
   }
 
-  // Phase 8 Monetization Hook:
-  // If !episode.isFree, verify user entitlement (user_unlocked_episodes table in User DB).
-  // For Phase 10, all published episodes remain accessible to preserve current UX.
+  // Phase 8 Monetization Gate
+  if (!episode.isFree) {
+    if (!user) {
+      return {
+        allowed: false,
+        reason: "PAYMENT_REQUIRED",
+        message: "Sign in to watch locked episodes.",
+      };
+    }
+
+    const role = getUserRole(user);
+    const isStaff = role === "admin" || role === "editor";
+    if (isStaff) {
+      return { allowed: true };
+    }
+
+    try {
+      const client = userDbClient || (await createUserServiceRoleClient());
+
+      // 1. Check VIP pass status
+      const { data: wallet } = await client
+        .from("wallets")
+        .select("is_vip, vip_expires_at")
+        .eq("user_id", user.id)
+        .maybeSingle();
+
+      const isVipActive =
+        Boolean(wallet?.is_vip) &&
+        (!wallet?.vip_expires_at || new Date(wallet.vip_expires_at) > new Date());
+
+      if (isVipActive) {
+        return { allowed: true };
+      }
+
+      // 2. Check user_unlocked_episodes entitlement
+      const { data: unlocked } = await client
+        .from("user_unlocked_episodes")
+        .select("id")
+        .eq("user_id", user.id)
+        .eq("drama_id", episode.titleId)
+        .eq("episode_number", episode.episodeNumber)
+        .maybeSingle();
+
+      if (unlocked) {
+        return { allowed: true };
+      }
+    } catch {
+      // In offline / fallback test environments without user DB configured, proceed to deny
+    }
+
+    return {
+      allowed: false,
+      reason: "PAYMENT_REQUIRED",
+      message: "This episode requires 10 coins to unlock.",
+    };
+  }
+
   return {
     allowed: true,
   };
