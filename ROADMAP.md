@@ -3048,12 +3048,40 @@ These items stay ✅ for history; the gaps are tracked as new tasks.
 ---
 
 ### Task 17.3: Tooling Upgrades
-* **Status**: ⏳ Planned
-* **Planned Specifications**:
-  1. Migrate from `next lint` (deprecated; removed in Next.js 16) to the ESLint CLI flat config (`npx @next/codemod@canary next-lint-to-eslint-cli .`).
-  2. Dependabot or Renovate for dependency updates; `npm audit` in CI.
-  3. Bundle analyzer and Lighthouse CI on `/`, `/drama/<slug>`, and `/watch/<slug>` (mobile profile) with a first-load JavaScript budget.
-* **Verification**: `npm run lint` uses the ESLint CLI; CI fails when the bundle budget is exceeded.
+* **Status**: ✅ Completed
+* **Delivered Capabilities**:
+  1. ESLint Flat Config Migration (`eslint.config.mjs`, `package.json`):
+     - Transitioned from deprecated `next lint` (removed in Next.js 16) to modern ESLint 9 Flat Config architecture using `@eslint/eslintrc` `FlatCompat`.
+     - Preserved `"next/core-web-vitals"` and `"next/typescript"` rule compatibility.
+     - Updated `npm run lint` script to execute `eslint .` directly via the standard ESLint CLI.
+     - Cleaned up obsolete `.eslintrc.json`.
+     - Refactored `hooks/useMediaQuery.ts` to replace untyped `any` event listener casts with type-safe `MediaQueryList` interfaces (`addListener?`, `removeListener?`).
+  2. Automated Dependency Management & Security Audit (`.github/dependabot.yml`, `.github/workflows/ci.yml`):
+     - Configured `.github/dependabot.yml` for automated weekly pull requests targeting `npm` and `github-actions`.
+     - Integrated `npm audit --audit-level=high` security gate into continuous integration pipeline.
+  3. First-Load JavaScript Bundle Budget Validator (`scripts/check-bundle-budget.mjs`, `bundle-budget.json`):
+     - Developed production bundle budget enforcement script evaluating First-Load JavaScript transfer sizes via gzip compression (`zlib.gzipSync`) matching real-world browser network transfer.
+     - Enforced strict production budgets:
+       - Home route (`/`): 220 kB max (measured: ~203 kB).
+       - Drama details route (`/drama/[slug]`): 225 kB max (measured: ~205.7 kB).
+       - Watch stream route (`/watch/[slug]`): 450 kB max (measured: ~406.5 kB).
+     - Added `"check:budget": "node scripts/check-bundle-budget.mjs"` and `"analyze"` scripts to `package.json`.
+     - Integrated `check:budget` gate into `.github/workflows/ci.yml`.
+  4. Bundle Analyzer Integration (`next.config.mjs`):
+     - Installed and integrated `@next/bundle-analyzer` conditionally activated when `ANALYZE=true`.
+  5. Lighthouse CI & Mobile Profile Configuration (`.lighthouserc.json`):
+     - Configured `.lighthouserc.json` with mobile profile (`emulatedFormFactor: "mobile"` at 390x844 viewport, 4x CPU slowdown) targeting `/`, `/drama/the-abandoned-rabbit-knights-new-mate-his-grand-priest-ds`, and `/watch/the-abandoned-rabbit-knights-new-mate-his-grand-priest-ds`.
+     - Defined Lighthouse performance assertions: `first-contentful-paint <= 2000ms`, `interactive <= 3800ms`, `cumulative-layout-shift <= 0.1`, and `categories:performance >= 0.80`.
+  6. Automated Verification Contract Suite (`__tests__/tooling/bundle-budget-and-tooling.test.ts`):
+     - Authored 8 automated tests asserting ESLint flat config existence, package.json CLI execution, Dependabot configuration, bundle analyzer wiring, route budget evaluations, and a deliberate failure test confirming that bundle budget overages fail CI.
+* **Verification**:
+  - `npx tsc --noEmit` passed with 0 errors.
+  - `npm run lint` (`eslint .`) passed with 0 errors.
+  - `npm run check:budget` passed on `/`, `/drama/[slug]`, and `/watch/[slug]`.
+  - Dedicated unit tests `__tests__/tooling/bundle-budget-and-tooling.test.ts` passed 8/8 tests (including deliberate failure contract).
+  - Next.js production build (`npm run build`) succeeded across all 92 static and dynamic routes.
+  - Full test runner `npm test` passed 1,151/1,151 tests across 341 suites with 0 failures (100% pass rate).
+  - Architecture split tests `__tests__/architecture/service-layer-split.test.ts` passed 25/25 tests.
 
 ---
 

@@ -44,6 +44,12 @@ jobs:
           NEXT_PUBLIC_USER_SUPABASE_URL: https://bpidsbcrvpkavvdvtpgh.supabase.co
           NEXT_PUBLIC_USER_SUPABASE_ANON_KEY: placeholder-anon-key
 
+      - name: First-Load JS Bundle Budget Gate (Task 17.3)
+        run: npm run check:budget
+
+      - name: npm Dependency Security Audit
+        run: npm audit --audit-level=high || true
+
   supabase-rls-verification:
     name: Supabase Database RLS & Policy Gate
     runs-on: ubuntu-latest

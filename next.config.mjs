@@ -1,3 +1,4 @@
+import withBundleAnalyzer from "@next/bundle-analyzer";
 import { imageRemotePatterns } from "./lib/config/image-hosts.mjs";
 import { getSecurityHeaders } from "./lib/config/security-headers.mjs";
 import { validateEnvironment } from "./lib/config/env-validator.mjs";
@@ -46,4 +47,8 @@ const nextConfig = {
   },
 };
 
-export default nextConfig;
+const withAnalyzer = withBundleAnalyzer({
+  enabled: process.env.ANALYZE === "true",
+});
+
+export default withAnalyzer(nextConfig);

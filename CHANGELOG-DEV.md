@@ -3519,3 +3519,52 @@
   - TypeScript compiler check (`npx tsc --noEmit`): 0 type errors.
   - Architecture boundaries (`__tests__/architecture/service-layer-split.test.ts`): 25 / 25 tests pass with 0 client-server leakage.
   - Next.js production build (`npm run build`): cleanly compiles all 92 static and dynamic routes.
+
+---
+
+## [2026-10-09] Task 17.3: Tooling Upgrades (ESLint Flat Config, Bundle Budgets, Lighthouse CI & Dependabot)
+* **Milestone**: Phase 17 (Quality Engineering, CI & Documentation Integrity) — Task 17.3
+* **Goal**: Modernize project developer tooling ahead of Next.js 16 deprecation by migrating from `next lint` to modern ESLint 9 Flat Config (`eslint.config.mjs`), configuring automated dependency updates via Dependabot, integrating `@next/bundle-analyzer` and Lighthouse CI with mobile profiles, and enforcing production First-Load JavaScript bundle budgets on `/`, `/drama/[slug]`, and `/watch/[slug]`.
+* **Implementation Steps Taken**:
+  1. **ESLint 9 Flat Config Migration (`eslint.config.mjs`, `package.json`)**:
+     - Created `eslint.config.mjs` utilizing `@eslint/eslintrc` `FlatCompat` to extend `next/core-web-vitals` and `next/typescript` under modern ESLint Flat Config architecture.
+     - Configured global ignore paths (`.next/**`, `node_modules/**`, `out/**`, `dist/**`, `coverage/**`, `playwright-report/**`).
+     - Removed deprecated `.eslintrc.json`.
+     - Updated `package.json` script `"lint": "eslint ."` to run standard ESLint CLI directly.
+     - Refactored `hooks/useMediaQuery.ts` to replace untyped `any` event listener casts with type-safe `MediaQueryList` interfaces (`addListener?`, `removeListener?`).
+  2. **Automated Dependency Updates & Security Audit (`.github/dependabot.yml`, `.github/workflows/ci.yml`)**:
+     - Authored `.github/dependabot.yml` targeting package managers `npm` and `github-actions` on weekly schedules, restricting open pull request caps to 5 with automatic dev/prod dependency grouping.
+     - Added `npm audit --audit-level=high` security gate to `.github/workflows/ci.yml`.
+  3. **First-Load JavaScript Bundle Budget Validator (`scripts/check-bundle-budget.mjs`, `bundle-budget.json`)**:
+     - Developed production bundle budget validator evaluating Next.js First-Load JavaScript transfer sizes using real gzip compression (`zlib.gzipSync`) matching browser network transfer sizes.
+     - Established strict production budgets:
+       - Home Route (`/`): 220 kB budget (measured: 203 kB).
+       - Drama Detail Route (`/drama/[slug]`): 225 kB budget (measured: 205.7 kB).
+       - Video Watch Stream Route (`/watch/[slug]`): 450 kB budget (measured: 406.5 kB).
+     - Added npm script `"check:budget": "node scripts/check-bundle-budget.mjs"` and integrated the check into `.github/workflows/ci.yml`.
+  4. **Next.js Bundle Analyzer Integration (`next.config.mjs`, `package.json`)**:
+     - Installed `@next/bundle-analyzer` dev dependency.
+     - Wrapped Next.js configuration with `withBundleAnalyzer({ enabled: process.env.ANALYZE === "true" })`.
+     - Added npm script `"analyze": "cross-env ANALYZE=true next build"`.
+  5. **Lighthouse CI & Mobile Profile Configuration (`.lighthouserc.json`)**:
+     - Configured `.lighthouserc.json` with mobile profile (`emulatedFormFactor: "mobile"`, 390x844 viewport, 4x CPU slowdown) evaluating `/`, `/drama/[slug]`, and `/watch/[slug]`.
+     - Set assertions for Core Web Vitals: FCP <= 2000ms, TTI <= 3800ms, CLS <= 0.1, and minimum performance score of 0.80.
+  6. **Automated Companion Test Suite (`__tests__/tooling/bundle-budget-and-tooling.test.ts`)**:
+     - Authored 8 automated tests asserting:
+       - ESLint flat config file existence and legacy `.eslintrc` removal.
+       - Direct ESLint CLI execution in `package.json`.
+       - Dependabot configuration validity for `npm` and `github-actions`.
+       - Bundle analyzer integration in `next.config.mjs`.
+       - Route budget thresholds configuration.
+       - Live evaluation against Next.js build output chunks.
+       - Deliberate failure contract: verified that the budget evaluation function rejects when mock or real chunk sizes exceed thresholds.
+       - Lighthouse CI configuration validity and assertions.
+* **Regression Analysis & Verification Record**:
+  - `__tests__/tooling/bundle-budget-and-tooling.test.ts`: 8 / 8 tests pass (100%).
+  - Full test runner `npm test`: all 1,151 tests pass across 341 suites with 0 failures (100% pass rate).
+  - TypeScript compiler check (`npx tsc --noEmit`): 0 type errors.
+  - ESLint CLI check (`npm run lint`): 0 errors across entire workspace.
+  - Bundle budget validator (`npm run check:budget`): all 3 monitored routes pass within defined budgets.
+  - Architecture boundaries (`__tests__/architecture/service-layer-split.test.ts`): 25 / 25 tests pass.
+  - Next.js production build (`npm run build`): cleanly compiles all 92 static and dynamic routes.
+

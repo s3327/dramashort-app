@@ -29,16 +29,20 @@ export function useMediaQuery(query: string, defaultValue = false): boolean {
       mediaQueryList.addEventListener("change", listener);
     } else {
       // Fallback for older WebKit / Safari browsers
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (mediaQueryList as any).addListener(listener);
+      const legacyList = mediaQueryList as unknown as {
+        addListener?: (cb: (e: MediaQueryListEvent) => void) => void;
+      };
+      legacyList.addListener?.(listener);
     }
 
     return () => {
       if (mediaQueryList.removeEventListener) {
         mediaQueryList.removeEventListener("change", listener);
       } else {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (mediaQueryList as any).removeListener(listener);
+        const legacyList = mediaQueryList as unknown as {
+          removeListener?: (cb: (e: MediaQueryListEvent) => void) => void;
+        };
+        legacyList.removeListener?.(listener);
       }
     };
   }, [query]);
