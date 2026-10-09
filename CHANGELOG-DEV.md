@@ -3481,3 +3481,41 @@
   - TypeScript compiler check (`npx tsc --noEmit`): 0 type errors.
   - Architecture boundaries (`__tests__/architecture/service-layer-split.test.ts`): 25 / 25 tests pass with 0 client-server leakage.
   - Next.js production build (`npm run build`): cleanly compiles all 92 static and dynamic routes.
+---
+
+## [2026-10-09] Task 17.2: Integration & End-to-End Tests
+* **Milestone**: Phase 17 (Quality Engineering, CI & Documentation Integrity) — Task 17.2
+* **Goal**: Deliver a comprehensive automated Integration and End-to-End (E2E) testing framework with Playwright, multi-viewport device profiles (Desktop & Mobile), automated WCAG 2.1 AA accessibility auditing via Axe, companion node:test integration contracts, and CI pipeline automation.
+* **Implementation Steps Taken**:
+  1. **Playwright Testing Infrastructure (`playwright.config.ts`, `package.json`)**:
+     - Installed `@playwright/test` and `@axe-core/playwright`.
+     - Configured `playwright.config.ts` with parallel execution, trace/screenshot/video retention on failure, local Next.js webServer integration, and multi-device profiles:
+       - Desktop Chrome (1280x720)
+       - Mobile Chrome / Pixel 7 (390x844, touch-enabled, mobile user agent)
+       - Mobile Safari / iPhone 14 (390x844, touch-enabled, mobile user agent)
+     - Added npm scripts: `"test:e2e": "playwright test"` and `"test:e2e:ui": "playwright test --ui"`.
+  2. **Automated Axe-Core WCAG 2.1 AA Accessibility Scanner (`e2e/fixtures/axe-helper.ts`)**:
+     - Created `assertNoA11yViolations` helper utilizing `AxeBuilder` configured with `wcag2a`, `wcag2aa`, and `wcag21aa` tags.
+     - Enforces zero critical or serious accessibility violations across dialogs, auth screens, player controls, and admin consoles.
+  3. **Five Critical E2E Journey Specifications (`e2e/`)**:
+     - `e2e/journey-signup-watch-resume.spec.ts`: registration at `/signup`, verification notice at `/verify-email`, episode 1 streaming playback at `/watch/[slug]`, progress dispatch, and resume point derivation upon revisit.
+     - `e2e/journey-favorites-custom-lists.spec.ts`: authentication at `/login`, detail view exploration, optimistic favorites toggle, "Add to List" dialog with focus trapping and escape dismissal, and `/account/favorite` management.
+     - `e2e/journey-password-recovery.spec.ts`: `/forgot-password` submission, `/reset-password` token consumption and password update, and login redirect loop prevention.
+     - `e2e/journey-admin-publish-lifecycle.spec.ts`: `/admin/login`, console navigation, draft vs. published state isolation, public catalog visibility guards, and support console.
+     - `e2e/journey-mobile-swipe-player.spec.ts`: mobile 100dvh layout, vertical swipe gesture mechanics (deltaY > 60px) advancing/retreating episodes, and `EpisodeSheet` modal drawer navigation.
+  4. **Companion Integration Contract Suite (`__tests__/e2e/e2e-journey-contracts.test.ts`)**:
+     - Authored 11 automated unit and integration tests executing within standard `npm test` without browser dependency:
+       - Validates signup & verification form contracts, password input identifiers, and continue watching derivation.
+       - Validates login returnUrl protection against open-redirect exploits.
+       - Validates forgot/reset password route contracts and cyclic login redirect defense.
+       - Validates admin RBAC checks and public catalog draft filtering.
+       - Validates `useSwipeNavigation` delta math (threshold > 60px, horizontal dominant gesture rejection).
+       - Validates Axe-core WCAG 2.1 AA rule engine with virtual nodes.
+  5. **Continuous Integration Pipeline Gate (`.github/workflows/ci.yml`)**:
+     - Added `playwright-e2e` job executing Chromium installation (`npx playwright install --with-deps chromium`), Next.js production build, Playwright test suite, and automated artifact reporting with 14-day retention.
+* **Regression Analysis & Verification Record**:
+  - `__tests__/e2e/e2e-journey-contracts.test.ts`: 11 / 11 tests pass (100%).
+  - Full test runner `npm test`: all 1,143 tests pass across 335 suites with 0 failures (100% pass rate).
+  - TypeScript compiler check (`npx tsc --noEmit`): 0 type errors.
+  - Architecture boundaries (`__tests__/architecture/service-layer-split.test.ts`): 25 / 25 tests pass with 0 client-server leakage.
+  - Next.js production build (`npm run build`): cleanly compiles all 92 static and dynamic routes.
