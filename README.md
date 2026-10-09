@@ -1,17 +1,46 @@
 # DramaShort — Web & Admin Platform
 
-DramaShort is a vertical drama streaming web platform built for high-retention short-form episodic entertainment, paired with an integrated backoffice admin portal.
+DramaShort is a vertical drama streaming web platform engineered for high-retention short-form episodic entertainment, paired with an integrated backoffice administrative console.
 
 ---
 
 ## Architecture & Features
 
-* **Framework**: Next.js 15 (App Router), React 19, TypeScript, Tailwind CSS, Lucide icons.
-* **Multi-Theme Engine**: Custom design tokens with 3 runtime surfaces (`light`, `soft` [default], `dark`) managed via `ThemeProvider` and CSS variables.
-* **Unified Drama Catalog**: Single source of truth in [`data/titles.mock.ts`](data/titles.mock.ts) powering public feeds, detail views, and backoffice management.
-* **Subdomain Admin Routing**: Next.js middleware automatically detects `admin.*` hostnames and internally rewrites requests to `/admin`.
-* **Client State & Persistence**: `AuthContext` (mock session) and `FavoritesContext` with `localStorage` synchronization.
-* **Architecture Decision Records**: Formal platform architectural choices and decision gates are maintained in [`docs/adr/README.md`](docs/adr/README.md).
+* **Framework & Core**: Next.js 15 (App Router), React 19, TypeScript, Tailwind CSS, Lucide icons.
+* **Database & Source of Truth**: Primary production data source is Supabase PostgreSQL (partitioned into Content DB and User DB, guided by [ADR-0003](docs/adr/0003-database-topology.md)), accessed via Server Components (RSC), Incremental Static Regeneration (ISR), and secured PostgREST API routes. Mock fixtures in [`data/titles.mock.ts`](data/titles.mock.ts) are strictly reserved for unit testing, database seeding, and offline development environments.
+* **Strict No-Mock Production Standard**: In production environments (`NODE_ENV === "production"`), the application strictly enforces the no-mock rule (Task 12.4). Live database or network failures never silently fall back to mock data, preventing data contamination and surfacing real error boundaries.
+* **Multi-Theme Engine**: Custom design tokens with 3 runtime surfaces (`light`, `soft` [default], `dark`) managed via `ThemeProvider` and CSS variables, eliminating theme flash during page loads.
+* **Freemium Monetization Engine**:
+  - Virtual coin economy with atomic PostgreSQL transactions and ledger (`public.coin_transactions`).
+  - Episode lock engine (Episodes 1–5 Free, Episode 6+ Locked, configurable per drama).
+  - In-player paywall gatekeeper (`EpisodeUnlockModal`) with single-episode and discounted full-series bundle unlocks.
+  - Gamified 7-day daily check-in streak rewards with UTC midnight boundaries and mystery chest bonuses.
+  - Coin top-up shop (`/account/wallet`) and VIP pass subscription packages.
+* **Advanced Video Streaming UX**:
+  - Vertical 9:16 mobile-first short-drama player with adaptive HLS.js streaming and automatic fallback.
+  - Multi-language subtitle overlay (`.vtt` / `.srt`) with customizable typography, colors, and background opacity.
+  - Desktop keyboard shortcuts with visual frosted-glass HUD badge and accessible cheat-sheet modal (`?`).
+  - Picture-in-Picture (PiP) and native OS Media Session API integration.
+  - High-precision resume tracking and "Continue Watching" derivation.
+* **Progressive Web App (PWA)**:
+  - Installable PWA manifest with standalone portrait display mode.
+  - Cache-first service worker for static assets with strict exclusions for streaming video and authenticated APIs.
+  - Floating in-app install prompt banner with 14-day dismissal window.
+* **Backoffice Admin Console**:
+  - Subdomain routing (`admin.*`) and secure role-based access control (`admin`, `editor`).
+  - Real-time KPI dashboard (titles, users, views, revenue).
+  - Drama directory (`/admin/dramas`), metadata editor, and episode manager with video upload.
+  - Channel and taxonomy management (genres & tags).
+  - User moderation console (role assignment, account ban/unban, session revocation).
+  - Customer Support Inbox (`/admin/support`) with linked drama/episode context and resolution workflows.
+  - Platform audit log (`/admin/audit`), platform configuration settings (`/admin/settings`), and bulk CSV import pipeline (`/admin/import`).
+* **Tooling, Quality & CI**:
+  - Modern ESLint 9 Flat Config (`eslint.config.mjs`) replacing deprecated `next lint`.
+  - Automated dependency management via Dependabot (`.github/dependabot.yml`) and `npm audit` CI security gate.
+  - First-Load JavaScript bundle budget validator (`scripts/check-bundle-budget.mjs`) enforcing gzip transfer limits.
+  - Lighthouse CI mobile configuration (`.lighthouserc.json`) targeting discovery, detail, and streaming routes.
+  - Multi-device Playwright E2E suite and 1,151+ automated tests in `npm test` with 100% pass rate.
+* **Architecture Decision Records**: Formal architectural choices and decision gates are cataloged in [`docs/adr/README.md`](docs/adr/README.md).
 * **Headless Reusability Architecture**: Multi-schema catalog access and PostgreSQL role grants for external apps are documented in [`docs/architecture/reusable-content-api.md`](docs/architecture/reusable-content-api.md).
 * **Operational Readiness & Telemetry**: Staging setup, database backup policy, PITR, rate limiting, and incident runbooks are documented in [`docs/operations/operational-readiness.md`](docs/operations/operational-readiness.md).
 
@@ -29,15 +58,16 @@ DramaShort is a vertical drama streaming web platform built for high-retention s
 | `/new-release` | Newest releases sorted chronologically by publication date |
 | `/channel/[slug]` | Channel/studio showcase with breadcrumb hierarchy and catalog |
 | `/drama/[slug]` | Drama details, synopsis, channel link, favorite toggle, list modal, related recommendations |
-| `/watch/[slug]` | Video player interface with 40-episode tabbed navigation and issue reporting modal |
+| `/watch/[slug]` | Video player interface with 40-episode tabbed navigation, paywall, subtitles, and report modal |
 | `/search` | Deep search with query, channel, genre, and multi-tag filtering |
 | `/contact`, `/faq`, `/terms`, `/privacy-policy`, `/content-guidelines`, `/maintenance` | Informational and legal layout pages |
 
 ### 👤 User Account & Auth
 | Route | Description |
 |---|---|
-| `/login`, `/signup`, `/forgot-password`, `/verify-email` | Authentication flow with OTP input and redirect preservation |
+| `/login`, `/signup`, `/forgot-password`, `/reset-password`, `/verify-email` | Authentication flow with OTP input, password recovery, and safe return redirects |
 | `/account` | User profile overview, display name edit, email verification change step, password change modal |
+| `/account/wallet` | Virtual coin balance, VIP pass status, top-up packages modal, and transaction ledger |
 | `/account/favorite` | User favorites catalog and custom watchlists |
 | `/account/history` | Chronological watch history with relative timestamps |
 | `/account/settings` | Account configuration and language preferences |
@@ -47,14 +77,30 @@ DramaShort is a vertical drama streaming web platform built for high-retention s
 |---|---|
 | `/admin` | Smart gateway routing to dashboard or login based on session |
 | `/admin/login` | Admin authentication portal |
-| `/admin/dashboard` | KPI analytics (total titles, users, views, active channels) |
-| `/admin/titles` | Title directory with table & card views, channel filters, search, bulk select, and pagination |
-| `/admin/titles/[id]/edit` | Complete title editing form (metadata, status, episodes, tags, synopsis, poster preview) |
-| `/admin/channels` | Channel management grid with sync status, title counts, and metadata |
+| `/admin/dashboard` | KPI analytics (total dramas, users, views, active channels, revenue) |
+| `/admin/dramas` | Drama directory with table & card views, channel filters, search, bulk select, and pagination |
+| `/admin/dramas/[id]/edit` | Complete drama editing form (metadata, status, episodes, tags, synopsis, poster preview) |
+| `/admin/dramas/[id]/episodes` | Episode management, media upload, video stream URL configuration, and lock pricing |
+| `/admin/channels` | Channel management grid with sync status, drama counts, and metadata |
 | `/admin/genres` | Genre and tag directory with usage counters and creation modal |
-| `/admin/users` | User management directory with status filtering and sorting |
-| `/admin/settings` | Tabbed configurations (General, Site, Users, Ads) |
-| `/admin/import` | Drama scraping and bulk ingest placeholder |
+| `/admin/users` | User moderation directory with status filtering, role assignment, and ban/unban controls |
+| `/admin/support` | Customer support inbox with ticket assignment, priority controls, and linked drama context |
+| `/admin/audit` | Administrative audit trail capturing user, action, target entity, and timestamp |
+| `/admin/settings` | Platform configurations (General, Site, Users, Monetization) |
+| `/admin/import` | CSV and bulk metadata import pipeline with schema validation |
+
+---
+
+## Known Stubs & Future Roadmap
+
+To ensure transparent documentation integrity across all development milestones:
+
+1. **Telegram Ecosystem Integration**:
+   - The "Connect Telegram" button in `/account` provides an informational notification.
+   - The complete technical implementation roadmap for BotFather setup, HMAC verification algorithms, database migration scripts, Next.js webhook handlers, and Telegram Mini App (TMA) streaming is documented in [`FUTURE_PLAN.md`](FUTURE_PLAN.md).
+2. **Production Database & No-Mock Policy**:
+   - In development environments lacking Supabase credentials, the application gracefully reads from mock datasets in `data/*.mock.ts`.
+   - In production builds (`NODE_ENV === "production"`), the application strictly enforces the no-mock rule: queries either succeed against Supabase or return structured errors to prevent stale mock data leakage.
 
 ---
 
@@ -63,9 +109,9 @@ DramaShort is a vertical drama streaming web platform built for high-retention s
 ```
 dramashort/
 ├── app/                          # Next.js App Router
-│   ├── (auth)/                   # login, signup, forgot-password, verify-email
-│   ├── account/                  # account, favorite, history, settings
-│   ├── admin/                    # admin console & titles/[id]/edit
+│   ├── (auth)/                   # login, signup, forgot-password, reset-password, verify-email
+│   ├── account/                  # account, wallet, favorite, history, settings
+│   ├── admin/                    # admin console (dramas, episodes, support, audit, import, settings)
 │   ├── channel/[slug]/           # channel profile pages
 │   ├── drama/[slug]/             # drama detail pages
 │   ├── watch/[slug]/             # video player & episode picker
@@ -77,42 +123,51 @@ dramashort/
 │   └── globals.css               # tailwind directives & design tokens
 │
 ├── components/                   # modular UI components
-│   ├── admin/                    # admin sidebar & placeholders
-│   ├── account/                  # account navigation sidebar
+│   ├── admin/                    # admin sidebar & console widgets
+│   ├── account/                  # account navigation sidebar & modals
 │   ├── header/                   # desktop nav, mobile sheet, action bar
+│   ├── player/                   # subtitle overlay, HUD, episode sheet, shortcuts modal
+│   ├── rewards/                  # daily check-in streak modal & trigger badge
+│   ├── wallet/                   # coin purchase modal & package cards
 │   ├── Header.tsx                # main sticky navigation bar
 │   ├── Footer.tsx                # footer with dynamic browse & legal links
 │   ├── Hero.tsx                  # featured carousel
 │   ├── TitleCard.tsx             # reusable responsive drama card
+│   ├── VideoPlayer.tsx           # core video streaming player
 │   └── Toast.tsx                 # animated toast notification
 │
-├── contexts/                     # AuthContext, AdminAuthContext, FavoritesContext, ThemeContext
-├── data/                         # unified catalog (titles.mock.ts) and static data mocks
+├── contexts/                     # AuthContext, AdminAuthContext, FavoritesContext, ThemeContext, DailyRewardContext
+├── data/                         # offline catalog mocks & fallback fixtures (titles.mock.ts)
 ├── design-tokens/                # tokens.css (color scales, theme tokens) and tailwind config
-├── docs/                         # Architecture Decision Records (ADR) registry
-├── hooks/                        # useToast and custom utility hooks
-├── lib/                          # formatting utilities and recommendation algorithms
-├── middleware.ts                 # admin subdomain URL rewrite rules
-├── preview/                      # standalone static HTML preview mockups
-└── public/                       # logos, wordmarks, circular icons
+├── docs/                         # Architecture Decision Records (ADR) & technical specifications
+├── e2e/                          # Playwright end-to-end journey tests & fixtures
+├── hooks/                        # useToast, useMediaQuery, useSwipeNavigation, custom utility hooks
+├── lib/                          # server-only operations (lib/server/), client fetchers (lib/client/), facades (lib/services/)
+├── middleware.ts                 # admin subdomain URL rewrite rules & session guard
+├── public/                       # logos, icons, subtitles, service worker (sw.js)
+├── scripts/                      # bundle budget checker (check-bundle-budget.mjs)
+└── supabase/                     # dual PostgreSQL migrations (content & user)
 ```
 
 ---
 
 ## Status
 
-| Piece | Status |
+| Subsystem | Status |
 |---|---|
 | Design Tokens (Colors, Themes, Typography) | ✅ Complete |
-| Landing Page (`/`) | ✅ Complete |
-| Homepage Feed (`/home`) | ✅ Complete |
-| Drama Detail & Watch Experience | ✅ Complete |
-| User Account & Favorites Management | ✅ Complete |
-| Authentication Screens (Login, Signup, OTP) | ✅ Complete |
-| Admin Console & Title Management | ✅ Complete |
-| Unified Catalog (`titles.mock.ts` + Supabase Content DB) | ✅ Complete |
-| Backend & Dual-Database Integration (Supabase SSR & Service Role) | ✅ Complete |
-| Automated Testing Suite (14 unit & journey tests) | ✅ Complete |
+| Landing Page (`/`) & Homepage Feed (`/home`) | ✅ Complete |
+| Vertical Drama Player & Streaming UX (HLS, PiP, Subtitles, Keymap) | ✅ Complete |
+| User Account, Favorites & Watch History | ✅ Complete |
+| Authentication System (Login, Signup, OTP, Reset Password) | ✅ Complete |
+| Freemium Monetization Engine (Coins, Locks, Check-in Streak, Shop) | ✅ Complete |
+| Progressive Web App (PWA Manifest, Service Worker, Install Prompt) | ✅ Complete |
+| Backoffice Admin Portal (Dramas, Episodes, Taxonomy, Users, Settings) | ✅ Complete |
+| Admin Support Inbox, Audit Trail & Bulk Import Pipeline | ✅ Complete |
+| Backend Architecture & Service Layer Split (`lib/server/` vs `lib/client/`) | ✅ Complete |
+| Automated Tooling & Quality (ESLint Flat Config, Bundle Budgets, CI) | ✅ Complete |
+| Automated Test Suite (1,151+ tests across 341 suites, 100% pass rate) | ✅ Complete |
+| Multi-Device Playwright E2E Suite & WCAG 2.1 AA Axe Auditing | ✅ Complete |
 | Telegram Mini App & Bot Ecosystem | 🔮 Future Plan (See [`FUTURE_PLAN.md`](FUTURE_PLAN.md)) |
 
 ---
@@ -130,7 +185,16 @@ npm run dev
 npx tsc --noEmit
 npm run lint
 
-# 4. Build for production
+# 4. Check First-Load JavaScript bundle budgets
+npm run check:budget
+
+# 5. Run automated test suite
+npm test
+
+# 6. Run Playwright E2E tests
+npm run test:e2e
+
+# 7. Build for production
 npm run build
 ```
 

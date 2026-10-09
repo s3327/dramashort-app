@@ -3568,3 +3568,42 @@
   - Architecture boundaries (`__tests__/architecture/service-layer-split.test.ts`): 25 / 25 tests pass.
   - Next.js production build (`npm run build`): cleanly compiles all 92 static and dynamic routes.
 
+---
+
+## [2026-10-09] Task 17.4: Documentation Integrity & Alignment
+* **Milestone**: Phase 17 (Quality Engineering, CI & Documentation Integrity) — Task 17.4
+* **Goal**: Realign all project documentation assets with current production capabilities: modernize `README.md` to reflect Supabase PostgreSQL as the primary source of truth, codify the strict No-Mock Production Standard (Task 12.4) in `lib/services/README.md`, document the modern Service Layer Split (`lib/server/` vs `lib/client/`), eliminate stale references to non-existent components (`WatchVideo.tsx`), reconcile keyboard navigation hotkeys, audit the Architecture Decision Record (ADR) registry index, and author automated contract tests.
+* **Implementation Steps Taken**:
+  1. **Platform README Modernization (`README.md`)**:
+     - Updated architecture overview to establish Supabase PostgreSQL (Content DB & User DB) as the true primary source of truth, clarifying that `data/titles.mock.ts` is strictly reserved for unit testing, database seeding, and offline development environments.
+     - Documented the strict No-Mock Production Standard (Task 12.4), ensuring live database and network errors never silently fall back to mock data in production.
+     - Updated route documentation from legacy `/admin/titles` to standardized `/admin/dramas`, `/admin/dramas/[id]/edit`, and `/admin/dramas/[id]/episodes`.
+     - Documented all newly delivered administrative consoles and user features: `/admin/support` (Support Inbox), `/admin/audit` (Audit Trail), `/admin/import` (Bulk CSV Pipeline), `/admin/settings` (Platform Settings), and `/account/wallet` (Coin Economy & Shop).
+     - Added dedicated "Known Stubs & Future Roadmap" section tracking Telegram Bot & Mini App features preserved in `FUTURE_PLAN.md`.
+     - Cross-linked headless reusability architecture (`docs/architecture/reusable-content-api.md`) and operational readiness telemetry (`docs/operations/operational-readiness.md`).
+  2. **Service Layer Documentation & No-Mock Architecture (`lib/services/README.md`)**:
+     - Codified Task 12.4 Strict No-Mock Production Rule: database failures in production (`NODE_ENV === "production"`) must return structured `Result<T>` errors and render Error Boundaries rather than masking anomalies with static mock fixtures.
+     - Documented Task 13.4 Service Layer Split architecture: `lib/server/` (server-only operations guarded by `import 'server-only'`), `lib/client/` (safe client fetching), and `lib/services/` (backward-compatible facades with `Result<T>` pattern).
+  3. **Codebase File References & Deprecated Symbol Auditing**:
+     - Confirmed elimination of references to non-existent `components/WatchVideo.tsx` in favor of `components/VideoPlayer.tsx` and `components/watch/WatchPlayerIsland.tsx`.
+     - Reconciled keyboard navigation keymap across docs with live implementation (`components/player/KeyboardShortcutsModal.tsx`).
+  4. **Architecture Decision Record Registry Integrity (`docs/adr/README.md`)**:
+     - Audited ADR registry indexing ADR-0001 (Account Deletion & Data Retention), ADR-0002 (Notifications System Architecture), and ADR-0003 (Database Topology Decision).
+     - Verified all indexed markdown files exist and contain valid cross-links with zero broken anchors.
+  5. **Automated Documentation Integrity Test Suite (`__tests__/docs/documentation-integrity.test.ts`)**:
+     - Authored 6 automated tests asserting:
+       - `README.md` does not claim mock files are production source of truth and lists current routes.
+       - `lib/services/README.md` documents Task 12.4 no-mock policy and Task 13.4 service split.
+       - Elimination of non-existent `WatchVideo.tsx` file references.
+       - ADR index validity and file existence.
+       - Keyboard shortcuts contract alignment with `SHORTCUT_CATEGORIES`.
+* **Regression Analysis & Verification Record**:
+  - `__tests__/docs/documentation-integrity.test.ts`: 6 / 6 tests pass (100%).
+  - Full test runner `npm test`: all 1,157 tests pass across 341 suites with 0 failures (100% pass rate).
+  - TypeScript compiler check (`npx tsc --noEmit`): 0 type errors.
+  - ESLint CLI check (`npm run lint`): 0 errors across entire workspace.
+  - Bundle budget validator (`npm run check:budget`): all 3 monitored routes pass within defined budgets.
+  - Architecture boundaries (`__tests__/architecture/service-layer-split.test.ts`): 25 / 25 tests pass.
+  - Next.js production build (`npm run build`): cleanly compiles all 92 static and dynamic routes.
+
+
