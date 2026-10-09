@@ -27,9 +27,12 @@ import {
   FastForward,
   X,
   Subtitles,
+  Keyboard,
 } from "lucide-react";
 import SubtitleOverlay from "@/components/player/SubtitleOverlay";
 import SubtitleSettingsModal from "@/components/player/SubtitleSettingsModal";
+import PlayerHud, { type PlayerHudState, type PlayerHudActionType } from "@/components/player/PlayerHud";
+import KeyboardShortcutsModal from "@/components/player/KeyboardShortcutsModal";
 import type { SubtitleTrack, SubtitleCue, SubtitleSettings } from "@/types/subtitles";
 import { loadSubtitleSettings, saveSubtitleSettings } from "@/types/subtitles";
 import { getDefaultDemoTracks, findActiveCue, parseVtt } from "@/lib/player/subtitles";
@@ -224,6 +227,40 @@ export default function VideoPlayer({
       track.mode = "hidden";
     }
   }, [effectiveTracks, currentTime]);
+
+  // Keyboard Shortcuts Modal & Visual HUD Feedback State (Task 9.3)
+  const [isKeyboardModalOpen, setIsKeyboardModalOpen] = useState(false);
+  const [hudState, setHudState] = useState<PlayerHudState | null>(null);
+  const hudTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  const triggerHud = useCallback(
+    (type: PlayerHudActionType, label: string, detail?: string) => {
+      if (hudTimerRef.current) {
+        clearTimeout(hudTimerRef.current);
+        hudTimerRef.current = null;
+      }
+      setHudState((prev) => ({
+        type,
+        label,
+        detail,
+        nonce: (prev?.nonce || 0) + 1,
+      }));
+      hudTimerRef.current = setTimeout(() => {
+        setHudState(null);
+        hudTimerRef.current = null;
+      }, 750);
+    },
+    []
+  );
+
+  useEffect(() => {
+    return () => {
+      if (hudTimerRef.current) {
+        clearTimeout(hudTimerRef.current);
+        hudTimerRef.current = null;
+      }
+    };
+  }, []);
 
   // Vertical Swipe Gesture States (Swipe Up = Next, Swipe Down = Prev)
   const touchStartY = useRef<number | null>(null);
@@ -602,23 +639,30 @@ export default function VideoPlayer({
     }
   }, [isPlaying, showSpeedMenu, showSettingsMenu, isScrubbing]);
 
-  // Keep controls visible when subtitle settings modal is open
+  // Keep controls visible when subtitle or keyboard settings modal is open
   useEffect(() => {
-    if (isSubtitleModalOpen) {
+    if (isSubtitleModalOpen || isKeyboardModalOpen) {
       if (controlsTimeoutRef.current) {
         clearTimeout(controlsTimeoutRef.current);
         controlsTimeoutRef.current = null;
       }
       setControlsVisible(true);
     }
-  }, [isSubtitleModalOpen]);
+  }, [isSubtitleModalOpen, isKeyboardModalOpen]);
 
   const handleMouseMove = () => {
     resetControlsTimeout();
   };
 
   const handleMouseLeave = () => {
-    if (isPlaying && !showSpeedMenu && !showSettingsMenu && !isScrubbing && !isSubtitleModalOpen) {
+    if (
+      isPlaying &&
+      !showSpeedMenu &&
+      !showSettingsMenu &&
+      !isScrubbing &&
+      !isSubtitleModalOpen &&
+      !isKeyboardModalOpen
+    ) {
       setControlsVisible(false);
     }
   };
@@ -946,58 +990,140 @@ export default function VideoPlayer({
         return;
       }
 
+      // Safeguard: ignore global hotkeys if modal dialogs are open
+      if (isSubtitleModalOpen || isKeyboardModalOpen) {
+        return;
+      }
+
       switch (e.key.toLowerCase()) {
         case " ":
-        case "k":
+        case "k": {
           e.preventDefault();
+          const video = videoRef.current;
+          const willPlay = video ? video.paused || video.ended : !isPlaying;
           togglePlay();
+          triggerHud(willPlay ? "play" : "pause", willPlay ? "Play" : "Pause");
           resetControlsTimeout();
           break;
+        }
         case "arrowleft":
-        case "j":
+        case "j": {
           e.preventDefault();
-          seekRelative(-10);
+          seekRelative(-5);
+          const target = Math.max(0, currentTime - 5);
+          triggerHud("seek_backward", "-5s", formatTime(target));
           resetControlsTimeout();
           break;
+        }
         case "arrowright":
-        case "l":
+        case "l": {
           e.preventDefault();
-          seekRelative(10);
+          seekRelative(5);
+          const target = Math.min(duration, currentTime + 5);
+          triggerHud("seek_forward", "+5s", formatTime(target));
           resetControlsTimeout();
           break;
-        case "arrowup":
+        }
+        case "arrowup": {
           e.preventDefault();
-          setVolume((v) => Math.min(1, v + 0.1));
-          setIsMuted(false);
+          if (e.shiftKey) {
+            // Shift + ArrowUp = Volume Up (+10%)
+            const nextVol = Math.min(1, Math.round((volume + 0.1) * 10) / 10);
+            setVolume(nextVol);
+            setIsMuted(false);
+            if (videoRef.current) {
+              videoRef.current.volume = nextVol;
+              videoRef.current.muted = false;
+            }
+            triggerHud("volume", `Volume ${Math.round(nextVol * 100)}%`);
+          } else {
+            // ArrowUp = Previous Episode (Short Drama vertical navigation)
+            if (currentEpisode > 1 && onPrevEpisode) {
+              goToPrevEpisode();
+              triggerHud("prev_episode", `Episode ${currentEpisode - 1}`, `Ep ${currentEpisode - 1} of ${totalEpisodes}`);
+            } else {
+              triggerHud("prev_episode", "First Episode", "Episode 1");
+            }
+          }
           resetControlsTimeout();
           break;
-        case "arrowdown":
+        }
+        case "arrowdown": {
           e.preventDefault();
-          setVolume((v) => Math.max(0, v - 0.1));
+          if (e.shiftKey) {
+            // Shift + ArrowDown = Volume Down (-10%)
+            const nextVol = Math.max(0, Math.round((volume - 0.1) * 10) / 10);
+            setVolume(nextVol);
+            setIsMuted(nextVol === 0);
+            if (videoRef.current) {
+              videoRef.current.volume = nextVol;
+              videoRef.current.muted = nextVol === 0;
+            }
+            triggerHud("volume", nextVol === 0 ? "Muted" : `Volume ${Math.round(nextVol * 100)}%`);
+          } else {
+            // ArrowDown = Next Episode (Short Drama vertical navigation)
+            if (currentEpisode < totalEpisodes && onNextEpisode) {
+              goToNextEpisode();
+              triggerHud("next_episode", `Episode ${currentEpisode + 1}`, `Ep ${currentEpisode + 1} of ${totalEpisodes}`);
+            } else {
+              triggerHud("next_episode", "Latest Episode", `Episode ${totalEpisodes}`);
+            }
+          }
           resetControlsTimeout();
           break;
-        case "m":
+        }
+        case "m": {
           e.preventDefault();
+          const nextMuted = !isMuted;
           toggleMute();
+          triggerHud(nextMuted ? "mute" : "unmute", nextMuted ? "Muted" : "Unmuted");
           resetControlsTimeout();
           break;
-        case "f":
+        }
+        case "f": {
           e.preventDefault();
           toggleFullscreen();
+          triggerHud(isFullscreen ? "fullscreen_exit" : "fullscreen", isFullscreen ? "Exit Fullscreen" : "Fullscreen");
           break;
-        case "n":
+        }
+        case "n": {
           e.preventDefault();
-          goToNextEpisode();
-          break;
-        case "p":
-          e.preventDefault();
-          goToPrevEpisode();
-          break;
-        case "c":
-          e.preventDefault();
-          toggleSubtitlesQuick();
+          if (currentEpisode < totalEpisodes && onNextEpisode) {
+            goToNextEpisode();
+            triggerHud("next_episode", `Episode ${currentEpisode + 1}`, `Ep ${currentEpisode + 1} of ${totalEpisodes}`);
+          } else {
+            triggerHud("next_episode", "Latest Episode", `Episode ${totalEpisodes}`);
+          }
           resetControlsTimeout();
           break;
+        }
+        case "p": {
+          e.preventDefault();
+          if (currentEpisode > 1 && onPrevEpisode) {
+            goToPrevEpisode();
+            triggerHud("prev_episode", `Episode ${currentEpisode - 1}`, `Ep ${currentEpisode - 1} of ${totalEpisodes}`);
+          } else {
+            triggerHud("prev_episode", "First Episode", "Episode 1");
+          }
+          resetControlsTimeout();
+          break;
+        }
+        case "c": {
+          e.preventDefault();
+          toggleSubtitlesQuick();
+          const willBe = subtitleSettings.language === "off" ? "en" : "off";
+          triggerHud("subtitles", willBe === "off" ? "Subtitles: OFF" : `Subtitles: ${willBe.toUpperCase()}`);
+          resetControlsTimeout();
+          break;
+        }
+        case "?":
+        case "/": {
+          if (e.key === "?" || e.shiftKey) {
+            e.preventDefault();
+            setIsKeyboardModalOpen(true);
+          }
+          break;
+        }
         default:
           break;
       }
@@ -1008,13 +1134,27 @@ export default function VideoPlayer({
       window.removeEventListener("keydown", handleKeyDown);
     };
   }, [
+    isPlaying,
+    currentTime,
+    duration,
+    volume,
+    isMuted,
+    isFullscreen,
+    currentEpisode,
+    totalEpisodes,
+    subtitleSettings.language,
+    isSubtitleModalOpen,
+    isKeyboardModalOpen,
     togglePlay,
     toggleMute,
     toggleFullscreen,
     toggleSubtitlesQuick,
+    triggerHud,
     seekRelative,
     goToNextEpisode,
     goToPrevEpisode,
+    onNextEpisode,
+    onPrevEpisode,
     resetControlsTimeout,
   ]);
 
@@ -1281,6 +1421,9 @@ export default function VideoPlayer({
         settings={subtitleSettings}
         isControlsVisible={controlsVisible}
       />
+
+      {/* Visual Feedback HUD Overlay (Task 9.3) */}
+      <PlayerHud hud={hudState} />
 
       {/* Auto-Resume Floating Pill Indicator */}
       {resumeNotification && (
@@ -1720,6 +1863,17 @@ export default function VideoPlayer({
               </span>
             </button>
 
+            {/* Keyboard Shortcuts Cheat-sheet Button (Task 9.3) */}
+            <button
+              type="button"
+              title="Keyboard Shortcuts (?) - Press ? for cheat-sheet"
+              aria-label="Keyboard Shortcuts"
+              onClick={() => setIsKeyboardModalOpen(true)}
+              className="p-1.5 sm:p-2 rounded-md hover:bg-white/15 text-white transition-colors focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none hidden sm:flex items-center"
+            >
+              <Keyboard size={17} />
+            </button>
+
             {/* Speed Selector */}
             <div className="relative">
               <button
@@ -1786,6 +1940,12 @@ export default function VideoPlayer({
           saveSubtitleSettings(newSettings);
         }}
         availableTracks={effectiveTracks}
+      />
+
+      {/* Keyboard Shortcuts Cheat-sheet Modal (Task 9.3) */}
+      <KeyboardShortcutsModal
+        isOpen={isKeyboardModalOpen}
+        onClose={() => setIsKeyboardModalOpen(false)}
       />
     </div>
   );

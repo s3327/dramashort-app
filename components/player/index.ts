@@ -8,6 +8,8 @@ export { usePlayerGestures } from "./usePlayerGestures";
 export { useProgressReporter } from "./useProgressReporter";
 export { SubtitleOverlay } from "./SubtitleOverlay";
 export { SubtitleSettingsModal } from "./SubtitleSettingsModal";
+export { PlayerHud } from "./PlayerHud";
+export { KeyboardShortcutsModal } from "./KeyboardShortcutsModal";
 export * from "./PlayerTypes";
 export {
   preloadEpisodePlayback,

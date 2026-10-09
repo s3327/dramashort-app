@@ -963,21 +963,36 @@ To eliminate ambiguity across product requirements, admin CMS, and codebase inte
      - Production build: Clean compilation across all 92 routes.
 
 ### Task 9.3: Desktop Keyboard Navigation & Hotkeys
-* **Status**: ⏳ Planned
-* **Target Files**: `components/WatchVideo.tsx`, `components/player/KeyboardShortcutsModal.tsx`
-* **Planned Specifications**:
-  1. Global Key Event Listeners (disabled when focusing text inputs or modals):
+* **Status**: ✅ Completed
+* **Target Files**: `components/VideoPlayer.tsx`, `components/player/PlayerHud.tsx`, `components/player/KeyboardShortcutsModal.tsx`, `components/player/index.ts`, `__tests__/player/keyboard-navigation.test.ts`
+* **Delivered Specifications**:
+  1. Reconciled Short-Drama Keymap Standard:
      - `Space` / `K`: Toggle Play / Pause.
-     - `ArrowUp`: Navigate to Previous Episode.
-     - `ArrowDown`: Navigate to Next Episode.
-     - `ArrowLeft` / `J`: Seek backward 5 seconds.
-     - `ArrowRight` / `L`: Seek forward 5 seconds.
+     - `ArrowUp` / `P`: Navigate to Previous Episode (with boundary detection and disabled feedback on Ep 1).
+     - `ArrowDown` / `N`: Navigate to Next Episode (with boundary detection and disabled feedback on final Ep).
+     - `Shift + ArrowUp`: Granular Volume Up (+10% step, unmutes if muted).
+     - `Shift + ArrowDown`: Granular Volume Down (-10% step).
+     - `ArrowLeft` / `J`: Seek backward 5 seconds (with HUD timestamp feedback).
+     - `ArrowRight` / `L`: Seek forward 5 seconds (with HUD timestamp feedback).
      - `M`: Toggle Audio Mute / Unmute.
      - `F`: Toggle Fullscreen mode.
-     - `C`: Toggle Closed Captions / Subtitles on/off.
+     - `C`: Toggle Subtitles / Closed Captions on/off.
      - `?`: Open keyboard shortcuts cheat-sheet modal.
-  2. Visual HUD Feedback:
-     - Brief center-screen HUD icon display upon shortcut trigger (e.g. volume mute icon, seek ±5s badge).
+  2. Guarded Event Handling & Modal Safety:
+     - Completely suppressed when keyboard focus is within `INPUT`, `TEXTAREA`, `SELECT`, or elements with `isContentEditable`.
+     - Suppressed when any modal is open (except `Escape` to close and `?` to open).
+  3. Visual Feedback HUD Overlay (`components/player/PlayerHud.tsx`):
+     - Center-screen frosted glass HUD badge (`bg-black/75 backdrop-blur-md border border-white/20`) rendering icons and descriptive labels (e.g. `Seek ±5s`, `Play`, `Pause`, `Volume XX%`, `Episode N`, `Subtitles On/Off`, `Fullscreen`).
+     - Auto-dismisses after 700ms using sequential `nonce` counter to seamlessly handle rapid re-triggers.
+  4. Accessible Keyboard Shortcuts Cheat-sheet Modal (`components/player/KeyboardShortcutsModal.tsx`):
+     - Categorized dialog ("Playback Controls", "Episode Navigation", "Audio & Display") with styled `<kbd>` chips.
+     - Accessible backdrop dismissal and `Escape` key capture.
+     - Controls bar trigger button (`Keyboard` icon) with tooltip and cheat-sheet indicator.
+  5. Verification & Clean Architecture:
+     - `__tests__/player/keyboard-navigation.test.ts`: 11/11 unit & integration tests passing.
+     - Architecture split: 25/25 tests passing with 0 client-server boundary leakage.
+     - Full test suite: 1,069/1,069 tests passing across 303 suites with 0 regressions.
+     - Production build: Clean compilation across all 92 routes.
 
 ### Task 9.4: Picture-in-Picture (PiP) & Native Media Session API
 * **Status**: ⏳ Planned

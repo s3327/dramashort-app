@@ -3346,3 +3346,41 @@
   - TypeScript compiler check (`npx tsc --noEmit`): 0 type errors.
   - Architecture boundaries (`__tests__/architecture/service-layer-split.test.ts`): 25 / 25 tests pass with 0 client-server leakage.
   - Next.js production build (`npm run build`): cleanly compiles all 92 static and dynamic routes.
+---
+
+## [2026-10-09] Task 9.3: Desktop Keyboard Navigation & Hotkeys
+* **Milestone**: Phase 9 (Mobile PWA & Advanced Video Player UX) — Task 9.3
+* **Goal**: Deliver a comprehensive desktop keyboard navigation experience tailored for vertical short-drama playback, including reconciled hotkeys (`Space`/`K`, `ArrowUp`/`P`, `ArrowDown`/`N`, `Shift+↑/↓`, `ArrowLeft`/`J`, `ArrowRight`/`L`, `M`, `F`, `C`, `?`), an interactive visual feedback HUD badge (`PlayerHud`), a keyboard shortcuts cheat-sheet modal (`KeyboardShortcutsModal`), and safety guards against input interception.
+* **Implementation Steps Taken**:
+  1. **Reconciled Short-Drama Keymap Standards & Global Event Listener (`components/VideoPlayer.tsx`)**:
+     - Settled keymap reconciling vertical mobile swipe mental model with desktop power usage:
+       - Play / Pause: `Space` or `K`.
+       - Previous Episode: `ArrowUp` or `P` (with boundary detection and disabled feedback at Episode 1).
+       - Next Episode: `ArrowDown` or `N` (with boundary detection and disabled feedback at final episode).
+       - Granular Volume Control: `Shift + ArrowUp` (+10% step) and `Shift + ArrowDown` (-10% step).
+       - Relative Seek: `ArrowLeft` or `J` (-5s rewind) and `ArrowRight` or `L` (+5s forward) with target timestamp display.
+       - Audio Mute: `M` (toggles mute/unmute).
+       - Fullscreen: `F` (toggles fullscreen mode).
+       - Subtitles / Captions: `C` (toggles subtitles on/off or cycles language).
+       - Keyboard Cheat-sheet: `?` (opens shortcuts modal).
+     - Guarded event dispatching to prevent hotkey capture while the user is typing inside `INPUT`, `TEXTAREA`, `SELECT`, or elements with `isContentEditable`.
+     - Suppressed hotkeys when modals are open (allowing only `Escape` to close and `?` to open).
+  2. **Visual Feedback HUD Overlay Badge (`components/player/PlayerHud.tsx`)**:
+     - Built lightweight center-screen frosted glass badge (`bg-black/75 backdrop-blur-md border border-white/20`) rendering icons and descriptive text for triggered actions.
+     - Supports all action types: `play`, `pause`, `seek_forward`, `seek_backward`, `prev_episode`, `next_episode`, `volume`, `mute`, `fullscreen`, `subtitles`, and `speed`.
+     - Integrated sequential `nonce` counter to seamlessly refresh the 700ms dismiss timer upon rapid consecutive keypresses.
+  3. **Accessible Keyboard Shortcuts Cheat-sheet Modal (`components/player/KeyboardShortcutsModal.tsx`)**:
+     - Categorized dialog layout: "Playback Controls", "Episode Navigation", and "Audio & Display".
+     - Styled `<kbd>` chips with subtle borders, gradients, and clear human-readable descriptions.
+     - Added dedicated `Keyboard` icon button in player controls bar next to Subtitles button with tooltip and cheat-sheet indicator.
+     - Accessible backdrop dismissal and `Escape` key capture.
+  4. **Component Export Facade (`components/player/index.ts`)**:
+     - Re-exported `PlayerHud`, `PlayerHudState`, `PlayerHudActionType`, `KeyboardShortcutsModal`, `KeyboardShortcutsModalProps`, and `SHORTCUT_CATEGORIES`.
+  5. **Automated Verification Test Suite (`__tests__/player/keyboard-navigation.test.ts`)**:
+     - Authored 11 unit and integration tests covering category and shortcut definitions, input element filtering, modal suppression, HUD state payloads, 700ms dismiss timing, vertical episode boundaries, and Shift+Arrow volume calculation.
+* **Regression Analysis & Verification Record**:
+  - `__tests__/player/keyboard-navigation.test.ts`: 11 / 11 tests pass (100%).
+  - Full test runner `npm test`: all 1,069 tests pass across 303 suites with 0 failures (100% pass rate).
+  - TypeScript compiler check (`npx tsc --noEmit`): 0 type errors.
+  - Architecture boundaries (`__tests__/architecture/service-layer-split.test.ts`): 25 / 25 tests pass with 0 client-server leakage.
+  - Next.js production build (`npm run build`): cleanly compiles all 92 static and dynamic routes.
