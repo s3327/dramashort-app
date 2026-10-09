@@ -92,3 +92,34 @@ export interface UnlockEpisodeInput {
   episodeNumber: number;
   cost?: number;
 }
+
+export interface BulkUnlockRemainingInput {
+  dramaId: string;
+  dramaSlug: string;
+}
+
+export interface BulkUnlockResult {
+  success: boolean;
+  episodesUnlockedCount: number;
+  unlockedEpisodeNumbers: number[];
+  standardCost: number;
+  discountedCost: number;
+  discountPercent: number;
+  newBalance: number;
+  isVipUnlock?: boolean;
+  error?: string;
+}
+
+export interface DramaEpisodesLockSummary {
+  dramaId: string;
+  dramaSlug: string;
+  totalEpisodes: number;
+  freeEpisodesCount: number;
+  lockedEpisodesCount: number;
+  userUnlockedCount: number;
+  remainingLockedCount: number;
+  bundleUnlockCost: number;
+  bundleSavingsCoins: number;
+  episodes: EpisodeLockStatus[];
+}
+

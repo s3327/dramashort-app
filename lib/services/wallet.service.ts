@@ -5,6 +5,8 @@ import {
   type UnlockEpisodeResult,
   type UnlockEpisodeInput,
   type CoinTransaction,
+  type BulkUnlockResult,
+  type BulkUnlockRemainingInput,
 } from "@/types/wallet";
 
 /**
@@ -56,6 +58,45 @@ export async function unlockEpisodeClient(
       alreadyUnlocked: false,
       unlockedEpisodeId: "",
       coinsSpent: 0,
+      newBalance: 0,
+      error: err?.message || "Network error",
+    };
+  }
+}
+
+export async function unlockRemainingEpisodesClient(
+  input: BulkUnlockRemainingInput
+): Promise<BulkUnlockResult> {
+  try {
+    const res = await fetch("/api/user/wallet/unlock-bundle", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    });
+
+    const json = await res.json();
+    if (!res.ok) {
+      return {
+        success: false,
+        episodesUnlockedCount: 0,
+        unlockedEpisodeNumbers: [],
+        standardCost: 0,
+        discountedCost: 0,
+        discountPercent: 20,
+        newBalance: 0,
+        error: json.message || json.error || "Failed to unlock remaining episodes",
+      };
+    }
+
+    return json.data;
+  } catch (err: any) {
+    return {
+      success: false,
+      episodesUnlockedCount: 0,
+      unlockedEpisodeNumbers: [],
+      standardCost: 0,
+      discountedCost: 0,
+      discountPercent: 20,
       newBalance: 0,
       error: err?.message || "Network error",
     };

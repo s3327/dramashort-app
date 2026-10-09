@@ -721,7 +721,7 @@ To eliminate ambiguity across product requirements, admin CMS, and codebase inte
      - Added `coin_balance INT NOT NULL DEFAULT 0 CHECK (coin_balance >= 0)`, `is_vip BOOLEAN NOT NULL DEFAULT false`, and `vip_expires_at TIMESTAMPTZ` to `public.profiles`.
      - Created `public.wallets` dedicated table (`user_id UUID PRIMARY KEY`, `balance INT`, `is_vip BOOLEAN`, `vip_expires_at TIMESTAMPTZ`, `created_at`, `updated_at`) with trigger `trg_wallets_sync_profiles` mirroring balance and VIP state to `profiles`.
      - Created `public.coin_transactions` immutable financial ledger (`id`, `user_id`, `amount`, `balance_after`, `transaction_type`, `reference_id`, `description`, `created_at`).
-     - Created `public.user_unlocked_episodes` entitlement table (`id`, `user_id`, `drama_id`, `drama_slug`, `episode_id`, `episode_number`, `coins_spent`, `unlocked_at`) with unique constraint on `(user_id, drama_id, episode_number)` and fast lookup indexes.
+     - Created `public.user_unlocked_episodes` entitlement table (`id`, `user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE`, `drama_id UUID REFERENCES content.titles(id) ON DELETE CASCADE`, `drama_slug`, `episode_id UUID REFERENCES content.episodes(id) ON DELETE CASCADE`, `episode_number`, `coins_spent`, `unlocked_at`) with unique constraint on `(user_id, drama_id, episode_number)` and fast lookup indexes.
      - Created `public.daily_checkins` streak table (`id`, `user_id`, `streak_count`, `last_checkin_date`, `coins_awarded`, `created_at`) with unique constraint on `(user_id, last_checkin_date)`.
   2. Security Hardening & Least-Privilege Grants:
      - Enabled Row-Level Security across all 4 tables.
@@ -762,17 +762,40 @@ To eliminate ambiguity across product requirements, admin CMS, and codebase inte
   - Next.js production build (`npm run build`) compiled all 87 routes cleanly including `/api/user/wallet`, `/api/user/wallet/unlock`, `/api/user/wallet/checkin`.
 
 ### Task 8.2: Episode Lock & Paywall Rules Engine
-* **Status**: ⏳ Planned
-* **Target Files**: `lib/services/wallet.service.ts`, `lib/services/content.service.ts`
-* **Planned Specifications**:
-  1. Business Rule: Episodes $1 \le N \le 5$ are unconditionally **Free** (`is_locked = false`).
-  2. Episodes $N \ge 6$ are **Locked** (`is_locked = true`), requiring 10 coins per episode or active VIP status.
-  3. Content metadata configuration: allow `free_episodes_count` on `Drama` (defaults to 5) so creators or admins can offer custom free previews (e.g. 3 free episodes or 10 free episodes).
-  4. Service operations in `lib/services/wallet.service.ts`:
-     - `getUserCoinBalance(userId)`: retrieves current verified balance.
-     - `checkEpisodeUnlocked(userId, dramaSlug, episodeNumber)`: returns boolean flag.
-     - `unlockEpisode(userId, drama, episode, cost)`: atomic transaction deducting coins, recording transaction log, and inserting into `user_unlocked_episodes`.
-     - `unlockRemainingEpisodes(userId, drama, remainingEpisodes, discountedCost)`: bulk unlock with bundled discount.
+* **Status**: ✅ Completed
+* **Target Files**:
+  - `types/wallet.ts`
+  - `lib/server/wallet.ts`
+  - `lib/services/wallet.service.ts`
+  - `app/api/user/wallet/unlock-bundle/route.ts`
+  - `__tests__/monetization/episode-lock-rules.test.ts`
+* **Delivered Capabilities**:
+  1. Business Lock Rule & Dynamic Preview Threshold:
+     - Free Preview Threshold: Episodes $1 \le N \le \text{free\_episodes\_count}$ (default 5, configurable per title in `content.titles`) are unconditionally free (`isFree = true`, `isLocked = false`, `coinsCost = 0`).
+     - Episode-level override: individual episode `is_free` flags explicitly respected.
+     - Paid Tier: Episodes $N > \text{free\_episodes\_count}$ are locked by default (`isLocked = true`, `coinsCost = 10`), requiring 10 coins, existing entitlement in `user_unlocked_episodes`, or active VIP pass.
+  2. Drama Episodes Lock Summary Engine (`getDramaEpisodesLockSummaryServer`):
+     - Evaluates complete drama episode catalog against user state (guest vs authenticated regular vs active VIP).
+     - Resolves `isFree`, `isLocked`, `coinsCost`, `isUnlockedByUser`, and `isVipBypass` per episode.
+     - Computes aggregate metrics: `totalEpisodes`, `freeEpisodesCount`, `lockedEpisodesCount`, `userUnlockedCount`, `remainingLockedCount`, `bundleUnlockCost`, and `bundleSavingsCoins`.
+  3. Bulk Bundle Unlock Discount Algorithm (`calculateBundleCost` & `unlockRemainingEpisodesServer`):
+     - Applies 20% discount on remaining locked episodes ($\max(10, \lfloor N \times 10 \times 0.80 \rfloor)$).
+     - VIP bypass support: active VIP users unlock all remaining episodes for 0 coins with 0 balance deduction.
+     - Atomic execution: validates balance, debits wallet via `debitWalletCoinsServer`, and batch inserts unlock records into `user_unlocked_episodes`.
+  4. Secured Bulk Unlock API Endpoint (`POST /api/user/wallet/unlock-bundle`):
+     - Authenticates user session via `createUserServerClient()`.
+     - Validates request payload (`dramaId`, `dramaSlug`).
+     - Handles insufficient coins with HTTP 402 `INSUFFICIENT_COINS`.
+     - Returns unlocked count, unlocked episode numbers, discounted cost, and new balance.
+  5. Client Service Integration (`lib/services/wallet.service.ts`):
+     - Added `unlockRemainingEpisodesClient(dramaId, dramaSlug)`.
+  6. Automated Verification (`__tests__/monetization/episode-lock-rules.test.ts`):
+     - 17 automated tests covering bundle pricing algorithm, dynamic free threshold evaluation, guest vs user vs VIP lock status, bulk unlock execution, and route security.
+* **Verification**:
+  - `npx tsc --noEmit` passed with 0 errors.
+  - `__tests__/monetization/episode-lock-rules.test.ts` passed 17/17 tests (100%).
+  - Full test suite (`npm test`) passed 988/988 tests across 270 test suites with 0 regressions.
+  - Next.js production build (`npm run build`) compiled all 88 routes cleanly including `/api/user/wallet/unlock-bundle`.
 
 ### Task 8.3: Custom Player Paywall Gatekeeper & Coin Unlock Modal
 * **Status**: ⏳ Planned

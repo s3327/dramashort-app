@@ -3139,3 +3139,36 @@
   - Full test runner `npm test`: all 971 tests pass across 265 suites with 0 failures (100% pass rate).
   - TypeScript compiler check (`npx tsc --noEmit`): 0 type errors.
   - Next.js production build (`npm run build`): cleanly compiles all 87 static and dynamic routes.
+---
+
+## [2026-10-09] Task 8.2: Episode Lock & Paywall Rules Engine
+* **Milestone**: Phase 8 (Short Drama Monetization Engine — Freemium Coin Economy) — Task 8.2
+* **Goal**: Deliver the business rules and dynamic entitlement engine determining episode locks, customizable free preview thresholds per drama, whole-series lock summaries, 20% bulk bundle discount calculation, VIP bypass logic, and the atomic bulk unlock server operations and REST API endpoint.
+* **Implementation Steps Taken**:
+  1. **Dynamic Preview Threshold & Rule Enforcement (`lib/server/wallet.ts`, `types/wallet.ts`)**:
+     - Configured per-drama dynamic free preview threshold based on `free_episodes_count` on `content.titles` (defaulting to 5).
+     - Upgraded lock evaluation: episodes 1 to free_episodes_count are unconditionally free (`isFree = true`, `isLocked = false`, `coinsCost = 0`).
+     - Honored explicit episode-level override `is_free`.
+     - Marked paid episodes locked by default (`isLocked = true`, `coinsCost = 10`), requiring 10 coins, existing entitlement in `user_unlocked_episodes`, or active VIP status.
+  2. **Drama Episodes Lock Summary Engine (`getDramaEpisodesLockSummaryServer`)**:
+     - Built comprehensive summary evaluation returning lock status for every episode of a drama for guest, regular authenticated, or VIP user.
+     - Computes `totalEpisodes`, `freeEpisodesCount`, `lockedEpisodesCount`, `userUnlockedCount`, `remainingLockedCount`, `bundleUnlockCost`, and `bundleSavingsCoins`.
+  3. **Bulk Bundle Unlock Discount Algorithm (`calculateBundleCost`, `unlockRemainingEpisodesServer`)**:
+     - Designed and implemented 20% bundle discount algorithm: $\max(10, \lfloor N \times 10 \times 0.80 \rfloor)$.
+     - Supported VIP bypass: active VIP users unlock remaining episodes at 0 cost with 0 balance deduction.
+     - Implemented atomic bundle transaction: verifies wallet balance, debits wallet via `debitWalletCoinsServer`, and batch inserts unlock records into `user_unlocked_episodes`.
+  4. **Secured Bulk Unlock REST Route (`app/api/user/wallet/unlock-bundle/route.ts`)**:
+     - Created `POST /api/user/wallet/unlock-bundle` endpoint.
+     - Requires authenticated user session via `createUserServerClient()`.
+     - Validates payload (`dramaId`, `dramaSlug`).
+     - Returns HTTP 402 `INSUFFICIENT_COINS` with clear prompt if balance is insufficient.
+     - Returns HTTP 200 with unlocked count, unlocked episode numbers, discounted cost, and updated balance upon success.
+  5. **Client Service Integration (`lib/services/wallet.service.ts`)**:
+     - Exposed `unlockRemainingEpisodesClient(dramaId, dramaSlug)` for frontend consumption.
+  6. **Automated Verification Test Suite (`__tests__/monetization/episode-lock-rules.test.ts`)**:
+     - Authored 17 automated tests covering discount math, dynamic free thresholds, lock summary evaluation for guest/user/VIP, bulk unlock execution, and API route security.
+* **Regression Analysis & Verification Record**:
+  - `__tests__/monetization/episode-lock-rules.test.ts`: 17 / 17 tests pass (100%).
+  - Full test runner `npm test`: all 988 tests pass across 270 suites with 0 failures (100% pass rate).
+  - TypeScript compiler check (`npx tsc --noEmit`): 0 type errors.
+  - Next.js production build (`npm run build`): cleanly compiles all 88 static and dynamic routes.

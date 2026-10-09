@@ -1,5 +1,6 @@
 import "server-only";
 import { createUserServiceRoleClient } from "@/lib/supabase/user-server";
+import { getContentAdminClient } from "@/lib/supabase/content";
 import { type Result, ok, err } from "@/lib/common/result";
 import {
   type WalletInfo,
@@ -10,6 +11,10 @@ import {
   type DailyCheckInResult,
   type UnlockEpisodeResult,
   type UnlockEpisodeInput,
+  type BulkUnlockRemainingInput,
+  type BulkUnlockResult,
+  type DramaEpisodesLockSummary,
+  type EpisodeLockStatus,
 } from "@/types/wallet";
 
 const DAILY_REWARD_SCHEDULE: Record<number, number> = {
@@ -645,3 +650,245 @@ export async function getCoinTransactionsServer(
     totalPages,
   });
 }
+
+/**
+ * Computes bundled discount cost for unlocking remaining episodes.
+ * 20% discount applied to the standard 10-coin per episode price.
+ */
+export function calculateBundleCost(
+  remainingCount: number,
+  perEpisodeCost = 10,
+  discountRate = 0.20
+): { standardCost: number; discountedCost: number; savings: number; discountPercent: number } {
+  if (remainingCount <= 0) {
+    return { standardCost: 0, discountedCost: 0, savings: 0, discountPercent: Math.round(discountRate * 100) };
+  }
+  const standardCost = remainingCount * perEpisodeCost;
+  // Apply discount, minimum 10 coins if unlocking at least 1 episode
+  const discountedCost = Math.max(perEpisodeCost, Math.floor(standardCost * (1 - discountRate)));
+  const savings = Math.max(0, standardCost - discountedCost);
+  return {
+    standardCost,
+    discountedCost,
+    savings,
+    discountPercent: Math.round(discountRate * 100),
+  };
+}
+
+/**
+ * Computes lock status for all episodes of a drama for a given user.
+ */
+export async function getDramaEpisodesLockSummaryServer(
+  userId: string | null,
+  dramaId: string,
+  dramaSlug: string,
+  contentEpisodes: Array<{ id: string; episodeNumber: number; isFree?: boolean }>,
+  freeEpisodesCount = 5,
+  injectedUserDbClient?: any
+): Promise<DramaEpisodesLockSummary> {
+  const userClient = injectedUserDbClient || (await createUserServiceRoleClient());
+
+  let isVipActive = false;
+  const unlockedEpisodeNumbers = new Set<number>();
+
+  if (userId) {
+    // 1. Check VIP
+    const { data: wallet } = await userClient
+      .from("wallets")
+      .select("is_vip, vip_expires_at")
+      .eq("user_id", userId)
+      .maybeSingle();
+
+    isVipActive =
+      Boolean(wallet?.is_vip) &&
+      (!wallet?.vip_expires_at || new Date(wallet.vip_expires_at) > new Date());
+
+    // 2. Fetch unlocked episodes
+    const { data: unlockedRows } = await userClient
+      .from("user_unlocked_episodes")
+      .select("episode_number")
+      .eq("user_id", userId)
+      .eq("drama_id", dramaId);
+
+    if (Array.isArray(unlockedRows)) {
+      for (const row of unlockedRows) {
+        unlockedEpisodeNumbers.add(Number(row.episode_number));
+      }
+    }
+  }
+
+  const episodes: EpisodeLockStatus[] = contentEpisodes.map((ep) => {
+    const isFree = ep.isFree ?? (ep.episodeNumber <= freeEpisodesCount);
+    const isUnlockedByUser = unlockedEpisodeNumbers.has(ep.episodeNumber);
+    const isVipBypass = isVipActive;
+    const isLocked = !isFree && !isUnlockedByUser && !isVipBypass;
+    const coinsCost = isLocked ? 10 : 0;
+
+    return {
+      episodeId: ep.id,
+      episodeNumber: ep.episodeNumber,
+      isFree,
+      isLocked,
+      coinsCost,
+      isUnlockedByUser,
+      isVipBypass,
+    };
+  });
+
+  const totalEpisodes = episodes.length;
+  const lockedEpisodesCount = episodes.filter((e) => !e.isFree).length;
+  const userUnlockedCount = episodes.filter((e) => e.isUnlockedByUser).length;
+  const remainingLockedCount = episodes.filter((e) => e.isLocked).length;
+
+  const bundlePricing = calculateBundleCost(remainingLockedCount);
+
+  return {
+    dramaId,
+    dramaSlug,
+    totalEpisodes,
+    freeEpisodesCount,
+    lockedEpisodesCount,
+    userUnlockedCount,
+    remainingLockedCount,
+    bundleUnlockCost: bundlePricing.discountedCost,
+    bundleSavingsCoins: bundlePricing.savings,
+    episodes,
+  };
+}
+
+/**
+ * Unlocks all remaining locked episodes of a drama in a single atomic bundle operation.
+ * Applies a 20% bundle discount.
+ */
+export async function unlockRemainingEpisodesServer(
+  userId: string,
+  input: BulkUnlockRemainingInput,
+  injectedUserDbClient?: any,
+  injectedContentDbClient?: any
+): Promise<Result<BulkUnlockResult, string>> {
+  if (!userId) return err("User ID is required");
+  if (!input.dramaId) return err("dramaId is required");
+  if (!input.dramaSlug) return err("dramaSlug is required");
+
+  const userClient = injectedUserDbClient || (await createUserServiceRoleClient());
+  const contentClient = injectedContentDbClient || (await getContentAdminClient());
+
+  // 1. Fetch drama and all its episodes from Content DB
+  const { data: dramaRow, error: dramaError } = await contentClient
+    .from("titles")
+    .select("id, free_episodes_count")
+    .eq("id", input.dramaId)
+    .maybeSingle();
+
+  if (dramaError || !dramaRow) {
+    return err("Drama not found");
+  }
+
+  const freeCount = Number(dramaRow.free_episodes_count ?? 5);
+
+  const { data: episodeRows, error: episodesError } = await contentClient
+    .from("episodes")
+    .select("id, episode_number, is_free")
+    .eq("title_id", input.dramaId)
+    .order("episode_number", { ascending: true });
+
+  if (episodesError || !Array.isArray(episodeRows)) {
+    return err("Failed to retrieve drama episodes");
+  }
+
+  // 2. Fetch existing unlocks from User DB
+  const { data: existingUnlocks } = await userClient
+    .from("user_unlocked_episodes")
+    .select("episode_number")
+    .eq("user_id", userId)
+    .eq("drama_id", input.dramaId);
+
+  const alreadyUnlockedNumbers = new Set(
+    (existingUnlocks || []).map((r: any) => Number(r.episode_number))
+  );
+
+  // 3. Identify locked episodes that still need unlocking
+  const episodesToUnlock = episodeRows.filter((ep: any) => {
+    const isFree = ep.is_free ?? (ep.episode_number <= freeCount);
+    return !isFree && !alreadyUnlockedNumbers.has(ep.episode_number);
+  });
+
+  const walletRes = await getUserWalletServer(userId, userClient);
+  if (!walletRes.ok) return err(walletRes.error);
+
+  const wallet = walletRes.value;
+  const isVipActive =
+    wallet.isVip && (!wallet.vipExpiresAt || new Date(wallet.vipExpiresAt) > new Date());
+
+  if (episodesToUnlock.length === 0) {
+    return ok({
+      success: true,
+      episodesUnlockedCount: 0,
+      unlockedEpisodeNumbers: [],
+      standardCost: 0,
+      discountedCost: 0,
+      discountPercent: 20,
+      newBalance: wallet.balance,
+      isVipUnlock: isVipActive,
+    });
+  }
+
+  const bundlePricing = calculateBundleCost(episodesToUnlock.length);
+  const effectiveCost = isVipActive ? 0 : bundlePricing.discountedCost;
+
+  let newBalance = wallet.balance;
+
+  if (effectiveCost > 0) {
+    if (wallet.balance < effectiveCost) {
+      return err("INSUFFICIENT_COINS");
+    }
+
+    const debitRes = await debitWalletCoinsServer(
+      userId,
+      effectiveCost,
+      "episode_unlock",
+      input.dramaId,
+      `Bundle unlocked ${episodesToUnlock.length} episodes of ${input.dramaSlug} (20% discount)`,
+      userClient
+    );
+
+    if (!debitRes.ok) {
+      return err(debitRes.error);
+    }
+    newBalance = debitRes.value.newBalance;
+  }
+
+  // 4. Batch insert into user_unlocked_episodes
+  const now = new Date().toISOString();
+  const perEpisodeSpent = isVipActive ? 0 : Math.round(effectiveCost / episodesToUnlock.length);
+
+  const unlockInserts = episodesToUnlock.map((ep: any) => ({
+    user_id: userId,
+    drama_id: input.dramaId,
+    drama_slug: input.dramaSlug,
+    episode_id: ep.id,
+    episode_number: ep.episode_number,
+    coins_spent: perEpisodeSpent,
+    unlocked_at: now,
+  }));
+
+  const { error: batchInsertError } = await userClient
+    .from("user_unlocked_episodes")
+    .insert(unlockInserts);
+
+  if (batchInsertError) {
+    console.warn("[unlockRemainingEpisodesServer] Warning during batch insert:", batchInsertError.message);
+  }
+
+  return ok({
+    success: true,
+    episodesUnlockedCount: episodesToUnlock.length,
+    unlockedEpisodeNumbers: episodesToUnlock.map((e: any) => e.episode_number),
+    standardCost: bundlePricing.standardCost,
+    discountedCost: effectiveCost,
+    discountPercent: 20,
+    newBalance,
+    isVipUnlock: isVipActive,
+  });
+}
+
