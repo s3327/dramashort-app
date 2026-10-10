@@ -98,7 +98,6 @@ export interface UnlockEpisodeInput {
   dramaSlug: string;
   episodeId: string;
   episodeNumber: number;
-  cost?: number;
 }
 
 export interface BulkUnlockRemainingInput {

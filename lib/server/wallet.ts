@@ -30,6 +30,52 @@ const DAILY_REWARD_SCHEDULE: Record<number, number> = {
   7: 50,
 };
 
+/** Price of a single episode unlock, in coins. Decided by the server only. */
+export const EPISODE_UNLOCK_COST = 10;
+
+interface WalletRpcError {
+  code?: string;
+  message: string;
+}
+
+/**
+ * Calls one of the atomic wallet stored procedures.
+ *
+ * Against a real database these procedures are the only write path: when one
+ * fails, the caller surfaces the error instead of retrying with table writes,
+ * which would bypass the row locks, status checks and unique constraints the
+ * procedure enforces. The table-based branches in this file run only for the
+ * in-memory test clients, which have no `rpc` method.
+ */
+async function callWalletRpc(
+  client: any,
+  fn: string,
+  params: Record<string, unknown>
+): Promise<{ data: any; error: null } | { data: null; error: WalletRpcError }> {
+  try {
+    const { data, error } = await client.rpc(fn, params);
+    if (error) {
+      return { data: null, error: { code: error.code, message: error.message || "Unknown database error" } };
+    }
+    if (!data) {
+      return { data: null, error: { message: "no result returned" } };
+    }
+    return { data, error: null };
+  } catch (e) {
+    return { data: null, error: { message: e instanceof Error ? e.message : String(e) } };
+  }
+}
+
+function formatWalletRpcError(fn: string, error: WalletRpcError): string {
+  return `${fn} failed: ${error.code ? `${error.code}: ` : ""}${error.message}`;
+}
+
+/** PostgreSQL 23505 unique_violation, by code or by message. */
+function isUniqueViolation(error: WalletRpcError): boolean {
+  const message = error.message.toLowerCase();
+  return error.code === "23505" || message.includes("duplicate key") || message.includes("unique constraint");
+}
+
 function getUtcTodayDateString(): string {
   return new Date().toISOString().slice(0, 10);
 }
@@ -145,29 +191,25 @@ export async function creditWalletCoinsServer(
 
   const client = injectedClient || (await createUserServiceRoleClient());
 
-  // Attempt RPC first
   if (typeof client.rpc === "function") {
-    try {
-      const { data: rpcData, error: rpcError } = await client.rpc("credit_wallet_coins", {
-        p_user_id: userId,
-        p_amount: amount,
-        p_type: type,
-        p_ref_id: refId || null,
-        p_description: description,
-      });
+    const { data: rpcData, error: rpcError } = await callWalletRpc(client, "credit_wallet_coins", {
+      p_user_id: userId,
+      p_amount: amount,
+      p_type: type,
+      p_ref_id: refId || null,
+      p_description: description,
+    });
 
-      if (!rpcError && rpcData) {
-        return ok({
-          newBalance: Number(rpcData.balance_after ?? rpcData.new_balance ?? 0),
-          transactionId: rpcData.transaction_id,
-        });
-      }
-    } catch {
-      // Fallback to table operations if RPC not defined in test environment
+    if (rpcError) {
+      return err(formatWalletRpcError("credit_wallet_coins", rpcError));
     }
+    return ok({
+      newBalance: Number(rpcData.balance_after ?? rpcData.new_balance ?? 0),
+      transactionId: rpcData.transaction_id,
+    });
   }
 
-  // Fallback table operations
+  // In-memory test client (no rpc): table operations
   const walletRes = await getUserWalletServer(userId, client);
   if (!walletRes.ok) return err(walletRes.error);
 
@@ -226,32 +268,28 @@ export async function debitWalletCoinsServer(
 
   const client = injectedClient || (await createUserServiceRoleClient());
 
-  // Attempt RPC first
   if (typeof client.rpc === "function") {
-    try {
-      const { data: rpcData, error: rpcError } = await client.rpc("debit_wallet_coins", {
-        p_user_id: userId,
-        p_amount: amount,
-        p_type: type,
-        p_ref_id: refId || null,
-        p_description: description,
-      });
+    const { data: rpcData, error: rpcError } = await callWalletRpc(client, "debit_wallet_coins", {
+      p_user_id: userId,
+      p_amount: amount,
+      p_type: type,
+      p_ref_id: refId || null,
+      p_description: description,
+    });
 
-      if (!rpcError && rpcData) {
-        return ok({
-          newBalance: Number(rpcData.balance_after ?? rpcData.new_balance ?? 0),
-          transactionId: rpcData.transaction_id,
-        });
-      }
-      if (rpcError && rpcError.message.includes("INSUFFICIENT_COINS")) {
+    if (rpcError) {
+      if (rpcError.message.includes("INSUFFICIENT_COINS")) {
         return err("INSUFFICIENT_COINS");
       }
-    } catch {
-      // Fallback to table operations
+      return err(formatWalletRpcError("debit_wallet_coins", rpcError));
     }
+    return ok({
+      newBalance: Number(rpcData.balance_after ?? rpcData.new_balance ?? 0),
+      transactionId: rpcData.transaction_id,
+    });
   }
 
-  // Fallback table operations
+  // In-memory test client (no rpc): table operations
   const walletRes = await getUserWalletServer(userId, client);
   if (!walletRes.ok) return err(walletRes.error);
 
@@ -337,7 +375,7 @@ export async function unlockEpisodeServer(
   if (!input.episodeId) return err("episodeId is required");
   if (!input.episodeNumber || input.episodeNumber < 1) return err("Valid episodeNumber is required");
 
-  const cost = input.cost !== undefined ? input.cost : 10;
+  const cost = EPISODE_UNLOCK_COST;
   const client = injectedClient || (await createUserServiceRoleClient());
 
   // 1. Check idempotency: already unlocked?
@@ -354,38 +392,47 @@ export async function unlockEpisodeServer(
     });
   }
 
-  // 2. Attempt RPC execution
+  // 2. Atomic unlock (debit + entitlement in one transaction)
   if (typeof client.rpc === "function") {
-    try {
-      const { data: rpcData, error: rpcError } = await client.rpc("unlock_episode_with_coins", {
-        p_user_id: userId,
-        p_drama_id: input.dramaId,
-        p_drama_slug: input.dramaSlug,
-        p_episode_id: input.episodeId,
-        p_episode_number: input.episodeNumber,
-        p_cost: cost,
-      });
+    const { data: rpcData, error: rpcError } = await callWalletRpc(client, "unlock_episode_with_coins", {
+      p_user_id: userId,
+      p_drama_id: input.dramaId,
+      p_drama_slug: input.dramaSlug,
+      p_episode_id: input.episodeId,
+      p_episode_number: input.episodeNumber,
+      p_cost: cost,
+    });
 
-      if (!rpcError && rpcData) {
-        return ok({
-          success: true,
-          alreadyUnlocked: Boolean(rpcData.already_unlocked),
-          unlockedEpisodeId: rpcData.unlocked_episode_id || "unlocked",
-          coinsSpent: Number(rpcData.coins_spent ?? 0),
-          newBalance: Number(rpcData.new_balance ?? 0),
-          isVipUnlock: Boolean(rpcData.is_vip_unlock),
-        });
-      }
-
-      if (rpcError && rpcError.message.includes("INSUFFICIENT_COINS")) {
+    if (rpcError) {
+      if (rpcError.message.includes("INSUFFICIENT_COINS")) {
         return err("INSUFFICIENT_COINS");
       }
-    } catch {
-      // Fallback
+      // A concurrent request unlocked the same episode first; the procedure rolled
+      // this one back (including its debit), so nothing was charged here.
+      if (isUniqueViolation(rpcError)) {
+        const walletRes = await getUserWalletServer(userId, client);
+        return ok({
+          success: true,
+          alreadyUnlocked: true,
+          unlockedEpisodeId: "existing",
+          coinsSpent: 0,
+          newBalance: walletRes.ok ? walletRes.value.balance : 0,
+        });
+      }
+      return err(formatWalletRpcError("unlock_episode_with_coins", rpcError));
     }
+
+    return ok({
+      success: true,
+      alreadyUnlocked: Boolean(rpcData.already_unlocked),
+      unlockedEpisodeId: rpcData.unlocked_episode_id || "unlocked",
+      coinsSpent: Number(rpcData.coins_spent ?? 0),
+      newBalance: Number(rpcData.new_balance ?? 0),
+      isVipUnlock: Boolean(rpcData.is_vip_unlock),
+    });
   }
 
-  // 3. Fallback logic: inspect VIP and wallet
+  // 3. In-memory test client (no rpc): inspect VIP and wallet
   const walletRes = await getUserWalletServer(userId, client);
   if (!walletRes.ok) return err(walletRes.error);
 
@@ -533,32 +580,29 @@ export async function claimDailyCheckinServer(
 
   const client = injectedClient || (await createUserServiceRoleClient());
 
-  // Attempt RPC execution
   if (typeof client.rpc === "function") {
-    try {
-      const { data: rpcData, error: rpcError } = await client.rpc("claim_daily_checkin", {
-        p_user_id: userId,
-      });
+    const { data: rpcData, error: rpcError } = await callWalletRpc(client, "claim_daily_checkin", {
+      p_user_id: userId,
+    });
 
-      if (!rpcError && rpcData) {
-        return ok({
-          success: true,
-          checkinId: rpcData.checkin_id,
-          streakCount: Number(rpcData.streak_count ?? 1),
-          coinsAwarded: Number(rpcData.coins_awarded ?? 5),
-          newBalance: Number(rpcData.new_balance ?? 0),
-        });
-      }
-
-      if (rpcError && rpcError.message.includes("ALREADY_CHECKED_IN_TODAY")) {
+    if (rpcError) {
+      // The unique (user_id, last_checkin_date) constraint catches a concurrent claim
+      if (rpcError.message.includes("ALREADY_CHECKED_IN_TODAY") || isUniqueViolation(rpcError)) {
         return err("ALREADY_CHECKED_IN_TODAY");
       }
-    } catch {
-      // Fallback
+      return err(formatWalletRpcError("claim_daily_checkin", rpcError));
     }
+
+    return ok({
+      success: true,
+      checkinId: rpcData.checkin_id,
+      streakCount: Number(rpcData.streak_count ?? 1),
+      coinsAwarded: Number(rpcData.coins_awarded ?? 5),
+      newBalance: Number(rpcData.new_balance ?? 0),
+    });
   }
 
-  // Fallback table operations
+  // In-memory test client (no rpc): table operations
   const statusRes = await getDailyCheckInStatusServer(userId, client);
   if (!statusRes.ok) return err(statusRes.error);
 
@@ -1095,49 +1139,49 @@ export async function fulfillPaymentOrderServer(
 
   const client = injectedClient || (await createUserServiceRoleClient());
 
-  // 1. Try atomic PostgreSQL RPC first
+  // 1. Atomic PostgreSQL procedure. Its refusals (ORDER_NOT_FOUND, ORDER_NOT_PAYABLE
+  //    for a refunded/failed/expired order) are final and must not be retried below.
   if (typeof client.rpc === "function") {
-    try {
-      const { data: rpcData, error: rpcError } = await client.rpc("fulfill_payment_order", {
-        p_order_id: orderId,
-        p_provider_payment_id: providerPaymentId || null,
-      });
+    const { data: rpcData, error: rpcError } = await callWalletRpc(client, "fulfill_payment_order", {
+      p_order_id: orderId,
+      p_provider_payment_id: providerPaymentId || null,
+    });
 
-      if (!rpcError && rpcData) {
+    if (rpcError) {
+      if (isUniqueViolation(rpcError) || rpcError.message.includes("already paid")) {
         return ok({
-          success: Boolean(rpcData.success),
-          duplicate: Boolean(rpcData.duplicate),
-          orderId: rpcData.order_id,
-          packageId: rpcData.package_id,
-          userId: rpcData.user_id,
-          status: rpcData.status,
-          coinsCredited: Number(rpcData.coins_credited ?? 0),
-          vipGranted: Boolean(rpcData.vip_granted ?? false),
-          newBalance: Number(rpcData.new_balance ?? 0),
-          vipExpiresAt: rpcData.vip_expires_at || null,
+          success: true,
+          duplicate: true,
+          orderId,
+          packageId: "",
+          userId: "",
+          status: "paid",
+          coinsCredited: 0,
+          vipGranted: false,
+          newBalance: 0,
         });
       }
-      if (rpcError) {
-        if (rpcError.code === "23505" || rpcError.message?.includes("already paid")) {
-          return ok({
-            success: true,
-            duplicate: true,
-            orderId,
-            packageId: "",
-            userId: "",
-            status: "paid",
-            coinsCredited: 0,
-            vipGranted: false,
-            newBalance: 0,
-          });
-        }
+      if (rpcError.message.includes("ORDER_NOT_FOUND")) {
+        return err(`Order not found: ${orderId}`);
       }
-    } catch {
-      // Fall through to table queries if RPC is not installed in local mock
+      return err(formatWalletRpcError("fulfill_payment_order", rpcError));
     }
+
+    return ok({
+      success: Boolean(rpcData.success),
+      duplicate: Boolean(rpcData.duplicate),
+      orderId: rpcData.order_id,
+      packageId: rpcData.package_id,
+      userId: rpcData.user_id,
+      status: rpcData.status,
+      coinsCredited: Number(rpcData.coins_credited ?? 0),
+      vipGranted: Boolean(rpcData.vip_granted ?? false),
+      newBalance: Number(rpcData.new_balance ?? 0),
+      vipExpiresAt: rpcData.vip_expires_at || null,
+    });
   }
 
-  // 2. Table queries fallback (for in-memory mock client / test harness)
+  // 2. In-memory test client (no rpc): table queries
   const { data: order, error: orderError } = await client
     .from("payment_orders")
     .select("*")

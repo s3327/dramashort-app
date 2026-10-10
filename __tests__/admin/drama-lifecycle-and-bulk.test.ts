@@ -169,6 +169,9 @@ describe("Task 16.4: Drama Lifecycle Actions & Bulk Operations", () => {
   }
 
   beforeEach(() => {
+    // Preview tokens have no built-in signing secret; configure one for the suite
+    process.env.PREVIEW_SECRET = "test-preview-signing-secret-ds";
+
     mockTitles = [
       {
         id: "22222222-2222-4222-a222-222222222221",
@@ -298,6 +301,29 @@ describe("Task 16.4: Drama Lifecycle Actions & Bulk Operations", () => {
   /* -------------------------------------------------------------------------- */
   /* Test 2: Preview Token Cryptographic Verification                           */
   /* -------------------------------------------------------------------------- */
+  it("has no built-in preview secret: signing throws and verification fails when unconfigured", () => {
+    const names = [
+      "PREVIEW_SECRET",
+      "USER_SUPABASE_SERVICE_ROLE_KEY",
+      "SUPABASE_SERVICE_ROLE_KEY",
+      "CONTENT_SUPABASE_SERVICE_ROLE_KEY",
+      "SUPABASE_CONTENT_SERVICE_ROLE_KEY",
+    ];
+    const saved = names.map((name) => process.env[name]);
+    const token = generatePreviewToken("test-drama-id", "secret-draft-slug-ds", 60000);
+    for (const name of names) delete process.env[name];
+    try {
+      assert.throws(() => generatePreviewToken("test-drama-id", "secret-draft-slug-ds"), /PREVIEW_SECRET/);
+      const res = verifyPreviewToken(token, "secret-draft-slug-ds");
+      assert.equal(res.valid, false);
+    } finally {
+      names.forEach((name, i) => {
+        if (saved[i] === undefined) delete process.env[name];
+        else process.env[name] = saved[i];
+      });
+    }
+  });
+
   it("generates and verifies tamper-proof HMAC preview tokens", () => {
     const dramaId = "test-drama-id";
     const slug = "secret-draft-slug-ds";

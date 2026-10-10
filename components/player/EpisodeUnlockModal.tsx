@@ -98,7 +98,6 @@ export default function EpisodeUnlockModal({
       dramaSlug: drama.slug,
       episodeId: episode.id,
       episodeNumber: episode.episodeNumber,
-      cost: 10,
     });
 
     setIsUnlockingSingle(false);

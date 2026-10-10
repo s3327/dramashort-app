@@ -146,26 +146,42 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 
 
 /**
+ * Returns the configured playback signing secret, or null when it is not set.
+ * There is deliberately no built-in default: a secret that ships in the source
+ * code lets anyone mint valid tokens.
+ */
+export function getPlaybackSigningSecret(): string | null {
+  const secret = process.env.PLAYBACK_SIGNING_SECRET?.trim();
+  return secret ? secret : null;
+}
+
+/**
  * Generates an HMAC-SHA256 signed playback token bound to the episode and expiration epoch.
+ * Throws when no signing secret is configured.
  */
 export function signPlaybackToken(
   episodeId: string,
   expiresEpochMs: number,
-  secret = process.env.PLAYBACK_SIGNING_SECRET || "default_playback_signing_secret"
+  secret: string | null = getPlaybackSigningSecret()
 ): string {
+  if (!secret) {
+    throw new Error("PLAYBACK_SIGNING_SECRET is not configured; cannot sign playback tokens.");
+  }
   const payload = `${episodeId}:${expiresEpochMs}`;
   return createHmac("sha256", secret).update(payload).digest("hex");
 }
 
 /**
  * Verifies the validity and expiration of a signed playback token.
+ * Always false when no signing secret is configured.
  */
 export function verifyPlaybackToken(
   episodeId: string,
   token: string,
   expiresEpochMs: number,
-  secret = process.env.PLAYBACK_SIGNING_SECRET || "default_playback_signing_secret"
+  secret: string | null = getPlaybackSigningSecret()
 ): boolean {
+  if (!secret) return false;
   if (!token || !expiresEpochMs) return false;
   if (Date.now() > expiresEpochMs) return false; // Expired token
 
@@ -184,7 +200,7 @@ export function signPlaybackUrl(
   streamUrl: string,
   episodeId: string,
   expiresInSeconds = 900,
-  secret?: string
+  secret: string | null = getPlaybackSigningSecret()
 ): { url: string; token: string; expiresAt: string; expiresEpochMs: number } {
   const expiresEpochMs = Date.now() + expiresInSeconds * 1000;
   const token = signPlaybackToken(episodeId, expiresEpochMs, secret);
@@ -214,12 +230,19 @@ export function resolvePlaybackSession(
 
   // Prefer HLS stream if available, otherwise MP4 fallback, then legacy video_url
   const streamUrl = info.hlsUrl || info.mp4Url || info.videoUrl || "";
-  const signedToken = info.episodeId ? signPlaybackToken(info.episodeId, expiresEpochMs) : undefined;
+  const shouldEnforceSignedUrl = process.env.REQUIRE_SIGNED_PLAYBACK === "true";
+  const secret = getPlaybackSigningSecret();
+
+  // Fail closed: never hand out an unsigned URL when signing is required
+  if (shouldEnforceSignedUrl && !secret) {
+    throw new Error("REQUIRE_SIGNED_PLAYBACK is enabled but PLAYBACK_SIGNING_SECRET is not configured.");
+  }
+
+  const signedToken =
+    secret && info.episodeId ? signPlaybackToken(info.episodeId, expiresEpochMs, secret) : undefined;
   const signedUrl = streamUrl && signedToken
     ? `${streamUrl}${streamUrl.includes("?") ? "&" : "?"}token=${signedToken}&expires=${expiresEpochMs}`
     : streamUrl;
-
-  const shouldEnforceSignedUrl = process.env.REQUIRE_SIGNED_PLAYBACK === "true";
 
   return {
     url: shouldEnforceSignedUrl ? signedUrl : streamUrl,

@@ -49,6 +49,51 @@ BEGIN
 END $$;
 DROP TABLE public.zz_future_table;
 
+-- privileged SECURITY DEFINER procedures are callable by service_role only
+-- (20261010110000_lock_down_function_execute.sql)
+DO $$
+DECLARE
+  fn RECORD;
+  n int := 0;
+BEGIN
+  FOR fn IN
+    SELECT p.oid, p.oid::regprocedure AS signature
+    FROM pg_proc p
+    JOIN pg_namespace ns ON ns.oid = p.pronamespace
+    WHERE ns.nspname = 'public'
+      AND p.proname IN (
+        'ensure_user_wallet', 'credit_wallet_coins', 'debit_wallet_coins',
+        'unlock_episode_with_coins', 'claim_daily_checkin',
+        'fulfill_payment_order', 'rollup_daily_playback_stats'
+      )
+  LOOP
+    n := n + 1;
+    IF has_function_privilege('anon', fn.oid, 'EXECUTE')
+       OR has_function_privilege('authenticated', fn.oid, 'EXECUTE') THEN
+      RAISE EXCEPTION 'FAIL % is executable by anon/authenticated', fn.signature;
+    END IF;
+    IF NOT has_function_privilege('service_role', fn.oid, 'EXECUTE') THEN
+      RAISE EXCEPTION 'FAIL % is not executable by service_role', fn.signature;
+    END IF;
+  END LOOP;
+  IF n < 7 THEN
+    RAISE EXCEPTION 'FAIL expected 7 privileged procedures, found %', n;
+  END IF;
+  RAISE NOTICE 'PASS wallet, payment and rollup procedures are service_role only';
+END $$;
+
+-- default privileges: a function created by a later migration is not client-callable
+CREATE FUNCTION public.zz_future_fn() RETURNS int LANGUAGE sql AS 'SELECT 1';
+DO $$
+BEGIN
+  IF has_function_privilege('anon', 'public.zz_future_fn()', 'EXECUTE')
+     OR has_function_privilege('authenticated', 'public.zz_future_fn()', 'EXECUTE') THEN
+    RAISE EXCEPTION 'FAIL new functions are still auto-granted to anon/authenticated';
+  END IF;
+  RAISE NOTICE 'PASS future functions get no anon/authenticated EXECUTE by default';
+END $$;
+DROP FUNCTION public.zz_future_fn();
+
 -- ---------------------------------------------------------------- as user A
 BEGIN;
 SET LOCAL ROLE authenticated;
@@ -188,6 +233,21 @@ BEGIN
     RAISE EXCEPTION 'FAIL authenticated user selected from payment_webhook_events';
   EXCEPTION WHEN insufficient_privilege THEN
     RAISE NOTICE 'PASS authenticated user cannot access payment_webhook_events';
+  END;
+
+  -- wallet procedures cannot be called directly by a signed-in client
+  BEGIN
+    PERFORM public.credit_wallet_coins(auth.uid(), 1000000, 'admin_grant');
+    RAISE EXCEPTION 'FAIL authenticated user minted coins via credit_wallet_coins';
+  EXCEPTION WHEN insufficient_privilege THEN
+    RAISE NOTICE 'PASS authenticated user cannot execute credit_wallet_coins';
+  END;
+
+  BEGIN
+    PERFORM public.fulfill_payment_order(gen_random_uuid());
+    RAISE EXCEPTION 'FAIL authenticated user executed fulfill_payment_order';
+  EXCEPTION WHEN insufficient_privilege THEN
+    RAISE NOTICE 'PASS authenticated user cannot execute fulfill_payment_order';
   END;
 
   RAISE NOTICE 'PASS custom lists and items isolated; own list + item upsert works';

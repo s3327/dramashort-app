@@ -20,6 +20,7 @@ import {
   signPlaybackToken,
   verifyPlaybackToken,
   signPlaybackUrl,
+  resolvePlaybackSession,
 } from "@/lib/server/playback";
 import { getClientIp, RATE_LIMIT_POLICIES } from "@/lib/security/rate-limiter";
 
@@ -447,26 +448,83 @@ describe("Security & Stability Fix Plan Verification Suite", () => {
       const nowMs = Date.now();
       const validEpochMs = nowMs + 15 * 60 * 1000; // 15 mins
 
-      const token = signPlaybackToken(episodeId, validEpochMs);
+      const secret = "test-playback-signing-secret";
+
+      const token = signPlaybackToken(episodeId, validEpochMs, secret);
       assert.ok(token);
       assert.equal(typeof token, "string");
 
       // Valid token within TTL passes
-      const isValid = verifyPlaybackToken(episodeId, token, validEpochMs);
+      const isValid = verifyPlaybackToken(episodeId, token, validEpochMs, secret);
       assert.equal(isValid, true);
 
       // Wrong episodeId fails
-      assert.equal(verifyPlaybackToken("ep-other-456", token, validEpochMs), false);
+      assert.equal(verifyPlaybackToken("ep-other-456", token, validEpochMs, secret), false);
+
+      // Wrong secret fails
+      assert.equal(verifyPlaybackToken(episodeId, token, validEpochMs, "another-secret"), false);
 
       // Expired token fails
       const expiredEpochMs = nowMs - 1000; // Expired 1 second ago
-      assert.equal(verifyPlaybackToken(episodeId, token, expiredEpochMs), false);
+      assert.equal(verifyPlaybackToken(episodeId, token, expiredEpochMs, secret), false);
+    });
+
+    it("has no built-in signing secret: signing throws and verification fails when unconfigured", () => {
+      const original = process.env.PLAYBACK_SIGNING_SECRET;
+      delete process.env.PLAYBACK_SIGNING_SECRET;
+      try {
+        const expires = Date.now() + 60_000;
+        assert.throws(() => signPlaybackToken("ep-1", expires), /PLAYBACK_SIGNING_SECRET/);
+
+        // A token minted with the old hardcoded default must not verify
+        const forged = signPlaybackToken("ep-1", expires, "default_playback_signing_secret");
+        assert.equal(verifyPlaybackToken("ep-1", forged, expires), false);
+      } finally {
+        if (original === undefined) delete process.env.PLAYBACK_SIGNING_SECRET;
+        else process.env.PLAYBACK_SIGNING_SECRET = original;
+      }
+    });
+
+    it("resolvePlaybackSession fails closed when signing is required but no secret is set", () => {
+      const originalSecret = process.env.PLAYBACK_SIGNING_SECRET;
+      const originalRequire = process.env.REQUIRE_SIGNED_PLAYBACK;
+      const info = {
+        episodeId: "ep-signed-1",
+        titleId: "drama-1",
+        titleName: "Drama",
+        titleSlug: "drama",
+        titleStatus: "Published",
+        episodeNumber: 1,
+        isFree: true,
+        hlsUrl: "https://cdn.example.com/hls/master.m3u8",
+      };
+      try {
+        delete process.env.PLAYBACK_SIGNING_SECRET;
+        process.env.REQUIRE_SIGNED_PLAYBACK = "true";
+        assert.throws(() => resolvePlaybackSession(info), /PLAYBACK_SIGNING_SECRET/);
+
+        process.env.PLAYBACK_SIGNING_SECRET = "test-playback-signing-secret";
+        const signed = resolvePlaybackSession(info);
+        assert.match(signed.url, /token=[0-9a-f]{64}&expires=\d+$/);
+
+        // Without enforcement and without a secret the raw URL is returned unsigned
+        delete process.env.PLAYBACK_SIGNING_SECRET;
+        process.env.REQUIRE_SIGNED_PLAYBACK = "false";
+        const unsigned = resolvePlaybackSession(info);
+        assert.equal(unsigned.url, info.hlsUrl);
+        assert.equal(unsigned.signedToken, undefined);
+      } finally {
+        if (originalSecret === undefined) delete process.env.PLAYBACK_SIGNING_SECRET;
+        else process.env.PLAYBACK_SIGNING_SECRET = originalSecret;
+        if (originalRequire === undefined) delete process.env.REQUIRE_SIGNED_PLAYBACK;
+        else process.env.REQUIRE_SIGNED_PLAYBACK = originalRequire;
+      }
     });
 
     it("signPlaybackUrl attaches token and expires query parameters cleanly", () => {
       const streamUrl = "https://cdn.example.com/hls/master.m3u8";
       const episodeId = "ep-777";
-      const result = signPlaybackUrl(streamUrl, episodeId, 900);
+      const result = signPlaybackUrl(streamUrl, episodeId, 900, "test-playback-signing-secret");
 
       assert.ok(result.url.includes("token="));
       assert.ok(result.url.includes("expires="));

@@ -6,23 +6,33 @@
 -- and creates public.import_jobs tracking table.
 -- ============================================================================
 
--- 1. Add external provenance columns to titles
-ALTER TABLE public.titles
-  ADD COLUMN IF NOT EXISTS external_source TEXT,
-  ADD COLUMN IF NOT EXISTS external_id TEXT;
+-- The User DB keeps its catalog in the `content` schema (ADR-0003); `public.titles`
+-- and `public.episodes` only exist in mirrored single-database environments, so
+-- steps 1-2 are guarded.
+DO $$
+BEGIN
+  -- 1. Add external provenance columns to titles
+  IF to_regclass('public.titles') IS NOT NULL THEN
+    ALTER TABLE public.titles
+      ADD COLUMN IF NOT EXISTS external_source TEXT,
+      ADD COLUMN IF NOT EXISTS external_id TEXT;
 
-CREATE UNIQUE INDEX IF NOT EXISTS idx_titles_external_source_id
-  ON public.titles(external_source, external_id)
-  WHERE external_source IS NOT NULL AND external_id IS NOT NULL;
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_titles_external_source_id
+      ON public.titles(external_source, external_id)
+      WHERE external_source IS NOT NULL AND external_id IS NOT NULL;
+  END IF;
 
--- 2. Add external provenance columns to episodes
-ALTER TABLE public.episodes
-  ADD COLUMN IF NOT EXISTS external_source TEXT,
-  ADD COLUMN IF NOT EXISTS external_id TEXT;
+  -- 2. Add external provenance columns to episodes
+  IF to_regclass('public.episodes') IS NOT NULL THEN
+    ALTER TABLE public.episodes
+      ADD COLUMN IF NOT EXISTS external_source TEXT,
+      ADD COLUMN IF NOT EXISTS external_id TEXT;
 
-CREATE UNIQUE INDEX IF NOT EXISTS idx_episodes_external_source_id
-  ON public.episodes(external_source, external_id)
-  WHERE external_source IS NOT NULL AND external_id IS NOT NULL;
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_episodes_external_source_id
+      ON public.episodes(external_source, external_id)
+      WHERE external_source IS NOT NULL AND external_id IS NOT NULL;
+  END IF;
+END $$;
 
 -- 3. Create import_jobs table
 CREATE TABLE IF NOT EXISTS public.import_jobs (

@@ -25,7 +25,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { dramaId, dramaSlug, episodeId, episodeNumber, cost } = body;
+    // The price is decided by the server (EPISODE_UNLOCK_COST); a `cost` sent by the
+    // client is ignored so it cannot be used to unlock for free.
+    const { dramaId, dramaSlug, episodeId, episodeNumber } = body;
     if (!dramaId || !dramaSlug || !episodeId || typeof episodeNumber !== "number") {
       return NextResponse.json(
         {
@@ -41,7 +43,6 @@ export async function POST(request: NextRequest) {
       dramaSlug: String(dramaSlug),
       episodeId: String(episodeId),
       episodeNumber: Number(episodeNumber),
-      cost: typeof cost === "number" ? cost : undefined,
     });
 
     if (!result.ok) {

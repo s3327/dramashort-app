@@ -51,6 +51,57 @@ describe("Database RLS & Schema Access Contract (Task 10.9)", () => {
     });
   });
 
+  describe("Privileged Function EXECUTE Lockdown (both projects)", () => {
+    const privilegedFunctions = [
+      "ensure_user_wallet",
+      "credit_wallet_coins",
+      "debit_wallet_coins",
+      "unlock_episode_with_coins",
+      "claim_daily_checkin",
+      "fulfill_payment_order",
+      "rollup_daily_playback_stats",
+    ];
+
+    for (const db of ["user", "content"]) {
+      it(`CRITICAL: ${db} DB revokes EXECUTE on wallet and payment procedures from clients`, () => {
+        const migrationPath = path.join(
+          rootDir,
+          "supabase",
+          db,
+          "supabase",
+          "migrations",
+          "20261010110000_lock_down_function_execute.sql"
+        );
+        assert.ok(fs.existsSync(migrationPath), `${db} lock-down migration must exist`);
+        const sql = fs.readFileSync(migrationPath, "utf8");
+
+        for (const fn of privilegedFunctions) {
+          assert.ok(sql.includes(`'${fn}'`), `lock-down must cover ${fn}`);
+        }
+        assert.match(sql, /REVOKE\s+ALL\s+ON\s+FUNCTION\s+%s\s+FROM\s+PUBLIC\s*,\s*anon\s*,\s*authenticated/i);
+        assert.match(sql, /GRANT\s+EXECUTE\s+ON\s+FUNCTION\s+%s\s+TO\s+service_role/i);
+        assert.match(sql, /ALTER\s+DEFAULT\s+PRIVILEGES\s+FOR\s+ROLE\s+postgres\s+REVOKE\s+EXECUTE\s+ON\s+FUNCTIONS\s+FROM\s+PUBLIC/i);
+      });
+    }
+
+    it("no migration re-grants a privileged procedure to anon or authenticated", () => {
+      for (const db of ["user", "content"]) {
+        const dir = path.join(rootDir, "supabase", db, "supabase", "migrations");
+        const sql = fs
+          .readdirSync(dir)
+          .filter((file) => file.endsWith(".sql"))
+          .map((file) => fs.readFileSync(path.join(dir, file), "utf8"))
+          .join("\n");
+        for (const fn of privilegedFunctions) {
+          assert.doesNotMatch(
+            sql,
+            new RegExp(`GRANT\\s+EXECUTE\\s+ON\\s+FUNCTION\\s+(public\\.)?${fn}\\b[^;]*\\b(anon|authenticated)\\b`, "i")
+          );
+        }
+      }
+    });
+  });
+
   describe("Content Database Migration Contracts (Project 1)", () => {
     const contentMigrationsDir = path.join(rootDir, "supabase", "content", "supabase", "migrations");
     const contentSql = fs

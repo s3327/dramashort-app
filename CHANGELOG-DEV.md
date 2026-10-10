@@ -3739,3 +3739,88 @@
   - Full automated test suite (`npm test`): **1,176 / 1,176 tests pass** across 350 suites with 0 failures (100% pass rate).
   - CI security audit gate (`node scripts/ci/audit-gate.mjs`): **PASSED** with exit code 0.
   - TypeScript compiler check (`npx tsc --noEmit`): **0 type errors**.
+
+---
+
+## [2026-10-10] Post-Audit Security Fixes ("Fix Now" Group) & Purchase-Routing Proposal
+* **Milestone**: Follow-up to the Security & Stability Fix Plan (Phases A-F) — corrects gaps found by a full audit of that work; hardens Tasks 8.1, 10.2, 10.6, 13.2 and 16.4.
+* **Goal**: Close the five audit findings that do not depend on how purchases will work: (1) wallet and payment database procedures callable by any client, (2) client-supplied episode unlock price, (3) migration chains that cannot apply to a fresh database, (4) server code that retried failed atomic procedures with non-atomic table writes, (5) hardcoded fallback secrets for playback and preview tokens. Record the proposal to move purchases off the web in `FUTURE_PLAN.md`.
+* **Audit Corrections to the Previous Entry** (that entry is left unedited per the append-only rule):
+  - "10,000 IP bounded memory cache" and "dedicated payment rate limiting tiers": the rate limiter has no 10,000-entry cap, and the `checkout` / `webhook` policies are defined but not applied to any route.
+  - "zero `any` types" across payment boundaries: the two payment routes contain four.
+  - `SECURITY_AND_STABILITY_FIX_REPORT.md` describes table columns, event names, a signature header, and audit exceptions that differ from the code. The report was not corrected in this change.
+  - Not verified at the time: `npm run build` fails without `PAYMENT_WEBHOOK_SECRET` and `CRON_SECRET`, which the CI workflow does not set. Not fixed in this change.
+* **Implementation Steps Taken**:
+  1. **Privileged procedures locked to `service_role`**:
+     - Added `20261010110000_lock_down_function_execute.sql` to both migration chains. It revokes `EXECUTE` from `PUBLIC`, `anon`, and `authenticated` on `ensure_user_wallet`, `credit_wallet_coins`, `debit_wallet_coins`, `unlock_episode_with_coins`, `claim_daily_checkin`, `fulfill_payment_order`, and `rollup_daily_playback_stats` (matched by name through `pg_proc`, so every overload is covered and missing functions are skipped), and grants it to `service_role`.
+     - Extended default privileges so future functions created by `postgres` are not client-callable unless a migration grants it.
+     - Extended `scripts/sql/verify-user-db-rls.sql` with privilege and behaviour checks for these procedures.
+  2. **Server-decided unlock price**:
+     - `POST /api/user/wallet/unlock` no longer reads `cost` from the request body.
+     - Added `EPISODE_UNLOCK_COST = 10` in `lib/server/wallet.ts`; removed `cost` from `UnlockEpisodeInput` and from `EpisodeUnlockModal.tsx` and `WatchPlayerIsland.tsx`.
+  3. **Migration chains guarded**:
+     - User DB: `20261009100000`, `20261009140000`, `20261009150000`, `20261009210000` — statements on `public.titles`, `public.episodes`, `public.channels`, `public.episode_media` wrapped in `to_regclass(...) IS NOT NULL` guards.
+     - Content DB: `20261009170000`, `20261009220000` — statements on `public.profiles` wrapped in the same guard.
+     - Migration versions are unchanged.
+  4. **Atomic procedure failures are final**:
+     - Added `callWalletRpc`, `formatWalletRpcError`, and `isUniqueViolation` helpers in `lib/server/wallet.ts`.
+     - `creditWalletCoinsServer`, `debitWalletCoinsServer`, `unlockEpisodeServer`, `claimDailyCheckinServer`, and `fulfillPaymentOrderServer` now return the procedure's error instead of falling through to table writes. Table-write branches run only when the client has no `rpc` method (in-memory test clients).
+     - A unique violation on a concurrent unlock or check-in maps to "already unlocked" / `ALREADY_CHECKED_IN_TODAY`; `ORDER_NOT_FOUND` and `ORDER_NOT_PAYABLE` are returned as errors.
+  5. **No built-in signing secrets**:
+     - `lib/server/playback.ts`: removed `"default_playback_signing_secret"`. Added `getPlaybackSigningSecret()`. Signing throws without a secret, verification returns false, and `resolvePlaybackSession` throws when `REQUIRE_SIGNED_PLAYBACK=true` and no secret is set.
+     - `lib/auth/preview-token.ts`: removed `"dramashort-preview-secret-salt-key-2026"` and the unused `NEXTAUTH_SECRET` fallback; uses `PREVIEW_SECRET`, then the correctly named service role keys.
+     - `lib/config/env-validator.mjs`: in production, rejects placeholder `PLAYBACK_SIGNING_SECRET` / `PREVIEW_SECRET` and `REQUIRE_SIGNED_PLAYBACK=true` without a signing secret.
+     - `.env.example` and `lib/env.ts`: documented `PREVIEW_SECRET` and `REQUIRE_SIGNED_PLAYBACK`.
+  6. **Documentation**:
+     - `FUTURE_PLAN.md`: added §7 "Purchase Routing: Web as Access-Only, Payments in Telegram & Android" (status: proposed, not decided) and Phases D and E in §1.2.
+     - `ROADMAP.md`: added "Post-Audit Hardening (2026-10-10)" notes to Tasks 8.1, 10.2, 10.6, 13.2, 16.4, a direction note after Task 8.5, and a §22 highlight.
+* **Key File Diffs**:
+  - Created:
+    - `supabase/user/supabase/migrations/20261010110000_lock_down_function_execute.sql`
+    - `supabase/content/supabase/migrations/20261010110000_lock_down_function_execute.sql`
+  - Modified (application):
+    - `app/api/user/wallet/unlock/route.ts`
+    - `lib/server/wallet.ts`
+    - `lib/server/playback.ts`
+    - `lib/auth/preview-token.ts`
+    - `lib/config/env-validator.mjs`
+    - `lib/env.ts`
+    - `types/wallet.ts`
+    - `components/player/EpisodeUnlockModal.tsx`
+    - `components/watch/WatchPlayerIsland.tsx`
+    - `.env.example`
+  - Modified (database):
+    - `supabase/user/supabase/migrations/20261009100000_episode_operations.sql`
+    - `supabase/user/supabase/migrations/20261009140000_drama_lifecycle_and_audit.sql`
+    - `supabase/user/supabase/migrations/20261009150000_channels_operations.sql`
+    - `supabase/user/supabase/migrations/20261009210000_bulk_import_pipeline.sql`
+    - `supabase/content/supabase/migrations/20261009170000_admin_user_management.sql`
+    - `supabase/content/supabase/migrations/20261009220000_monetization_wallets_and_entitlements.sql`
+    - `scripts/sql/verify-user-db-rls.sql`
+  - Modified (tests, +10 tests):
+    - `__tests__/monetization/wallet-and-entitlements.test.ts` (+4: client `cost: 0` still charges 10; three "no table fallback" cases)
+    - `__tests__/security/payment-security-and-idempotency.test.ts` (+2: no built-in playback secret; fail-closed signed playback)
+    - `__tests__/security/rls-contract.test.ts` (+3: lock-down migration contract for both databases; no re-grant)
+    - `__tests__/admin/drama-lifecycle-and-bulk.test.ts` (+1: no built-in preview secret)
+  - Modified (docs): `FUTURE_PLAN.md`, `ROADMAP.md`, `CHANGELOG-DEV.md`
+* **Regression Analysis & Cross-System Impact**:
+  - **Wallet operations now depend on the stored procedures existing.** Against a real database there is no table-write fallback any more: if the monetization migration is not applied, unlock, check-in, and credit return an error instead of writing non-atomically.
+  - **Database functions**: after `20261010110000` is applied, the seven procedures can only be called with the service role key. Every caller in the app already uses it (`lib/server/wallet.ts`, `lib/services/analytics.service.ts`). The public search and taxonomy functions keep their explicit grants and are unaffected.
+  - **Default privileges change is global for role `postgres`**: any function created later, in any schema, by a migration or in the dashboard SQL editor, needs an explicit `GRANT EXECUTE` before clients can call it.
+  - **Unlock API**: a `cost` field in the request body is ignored. Both in-repo callers were updated.
+  - **Playback**: with `PLAYBACK_SIGNING_SECRET` unset (the current local configuration) the endpoint returns the unsigned URL as before, now without a token in `signedToken` / `signedUrl`.
+  - **Preview links**: links issued before this change stop verifying. Deployments now sign with the User DB service role key unless `PREVIEW_SECRET` is set.
+  - **Migrations**: edited files keep their versions; a database that already recorded them is not re-run. On a fresh database the guarded statements are skipped where the table is absent.
+* **Verification**:
+  - `npx tsc --noEmit`: 0 errors.
+  - `npm test`: 1,186 / 1,186 pass across 352 suites, 0 failed, 0 skipped (was 1,176 / 350). Run after a production build, because two bundle-budget tests read `.next` and fail without one.
+  - `npm run lint`: 0 errors, 5 warnings (unchanged from before this change).
+  - `npm run build`: compiled successfully **only with throwaway values supplied for `PAYMENT_WEBHOOK_SECRET` and `CRON_SECRET` on the command line**. Without them the build still fails at config load, as before this change.
+  - `npm run check:budget`: all three routes within budget.
+  - Static scan of both migration chains: no top-level statement references a table that the chain has not created.
+  - **Not run**: no migration and no SQL script was executed against any database, local or remote (no local Postgres; Docker was not running). `20261010110000_lock_down_function_execute.sql`, the edited migrations, and the extended `verify-user-db-rls.sql` are unexecuted. Playwright end-to-end tests were not run.
+* **Still Open After This Change**:
+  - The live databases remain exposed until `20261010110000` is applied to them.
+  - CI: the build step lacks the two required secrets and uses placeholder anon keys the validator rejects; the test step runs before the build although two tests need `.next`.
+  - Payments (deferred to `FUTURE_PLAN.md` §7): no real purchase path, webhook can lose payments, refunds do not claw back, replay check skipped for un-timestamped signatures.
+  - Unlock route does not validate episode identifiers against the catalog; bundle unlock is not one transaction; nothing verifies playback tokens; rate limits for checkout and webhook are unapplied; audit gate allowlists every current high advisory; maintenance mode reads an unset variable in the two-project setup; the `editor` role is blocked by middleware.

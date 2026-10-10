@@ -11,6 +11,8 @@ import {
   getDailyCheckInStatusServer,
   claimDailyCheckinServer,
   getCoinTransactionsServer,
+  fulfillPaymentOrderServer,
+  EPISODE_UNLOCK_COST,
 } from "@/lib/server/wallet";
 import { canAccessEpisode, type EpisodePlaybackInfo } from "@/lib/server/playback";
 import { GET as getWalletRoute } from "@/app/api/user/wallet/route";
@@ -18,7 +20,10 @@ import { POST as postUnlockRoute } from "@/app/api/user/wallet/unlock/route";
 import { GET as getCheckinRoute, POST as postCheckinRoute } from "@/app/api/user/wallet/checkin/route";
 import { NextRequest } from "next/server";
 import type { User } from "@supabase/supabase-js";
-import { setTestUserServerClientFactory } from "@/lib/supabase/user-server";
+import {
+  setTestUserServerClientFactory,
+  setTestUserServiceRoleClientFactory,
+} from "@/lib/supabase/user-server";
 
 /**
  * Creates an in-memory mock Supabase client simulating User DB state.
@@ -339,7 +344,6 @@ describe("Task 8.1: Monetization Database Schema, Wallets, Entitlements & Daily 
           dramaSlug: "ceo-wife",
           episodeId: "ep-6",
           episodeNumber: 6,
-          cost: 10,
         },
         mockClient
       );
@@ -374,7 +378,6 @@ describe("Task 8.1: Monetization Database Schema, Wallets, Entitlements & Daily 
           dramaSlug: "ceo-wife",
           episodeId: "ep-6",
           episodeNumber: 6,
-          cost: 10,
         },
         mockClient
       );
@@ -399,7 +402,6 @@ describe("Task 8.1: Monetization Database Schema, Wallets, Entitlements & Daily 
           dramaSlug: "ceo-wife",
           episodeId: "ep-7",
           episodeNumber: 7,
-          cost: 10,
         },
         mockClient
       );
@@ -423,7 +425,6 @@ describe("Task 8.1: Monetization Database Schema, Wallets, Entitlements & Daily 
           dramaSlug: "ceo-wife",
           episodeId: "ep-8",
           episodeNumber: 8,
-          cost: 10,
         },
         mockClient
       );
@@ -639,6 +640,40 @@ describe("Task 8.1: Monetization Database Schema, Wallets, Entitlements & Daily 
       }
     });
 
+    it("POST /api/user/wallet/unlock ignores a client-supplied cost and charges the server price", async () => {
+      const mockClient = createMockUserDbClient({
+        wallets: [{ user_id: "usr-price", balance: 30, is_vip: false }],
+      });
+      setTestUserServerClientFactory(() => ({
+        auth: {
+          getUser: () => Promise.resolve({ data: { user: { id: "usr-price" } }, error: null }),
+        },
+      }));
+      setTestUserServiceRoleClientFactory(() => mockClient);
+      try {
+        const req = new NextRequest("http://localhost:3000/api/user/wallet/unlock", {
+          method: "POST",
+          body: JSON.stringify({
+            dramaId: "drama-1",
+            dramaSlug: "ceo-wife",
+            episodeId: "ep-6",
+            episodeNumber: 6,
+            cost: 0,
+          }),
+        });
+        const res = await postUnlockRoute(req);
+        assert.equal(res.status, 200);
+        const json = await res.json();
+        assert.equal(json.data.coinsSpent, EPISODE_UNLOCK_COST);
+        assert.equal(json.data.newBalance, 30 - EPISODE_UNLOCK_COST);
+        assert.equal(mockClient._wallets[0].balance, 30 - EPISODE_UNLOCK_COST);
+        assert.equal(mockClient._userUnlockedEpisodes[0].coins_spent, EPISODE_UNLOCK_COST);
+      } finally {
+        setTestUserServerClientFactory(null);
+        setTestUserServiceRoleClientFactory(null);
+      }
+    });
+
     it("GET and POST /api/user/wallet/checkin reject unauthenticated callers with 401", async () => {
       setTestUserServerClientFactory(() => ({
         auth: {
@@ -654,6 +689,74 @@ describe("Task 8.1: Monetization Database Schema, Wallets, Entitlements & Daily 
       } finally {
         setTestUserServerClientFactory(null);
       }
+    });
+  });
+
+  describe("7. Atomic Procedure Failures Are Final (No Table-Write Fallback)", () => {
+    it("creditWalletCoinsServer surfaces a unique violation instead of crediting through table writes", async () => {
+      const mockClient = createMockUserDbClient({
+        wallets: [{ user_id: "usr-dup", balance: 100, is_vip: false }],
+      });
+      mockClient.rpc = () =>
+        Promise.resolve({
+          data: null,
+          error: {
+            code: "23505",
+            message: 'duplicate key value violates unique constraint "uq_coin_tx_purchase_reference"',
+          },
+        });
+
+      const res = await creditWalletCoinsServer("usr-dup", 350, "purchase", "order-1", "Purchase", mockClient);
+
+      assert.equal(res.ok, false);
+      if (!res.ok) assert.match(res.error, /23505/);
+      assert.equal(mockClient._wallets[0].balance, 100);
+      assert.equal(mockClient._coinTransactions.length, 0);
+    });
+
+    it("debitWalletCoinsServer and unlockEpisodeServer do not fall back when the procedure is unreachable", async () => {
+      const mockClient = createMockUserDbClient({
+        wallets: [{ user_id: "usr-net", balance: 50, is_vip: false }],
+      });
+      mockClient.rpc = () => Promise.reject(new Error("fetch failed"));
+
+      const debitRes = await debitWalletCoinsServer("usr-net", 10, "episode_unlock", "ep-9", "Unlock", mockClient);
+      assert.equal(debitRes.ok, false);
+
+      const unlockRes = await unlockEpisodeServer(
+        "usr-net",
+        { dramaId: "drama-1", dramaSlug: "ceo-wife", episodeId: "ep-9", episodeNumber: 9 },
+        mockClient
+      );
+      assert.equal(unlockRes.ok, false);
+
+      assert.equal(mockClient._wallets[0].balance, 50);
+      assert.equal(mockClient._coinTransactions.length, 0);
+      assert.equal(mockClient._userUnlockedEpisodes.length, 0);
+    });
+
+    it("fulfillPaymentOrderServer treats ORDER_NOT_PAYABLE as final and never touches tables", async () => {
+      const mockClient = createMockUserDbClient({
+        wallets: [{ user_id: "usr-refunded", balance: 0, is_vip: false }],
+      });
+      let tableCalls = 0;
+      const originalFrom = mockClient.from.bind(mockClient);
+      mockClient.from = (tableName: string) => {
+        tableCalls++;
+        return originalFrom(tableName);
+      };
+      mockClient.rpc = () =>
+        Promise.resolve({
+          data: null,
+          error: { code: "P0001", message: "ORDER_NOT_PAYABLE: order status is refunded" },
+        });
+
+      const res = await fulfillPaymentOrderServer("order-refunded", "pay_1", mockClient);
+
+      assert.equal(res.ok, false);
+      if (!res.ok) assert.match(res.error, /ORDER_NOT_PAYABLE/);
+      assert.equal(tableCalls, 0);
+      assert.equal(mockClient._wallets[0].balance, 0);
     });
   });
 });

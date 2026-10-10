@@ -17,6 +17,8 @@ Short-form vertical dramas thrive on immediacy, habitual daily consumption, and 
 * **Phase A (Account Linking & Identity)**: Allow registered web users to link their Telegram account from `/account` and sign in via the Telegram Login Widget.
 * **Phase B (Interactive Bot & Push Notifications)**: Launch the `@DramaShortBot` to deliver personalized episode alerts, new releases, and watchlist sync.
 * **Phase C (Telegram Mini App - TMA)**: Deliver embedded vertical drama streaming directly inside Telegram clients (iOS, Android, macOS, Windows, Web).
+* **Phase D (Purchases in the Mini App)** *(proposed 2026-10-10, see §7)*: Coin top-ups and VIP are sold inside the Mini App with Telegram Stars; the web app becomes access-only and hands buyers off to Telegram.
+* **Phase E (Android App)** *(proposed 2026-10-10, see §7)*: A Google Play app that sells the same coin packages and VIP through Google Play Billing against the same wallet.
 
 ---
 
@@ -557,3 +559,115 @@ Before deploying the Telegram feature to production, execute the following regre
 - [ ] **Database Integrity**: Dual-database isolation is preserved (or schema-level isolation under ADR-0003 Option A); content schema is unchanged.
 - [ ] **Automated Test Suite**: `npm test` executes with 100% pass rate (470+ tests passing), plus new Telegram crypto unit tests.
 - [ ] **Production Build**: `npm run build` succeeds with 0 type errors and 0 lint warnings.
+
+---
+
+## 7. Purchase Routing: Web as Access-Only, Payments in Telegram & Android
+
+> **Status**: Proposed on 2026-10-10 after the platform security audit. Not yet decided or built. Nothing in this section exists in the codebase today; §7.9 lists the decisions still open.
+
+### 7.1 The Proposal
+The web app stops selling anything. It stays the place to browse, watch, and spend coins, and a visitor who needs coins or VIP is routed to one of two places that can take payment:
+
+| Surface | Role | Payment method |
+| :--- | :--- | :--- |
+| **Web app** (this repository) | Access only: browse, watch, unlock with coins, daily check-in | None. Paywall shows a "Get coins" handoff |
+| **Telegram Mini App** | Watch and buy | Telegram Stars (`XTR`) |
+| **Android app** | Watch and buy | Google Play Billing |
+
+All three read and write **one wallet** in the User DB. A purchase made in Telegram or on Android must appear on the web within seconds.
+
+### 7.2 Why This Shape
+1. **Platform rules decide the payment method.** Telegram requires Stars for digital goods sold inside bots and Mini Apps, and an app distributed on Google Play must use Play Billing for in-app digital content. A card processor on the web would therefore be a third integration, not a replacement for either.
+2. **No card data on the web.** The web app needs no payment provider account, no checkout page, and no card-related compliance scope.
+3. **The Mini App reaches every platform.** It runs in Telegram on iOS, Android, and desktop, so it is the universal fallback for any web visitor who has Telegram. The Android app is an addition, not a prerequisite.
+
+> **Confirm before building**: the two platform rules above, Telegram's current Stars payout terms, and Google's current rules on linking out to other payment methods. These policies change and were not re-verified when this section was written.
+
+### 7.3 Costs of This Approach
+- **Conversion drop.** Leaving the browser for another app in the middle of a paywall loses buyers.
+- **Unreachable visitors.** A web visitor with neither Telegram nor an Android device cannot pay at all.
+- **Higher fees.** Store-level fees are far above a card processor's.
+- **Mitigation**: keep the server ledger provider-agnostic (§7.5) so a web card option, for example through a merchant-of-record service, can be added later as a third adapter without redesign.
+
+### 7.4 Purchase Flows
+
+```mermaid
+sequenceDiagram
+    participant Web as Web App (access only)
+    participant API as DramaShort API
+    participant DB as User DB (wallet + orders)
+    participant TMA as Telegram Mini App
+    participant TG as Telegram Bot API
+
+    Web->>API: POST create order (signed-in user, packageId)
+    API->>DB: INSERT payment_orders (status=pending, user_id from session)
+    API-->>Web: deep link t.me/<bot>/<app>?startapp=order_<id>
+    Web->>TMA: open deep link
+    TMA->>API: request invoice for order (initData verified)
+    API->>TG: createInvoiceLink (currency XTR, payload = order id)
+    TMA->>TG: WebApp.openInvoice(link)
+    TG->>API: pre_checkout_query (answer within 10 s)
+    TG->>API: successful_payment (payload = order id, charge id)
+    API->>DB: fulfill_payment_order(order id) - atomic, idempotent
+    Web->>API: refetch wallet on return (visibilitychange)
+```
+
+**Telegram Mini App (Stars)**
+1. The server creates the pending order and the invoice. The invoice payload carries only the order ID.
+2. `pre_checkout_query` is answered only if the order exists, is still `pending`, and the price matches the catalogue.
+3. `successful_payment` triggers fulfilment. The Telegram charge ID is stored on the order; it is required later for refunds.
+4. The bot webhook is authenticated with the `X-Telegram-Bot-Api-Secret-Token` header.
+
+**Android (Google Play Billing)**
+1. The app starts the purchase with the order (or user) ID attached as the obfuscated account ID.
+2. The app sends the purchase token to the server. The server verifies it with the Google Play Developer API; the app's own claim of success is never trusted.
+3. The server fulfils, then acknowledges (and for coins, consumes) the purchase. An unacknowledged purchase is refunded automatically by Google after three days.
+4. Real-time developer notifications cover renewals, cancellations, and refunds.
+
+**Web handoff**
+- The paywall and `/account/wallet` replace the purchase modal with "Get coins in Telegram" and, on Android devices, "Get coins in the app".
+- On return the web refetches the wallet. No payment state is ever held in the browser.
+
+### 7.5 Server Design (Unchanged Principle, New Providers)
+The provider changes; the rule that **only the server credits a wallet** does not.
+
+- **`payment_orders`** stays the authoritative record. `provider` becomes `telegram_stars` or `google_play`.
+- **The buyer is bound at order creation**, from the authenticated session (web), verified `initData` (Mini App), or the app's authenticated session (Android). A user ID sent in a payment callback is never trusted.
+- **`fulfill_payment_order`** stays the single atomic credit path, callable by `service_role` only (migration `20261010110000_lock_down_function_execute.sql`).
+- **One adapter per provider** verifies the callback and maps it to an order: `/api/telegram/webhook` for Stars, a Play verification endpoint plus a notifications endpoint for Google.
+- **Package catalogue moves into a table** with a coin amount, a Stars price, and a Play product ID per package. Today the packages are hardcoded twice, in `lib/payments/packages.ts` and inside the SQL of `fulfill_payment_order`.
+
+### 7.6 Hard Dependency: Account Linking
+A Telegram purchase can only reach the right wallet if the Telegram identity is linked to the DramaShort account. Phases A and C of this plan (§3 Flows 1-3) therefore come **before** purchases. A buyer who opens the Mini App without a linked account must be linked, or signed in, before an invoice is created.
+
+### 7.7 What This Replaces in the Current Codebase
+| Current piece | Fate under this plan |
+| :--- | :--- |
+| `POST /api/payments/create-checkout` (simulated, returns 503 in production) | Replaced by an order-creation endpoint that returns a handoff link |
+| `components/wallet/CoinPurchaseModal.tsx` | Replaced by the handoff UI |
+| `POST /api/payments/webhook` (generic HMAC, invented event shape) | Removed; replaced by the two provider adapters |
+| `STRIPE_*` and `PAYMENT_WEBHOOK_SECRET` variables | Removed; replaced by the Telegram bot token, webhook secret token, and Play service-account credentials |
+| `payment_orders`, `payment_webhook_events`, `fulfill_payment_order`, the purchase-reference unique index | Kept |
+
+The web production build currently refuses to start without `PAYMENT_WEBHOOK_SECRET`. Under this plan that requirement is dropped, and the Telegram and Play secrets become required only once those integrations ship (consistent with §5.6: the web app must build without Telegram credentials).
+
+### 7.8 Audit Findings Deferred Into This Work
+The 2026-10-10 audit found four payment problems that are rebuilt here instead of patched in the code being replaced:
+1. There is no working purchase path: nothing creates `payment_orders` rows.
+2. The webhook records an event as processed before fulfilling it, so a failed fulfilment is never retried.
+3. Refunds do not claw anything back.
+4. A signature format without a timestamp skips the replay check.
+
+Requirements this places on the new adapters:
+- Record a provider event as processed only **after** fulfilment succeeds, in the same transaction.
+- Refunds (Telegram `refundStarPayment`, Play voided purchases) must debit the coins and end VIP. `wallets.balance` cannot go negative, so a rule is needed for coins already spent (§7.9).
+- Every callback is authenticated and replay-safe by provider event or charge ID.
+
+### 7.9 Open Decisions
+- [ ] **Android app type**: native, or a wrapper around the web app? Either way Play Billing applies if it ships on Google Play.
+- [ ] **VIP model**: recurring subscription or fixed-length pass? Telegram Stars subscriptions support a 30-day period only, so the current 7-day pass would be a one-time purchase there; Play supports weekly subscriptions.
+- [ ] **Refund of spent coins**: revoke the most recent unlocks, record a debt, or absorb the loss?
+- [ ] **Prices per provider**: one Stars price and one Play price per package, and whether they are allowed to differ.
+- [ ] **Web card option**: never, or later as a third adapter?
+- [ ] **Unlinked buyers**: can a Mini App user buy before creating a DramaShort account, with the wallet attached at first link?

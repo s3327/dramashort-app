@@ -12,10 +12,17 @@
 -- ----------------------------------------------------------------------------
 -- 1. Profiles Table Expansion (Mirror / Cache Columns)
 -- ----------------------------------------------------------------------------
-ALTER TABLE public.profiles
-  ADD COLUMN IF NOT EXISTS coin_balance INTEGER NOT NULL DEFAULT 0 CHECK (coin_balance >= 0),
-  ADD COLUMN IF NOT EXISTS is_vip BOOLEAN NOT NULL DEFAULT false,
-  ADD COLUMN IF NOT EXISTS vip_expires_at TIMESTAMPTZ;
+-- `public.profiles` lives in the User DB, so it only exists here in single-database
+-- environments; guarded so the chain applies cleanly on a fresh Content DB.
+DO $$
+BEGIN
+  IF to_regclass('public.profiles') IS NOT NULL THEN
+    ALTER TABLE public.profiles
+      ADD COLUMN IF NOT EXISTS coin_balance INTEGER NOT NULL DEFAULT 0 CHECK (coin_balance >= 0),
+      ADD COLUMN IF NOT EXISTS is_vip BOOLEAN NOT NULL DEFAULT false,
+      ADD COLUMN IF NOT EXISTS vip_expires_at TIMESTAMPTZ;
+  END IF;
+END $$;
 
 -- ----------------------------------------------------------------------------
 -- 2. Wallets Table (Authoritative Balance Ledger)

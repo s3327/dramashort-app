@@ -10,13 +10,20 @@ export type VerifyPreviewResult =
   | { valid: true; dramaId: string; slug: string }
   | { valid: false; reason: string };
 
-function getPreviewSecret(): string {
-  return (
+/**
+ * Returns the secret used to sign draft-preview tokens, or null when none is
+ * configured. Prefers a dedicated PREVIEW_SECRET and otherwise derives from a
+ * server-only service role key. There is deliberately no built-in default: a
+ * secret that ships in the source code lets anyone forge preview links.
+ */
+function getPreviewSecret(): string | null {
+  const secret =
     process.env.PREVIEW_SECRET ||
+    process.env.USER_SUPABASE_SERVICE_ROLE_KEY ||
     process.env.SUPABASE_SERVICE_ROLE_KEY ||
-    process.env.NEXTAUTH_SECRET ||
-    "dramashort-preview-secret-salt-key-2026"
-  );
+    process.env.CONTENT_SUPABASE_SERVICE_ROLE_KEY ||
+    process.env.SUPABASE_CONTENT_SERVICE_ROLE_KEY;
+  return secret && secret.trim() ? secret : null;
 }
 
 function base64UrlEncode(str: string): string {
@@ -35,8 +42,7 @@ function base64UrlDecode(str: string): string {
   return Buffer.from(base64, "base64").toString("utf8");
 }
 
-function computeSignature(payloadB64: string): string {
-  const secret = getPreviewSecret();
+function computeSignature(payloadB64: string, secret: string): string {
   return crypto
     .createHmac("sha256", secret)
     .update(payloadB64)
@@ -60,8 +66,12 @@ export function generatePreviewToken(
     slug,
     exp: Date.now() + ttlMs,
   };
+  const secret = getPreviewSecret();
+  if (!secret) {
+    throw new Error("PREVIEW_SECRET is not configured; cannot sign preview tokens.");
+  }
   const payloadB64 = base64UrlEncode(JSON.stringify(payload));
-  const signature = computeSignature(payloadB64);
+  const signature = computeSignature(payloadB64, secret);
   return `${payloadB64}.${signature}`;
 }
 
@@ -82,8 +92,13 @@ export function verifyPreviewToken(
     return { valid: false, reason: "Malformed token" };
   }
 
+  const secret = getPreviewSecret();
+  if (!secret) {
+    return { valid: false, reason: "Preview secret not configured" };
+  }
+
   const [payloadB64, signature] = parts;
-  const expectedSignature = computeSignature(payloadB64);
+  const expectedSignature = computeSignature(payloadB64, secret);
 
   // Constant-time signature comparison to prevent timing attacks
   const sigBuffer = Buffer.from(signature);

@@ -761,6 +761,15 @@ To eliminate ambiguity across product requirements, admin CMS, and codebase inte
   - Existing playback and security test suites passed 23/23 tests with 0 regressions.
   - Next.js production build (`npm run build`) compiled all 87 routes cleanly including `/api/user/wallet`, `/api/user/wallet/unlock`, `/api/user/wallet/checkin`.
 
+* **Post-Audit Hardening (2026-10-10)**:
+  - **Gap found**: the five wallet procedures (and `fulfill_payment_order`, `rollup_daily_playback_stats`) were `SECURITY DEFINER` functions in the API-exposed `public` schema with no caller check and no `EXECUTE` restriction, so any client holding the public anon key could call `credit_wallet_coins` directly. The "SELECT-only client RLS" in this task covered tables, not functions.
+  - **Fix**: `20261010110000_lock_down_function_execute.sql` (User DB and Content DB mirror) revokes `EXECUTE` from `PUBLIC`, `anon`, and `authenticated` and grants it to `service_role` only.
+  - **Gap found**: `POST /api/user/wallet/unlock` passed a client-supplied `cost` to the unlock procedure, so `cost: 0` unlocked an episode for free.
+  - **Fix**: the price is the server constant `EPISODE_UNLOCK_COST` (10) in `lib/server/wallet.ts`; `cost` was removed from `UnlockEpisodeInput` and from both client callers.
+  - **Gap found**: when a wallet procedure returned an error, `lib/server/wallet.ts` retried with non-atomic table writes, bypassing the procedure's row locks, status checks, and unique index (a duplicate purchase reference was credited a second time with no ledger row; a refunded order could be marked paid).
+  - **Fix**: a procedure error is now final. The table-write branches run only for in-memory test clients that have no `rpc` method.
+  - **Remaining**: the unlock route still trusts the client's `dramaId` / `episodeId` / `episodeNumber` (it does not check them against the catalog or skip free episodes); the bundle unlock is still a separate debit and insert, not one transaction; `20261010110000` has not been applied to any database yet.
+
 ### Task 8.2: Episode Lock & Paywall Rules Engine
 * **Status**: ✅ Completed
 * **Target Files**:
@@ -896,6 +905,8 @@ To eliminate ambiguity across product requirements, admin CMS, and codebase inte
      - Next.js production build (`npm run build`): All 91 routes compiled cleanly with 0 errors.
 
 ---
+
+> **Direction note (2026-10-10)**: a proposal to stop selling on the web and route coin top-ups and VIP to the Telegram Mini App (Telegram Stars) and an Android app (Google Play Billing) is recorded in `FUTURE_PLAN.md` §7. It is not decided or built. If adopted, the checkout route, `CoinPurchaseModal`, and the generic webhook from Task 8.5 are replaced; the audit findings on that code (no real purchase path, webhook can lose payments, refunds do not claw back, replay check skipped for un-timestamped signatures) are deferred into that work and remain open today.
 
 ## 11. Phase 9: Mobile PWA & Advanced Video Player UX
 
@@ -1172,6 +1183,11 @@ These items stay ✅ for history; the gaps are tracked as new tasks.
   - Deployment: `supabase db push --workdir supabase/user` applied only `20261004120000_harden_rls_and_grants.sql` (dry run confirmed beforehand; remote already had the two earlier migrations).
   - Production smoke test: 24/24 PASS through the public anon key with two throwaway confirmed accounts (deleted afterwards, no leftover rows) — `anon` denied on all five tables; signup trigger creates `role = 'user'` profiles; own display-name update works; `role = 'admin'` update denied and role unchanged; profile delete denied; own favorite upsert/delete, watch-progress upsert, list create and item add work; cross-user favorite insert and list-item insert denied; reads return only own rows.
   - **Remaining**: item 7 — review Supabase Security Advisor in the dashboard (not available through the CLI).
+* **Post-Audit Hardening (2026-10-10)**:
+  - Item 5 covered tables and sequences only. Functions kept PostgreSQL's default `EXECUTE` grant to `PUBLIC` plus Supabase's default grant to `anon` / `authenticated`.
+  - `20261010110000_lock_down_function_execute.sql` extends the defaults: `ALTER DEFAULT PRIVILEGES FOR ROLE postgres REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC` (global, because a per-schema default cannot remove the `PUBLIC` grant) and a `public`-schema revoke from `anon` / `authenticated`. A future migration that adds a client-callable function must `GRANT EXECUTE` explicitly, as the search and taxonomy functions already do.
+  - `scripts/sql/verify-user-db-rls.sql` gained checks that the seven privileged procedures are `service_role`-only, that a new function gets no client `EXECUTE` by default, and that a signed-in user cannot call `credit_wallet_coins` or `fulfill_payment_order`.
+  - **Not run**: the migration and the extended verification script have not been executed against any database (no local Postgres or Docker was available in the 2026-10-10 session).
 
 ---
 
@@ -1306,6 +1322,11 @@ These items stay ✅ for history; the gaps are tracked as new tasks.
   - `npx tsc --noEmit`: 0 errors.
   - `npm run lint`: clean (0 errors, 0 warnings).
   - `npm run build`: successfully built all routes including dynamic `ƒ /api/playback/[episodeId]`.
+
+* **Post-Audit Hardening (2026-10-10)**:
+  - **Gap found**: `signPlaybackToken` / `verifyPlaybackToken` fell back to the hardcoded secret `"default_playback_signing_secret"` when `PLAYBACK_SIGNING_SECRET` was unset.
+  - **Fix**: no built-in default. Without a secret, signing throws, verification returns false, and `resolvePlaybackSession` returns the unsigned URL with no token. With `REQUIRE_SIGNED_PLAYBACK=true` and no secret it throws (the route answers 500) instead of handing out an unsigned URL; production env validation rejects that combination and placeholder values.
+  - **Remaining**: nothing verifies the token. `verifyPlaybackToken` has no caller and no CDN or origin is configured to check `token` / `expires`, so a stream URL obtained once remains reusable. Signed delivery is not in effect until that exists.
 
 ---
 
@@ -1881,6 +1902,12 @@ These items stay ✅ for history; the gaps are tracked as new tasks.
   - `npx tsc --noEmit` passed with 0 errors.
   - `npm test` passed with 0 failures across all 505 tests.
   - `npm run build` compiled all routes cleanly.
+
+* **Post-Audit Hardening (2026-10-10)**:
+  - **Gap found**: neither migration chain could apply to a fresh database. Four mirrored User DB migrations (`20261009100000`, `20261009140000`, `20261009150000`, `20261009210000`) altered `public.titles` / `public.episodes` / `public.channels` / `public.episode_media`, which the User DB never creates (its catalog lives in `content.*`). Two Content DB migrations (`20261009170000`, `20261009220000`) altered `public.profiles`, which the Content DB never creates.
+  - **Fix**: those statements are wrapped in `to_regclass(...) IS NOT NULL` guards, the pattern `20261009130000_scheduled_publishing.sql` already used. Migration versions are unchanged, so databases that already recorded them are unaffected.
+  - **Remaining**: the guards skip, they do not retarget. In the User DB the `content.*` tables still do not receive `free_episodes_count`, `release_at`, `has_been_published`, `updated_at` (channels), or the `external_source` / `external_id` columns, so the unified topology remains incomplete for Phase 16 features. The Content DB still receives wallet tables from the mirrored monetization migration.
+  - **Not run**: verified by a static scan of table references only; the chains were not applied to a real database.
 
 ---
 
@@ -2606,6 +2633,11 @@ These items stay ✅ for history; the gaps are tracked as new tasks.
   - Full test runner `npm test` passed 833/833 tests across 221 suites (100% pass rate).
   - Next.js production build (`npm run build`) compiled cleanly.
 
+* **Post-Audit Hardening (2026-10-10)**:
+  - **Gap found**: preview tokens were signed with `PREVIEW_SECRET || SUPABASE_SERVICE_ROLE_KEY || NEXTAUTH_SECRET || "dramashort-preview-secret-salt-key-2026"`. None of the three variables is set in this project's configuration (the service role keys are named `USER_SUPABASE_SERVICE_ROLE_KEY` / `CONTENT_SUPABASE_SERVICE_ROLE_KEY`), so production signed with the string in the source code and preview links were forgeable.
+  - **Fix**: `lib/auth/preview-token.ts` uses `PREVIEW_SECRET`, then the correctly named service role keys, and has no built-in default. With no secret, generating a token throws (the admin route answers 500) and verification returns invalid. `PREVIEW_SECRET` is documented in `.env.example`.
+  - **Note**: preview links issued before this change stop verifying (they expire after one hour anyway).
+
 ---
 
 ### Task 16.5: Channels Management
@@ -3197,4 +3229,8 @@ flowchart TD
    - **Content Security Policy (CSP)**: Safe whitelisting for `telegram.org` and `oauth.telegram.org`.
    - **Rate Limits & Webhooks**: Handling Telegram's 30 msg/sec global limit and 2-second webhook acknowledgment.
    - **Zero-Dependency Fallback**: Graceful degradation when `TELEGRAM_BOT_TOKEN` is unset in development or non-Telegram environments.
+3. **Purchase Routing Proposal (added 2026-10-10, `FUTURE_PLAN.md` §7 — proposed, not decided)**:
+   - Web app becomes access-only; coin top-ups and VIP are sold in the Telegram Mini App (Telegram Stars) and an Android app (Google Play Billing) against one shared wallet.
+   - Server keeps the single atomic fulfilment path (`payment_orders` + `fulfill_payment_order`) with one verification adapter per provider; account linking becomes a hard prerequisite.
+   - Lists what it replaces from Task 8.5, the audit findings deferred into it, and six open decisions.
 

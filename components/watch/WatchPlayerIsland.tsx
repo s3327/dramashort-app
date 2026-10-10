@@ -400,7 +400,6 @@ export default function WatchPlayerIsland({
             dramaSlug: drama.slug,
             episodeId: targetEpData.id,
             episodeNumber: ep,
-            cost: 10,
           });
 
           if (res.success) {

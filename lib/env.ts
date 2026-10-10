@@ -21,6 +21,8 @@ export interface EnvConfig {
   PAYMENT_WEBHOOK_SECRET?: string;
   CRON_SECRET?: string;
   PLAYBACK_SIGNING_SECRET?: string;
+  PREVIEW_SECRET?: string;
+  REQUIRE_SIGNED_PLAYBACK: boolean;
   ENABLE_SIMULATED_CHECKOUT: boolean;
   ENABLE_MOCK_FALLBACK: boolean;
 }
@@ -61,6 +63,8 @@ export function getEnv(): EnvConfig {
     PAYMENT_WEBHOOK_SECRET: process.env.PAYMENT_WEBHOOK_SECRET || undefined,
     CRON_SECRET: process.env.CRON_SECRET || undefined,
     PLAYBACK_SIGNING_SECRET: process.env.PLAYBACK_SIGNING_SECRET || undefined,
+    PREVIEW_SECRET: process.env.PREVIEW_SECRET || undefined,
+    REQUIRE_SIGNED_PLAYBACK: process.env.REQUIRE_SIGNED_PLAYBACK === "true",
     ENABLE_SIMULATED_CHECKOUT: process.env.ENABLE_SIMULATED_CHECKOUT === "true",
     ENABLE_MOCK_FALLBACK,
   };
