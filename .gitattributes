@@ -1,0 +1,20 @@
+# Text files are stored with LF and checked out with LF on every operating
+# system, whatever a contributor's core.autocrlf is set to. Without this, Git on
+# Windows rewrites files with CRLF on checkout, which breaks the psql \set lines
+# in scripts/sql/*.sql and stores stray carriage returns in SQL function bodies.
+* text=auto eol=lf
+
+# Binary assets: never converted, never diffed as text
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.avif binary
+*.ico binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.mp4 binary
+*.webm binary
+*.pdf binary

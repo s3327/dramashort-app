@@ -2,6 +2,14 @@ import { test, expect } from "@playwright/test";
 import { assertNoA11yViolations } from "./fixtures/axe-helper";
 
 test.describe("Journey 5: Mobile-Viewport Immersive Watch & Touch Gestures", () => {
+  // The watch page for the sample title is a 404 unless the app is connected to a
+  // Supabase project seeded with `npm run db:seed:dev`. CI builds with placeholder
+  // keys and has no backend, so this journey is skipped there unless one is provided.
+  test.skip(
+    !!process.env.CI && !process.env.E2E_SEEDED_BACKEND,
+    "needs a seeded Supabase backend (set E2E_SEEDED_BACKEND=1 together with real project keys)"
+  );
+
   test.use({
     viewport: { width: 390, height: 844 },
     hasTouch: true,

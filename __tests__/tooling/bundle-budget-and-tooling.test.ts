@@ -6,6 +6,7 @@ import {
   evaluateBundleBudgets,
   ROUTE_BUDGETS_KB,
 } from "@/scripts/check-bundle-budget.mjs";
+import { validateEnvironment } from "@/lib/config/env-validator.mjs";
 
 const ROOT = process.cwd();
 
@@ -167,6 +168,58 @@ describe("Task 17.3: Tooling Upgrades & Performance Budgets", () => {
         budget[0].resourceSizes.some((r: any) => r.resourceType === "script"),
         "Must specify script budget"
       );
+    });
+  });
+
+  describe("R6. CI Workflow Can Actually Pass", () => {
+    const workflow = fs.readFileSync(path.join(ROOT, ".github", "workflows", "ci.yml"), "utf-8");
+    const jobBlock = (name: string) => {
+      const start = workflow.indexOf(`\n  ${name}:\n`);
+      assert.ok(start >= 0, `job ${name} must exist`);
+      const next = workflow.slice(start + 1).search(/\n {2}[a-z][\w-]*:\n/);
+      return next < 0 ? workflow.slice(start) : workflow.slice(start, start + 1 + next);
+    };
+    const envOf = (block: string) =>
+      Object.fromEntries(
+        [...block.matchAll(/^\s+([A-Z][A-Z0-9_]+):\s*(\S+)\s*$/gm)].map((m) => [m[1], m[2]])
+      );
+
+    test("the build environment of each job satisfies the production env validator", () => {
+      for (const job of ["verify", "playwright-e2e"]) {
+        const env = { ...envOf(jobBlock(job)), NODE_ENV: "production" };
+        const result = validateEnvironment(env, { throws: false });
+        assert.deepEqual(result.errors, [], `${job}: next build would fail at config load`);
+      }
+    });
+
+    test("unit tests run after the build they depend on", () => {
+      const verify = jobBlock("verify");
+      const build = verify.indexOf("run: npm run build");
+      const tests = verify.indexOf("run: npm test");
+      assert.ok(build > 0 && tests > 0, "verify job must build and test");
+      assert.ok(build < tests, "bundle-budget tests read .next, so the build must come first");
+    });
+
+    test("the Supabase CLI used in CI matches the major version of the dev dependency", () => {
+      const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, "package.json"), "utf-8"));
+      const depMajor = String(pkg.devDependencies.supabase).replace(/^[^0-9]*/, "").split(".")[0];
+      const ciVersion = workflow.match(/supabase\/setup-cli@v\d+\s+with:\s+version:\s*([\w.]+)/);
+      assert.ok(ciVersion, "workflow must pin the Supabase CLI version");
+      assert.equal(ciVersion[1].split(".")[0], depMajor);
+    });
+
+    test("database verification scripts stop on the first failure and the stacks do not overlap", () => {
+      const db = jobBlock("supabase-rls-verification");
+      assert.equal((db.match(/ON_ERROR_STOP=1/g) || []).length, 2, "both psql runs must use ON_ERROR_STOP");
+      assert.doesNotMatch(db, /\|\|/, "no fallback may mask a failing verification");
+      const stopUser = db.indexOf("supabase stop --workdir supabase/user");
+      const startContent = db.indexOf("supabase start --workdir supabase/content");
+      assert.ok(stopUser > 0 && stopUser < startContent, "the user stack must stop before the content stack starts");
+    });
+
+    test(".gitattributes keeps text files on LF for every contributor", () => {
+      const attrs = fs.readFileSync(path.join(ROOT, ".gitattributes"), "utf-8");
+      assert.match(attrs, /^\* text=auto eol=lf$/m);
     });
   });
 });

@@ -102,6 +102,44 @@ describe("Database RLS & Schema Access Contract (Task 10.9)", () => {
     });
   });
 
+  describe("Content Database Client Write Grants (20261011110000)", () => {
+    const sql = fs.readFileSync(
+      path.join(rootDir, "supabase", "content", "supabase", "migrations", "20261011110000_revoke_client_write_grants.sql"),
+      "utf8"
+    );
+
+    it("revokes every write privilege from anon and authenticated on all public tables", () => {
+      assert.match(sql, /FROM\s+pg_tables\s+WHERE\s+schemaname\s*=\s*'public'/i);
+      assert.match(
+        sql,
+        /REVOKE\s+INSERT\s*,\s*UPDATE\s*,\s*DELETE\s*,\s*TRUNCATE\s*,\s*REFERENCES\s*,\s*TRIGGER\s+ON\s+TABLE\s+%s\s+FROM\s+anon\s*,\s*authenticated/i
+      );
+    });
+
+    it("never revokes SELECT from the catalog tables (public reads must keep working)", () => {
+      assert.doesNotMatch(sql, /REVOKE\s+(ALL|SELECT)[^;]*\b(titles|episodes|channels|genres|tags|app_settings)\b/i);
+    });
+
+    it("stops future tables and sequences from being granted to clients by default", () => {
+      assert.match(sql, /ALTER\s+DEFAULT\s+PRIVILEGES\s+FOR\s+ROLE\s+postgres\s+IN\s+SCHEMA\s+public\s+REVOKE\s+ALL\s+ON\s+TABLES\s+FROM\s+anon\s*,\s*authenticated/i);
+      assert.match(sql, /ALTER\s+DEFAULT\s+PRIVILEGES\s+FOR\s+ROLE\s+postgres\s+IN\s+SCHEMA\s+public\s+REVOKE\s+ALL\s+ON\s+SEQUENCES\s+FROM\s+anon\s*,\s*authenticated/i);
+    });
+  });
+
+  describe("User Database get_distinct_genres() Fix (20261011100000)", () => {
+    const sql = fs.readFileSync(
+      path.join(rootDir, "supabase", "user", "supabase", "migrations", "20261011100000_fix_distinct_genres_in_user_db.sql"),
+      "utf8"
+    );
+
+    it("only touches public.titles behind an existence check and otherwise delegates to the content schema", () => {
+      assert.match(sql, /CREATE\s+OR\s+REPLACE\s+FUNCTION\s+public\.get_distinct_genres\(\)/i);
+      assert.match(sql, /to_regclass\('public\.titles'\)\s+IS\s+NOT\s+NULL/i);
+      assert.match(sql, /RETURN\s+QUERY\s+EXECUTE/i);
+      assert.match(sql, /FROM\s+content\.get_distinct_genres\(\)/i);
+    });
+  });
+
   describe("Content Database Migration Contracts (Project 1)", () => {
     const contentMigrationsDir = path.join(rootDir, "supabase", "content", "supabase", "migrations");
     const contentSql = fs

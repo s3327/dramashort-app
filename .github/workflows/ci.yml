@@ -12,7 +12,7 @@ on:
 
 jobs:
   verify:
-    name: Typecheck, Lint, Test & Build Gate
+    name: Typecheck, Lint, Build, Test & Audit Gate
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
@@ -33,16 +33,25 @@ jobs:
       - name: ESLint
         run: npm run lint
 
-      - name: Automated Security & Regression Test Suite
-        run: npm test
-
+      # The values below only satisfy lib/config/env-validator.mjs, which refuses
+      # to build in production with missing or placeholder configuration. None of
+      # them is a real credential: requests to Supabase made during the build are
+      # rejected with "Invalid API key" and the pages fall back to empty data.
       - name: Next.js Production Build
         run: npm run build
         env:
           NEXT_PUBLIC_CONTENT_SUPABASE_URL: https://czkkzoiuyqybafacpgsp.supabase.co
-          NEXT_PUBLIC_CONTENT_SUPABASE_ANON_KEY: placeholder-anon-key
+          NEXT_PUBLIC_CONTENT_SUPABASE_ANON_KEY: ci-anon-key-not-a-real-credential
           NEXT_PUBLIC_USER_SUPABASE_URL: https://bpidsbcrvpkavvdvtpgh.supabase.co
-          NEXT_PUBLIC_USER_SUPABASE_ANON_KEY: placeholder-anon-key
+          NEXT_PUBLIC_USER_SUPABASE_ANON_KEY: ci-anon-key-not-a-real-credential
+          PAYMENT_WEBHOOK_SECRET: ci-webhook-secret-not-a-real-credential
+          CRON_SECRET: ci-cron-secret-not-a-real-credential
+
+      # Runs after the build on purpose: the bundle-budget tests read the build
+      # output in .next and fail without it. The suite itself runs without any
+      # of the build's environment variables, exactly as it does locally.
+      - name: Automated Security & Regression Test Suite
+        run: npm test
 
       - name: First-Load JS Bundle Budget Gate (Task 17.3)
         run: npm run check:budget
@@ -57,33 +66,52 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
+      # Same major line as the `supabase` dev dependency in package.json. The
+      # configs target Postgres 17, which CLI 1.x does not know.
       - name: Setup Supabase CLI
         uses: supabase/setup-cli@v1
         with:
-          version: 1.192.5
+          version: 2.118.0
 
       - name: Start User DB & Run Migrations
-        run: |
-          supabase start --workdir supabase/user
+        run: supabase start --workdir supabase/user
 
+      # psql exits non-zero on the first failed check (ON_ERROR_STOP).
       - name: Verify User DB RLS Policies
         run: |
-          supabase test db --workdir supabase/user || \
-          (docker exec -i supabase_db_user psql -U postgres -d postgres -q < scripts/sql/verify-user-db-rls.sql)
+          docker exec -i supabase_db_user psql -U postgres -d postgres -q -v ON_ERROR_STOP=1 \
+            < scripts/sql/verify-user-db-rls.sql
+
+      # Both stacks use the same ports, so the first must be stopped before the second starts.
+      - name: Stop User DB
+        if: always()
+        run: supabase stop --workdir supabase/user --no-backup
 
       - name: Start Content DB & Run Migrations
-        run: |
-          supabase start --workdir supabase/content
+        run: supabase start --workdir supabase/content
 
       - name: Verify Content DB RLS Policies
         run: |
-          supabase test db --workdir supabase/content || \
-          (docker exec -i supabase_db_content psql -U postgres -d postgres -q < scripts/sql/verify-content-db-rls.sql)
+          docker exec -i supabase_db_content psql -U postgres -d postgres -q -v ON_ERROR_STOP=1 \
+            < scripts/sql/verify-content-db-rls.sql
+
+      - name: Stop Content DB
+        if: always()
+        run: supabase stop --workdir supabase/content --no-backup
 
   playwright-e2e:
     name: Playwright Integration & E2E Gate (Task 17.2)
     runs-on: ubuntu-latest
     needs: verify
+    # Needed by the build and again by `next start`, which re-validates the
+    # environment when it loads next.config.mjs. Not real credentials (see above).
+    env:
+      NEXT_PUBLIC_CONTENT_SUPABASE_URL: https://czkkzoiuyqybafacpgsp.supabase.co
+      NEXT_PUBLIC_CONTENT_SUPABASE_ANON_KEY: ci-anon-key-not-a-real-credential
+      NEXT_PUBLIC_USER_SUPABASE_URL: https://bpidsbcrvpkavvdvtpgh.supabase.co
+      NEXT_PUBLIC_USER_SUPABASE_ANON_KEY: ci-anon-key-not-a-real-credential
+      PAYMENT_WEBHOOK_SECRET: ci-webhook-secret-not-a-real-credential
+      CRON_SECRET: ci-cron-secret-not-a-real-credential
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -102,11 +130,6 @@ jobs:
 
       - name: Next.js Production Build for E2E
         run: npm run build
-        env:
-          NEXT_PUBLIC_CONTENT_SUPABASE_URL: https://czkkzoiuyqybafacpgsp.supabase.co
-          NEXT_PUBLIC_CONTENT_SUPABASE_ANON_KEY: placeholder-anon-key
-          NEXT_PUBLIC_USER_SUPABASE_URL: https://bpidsbcrvpkavvdvtpgh.supabase.co
-          NEXT_PUBLIC_USER_SUPABASE_ANON_KEY: placeholder-anon-key
 
       - name: Run Playwright E2E Journeys & Axe Audits
         run: npx playwright test --project="Desktop Chrome"
@@ -120,4 +143,3 @@ jobs:
           name: playwright-report
           path: playwright-report/
           retention-days: 14
-

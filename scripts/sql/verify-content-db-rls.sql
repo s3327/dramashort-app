@@ -6,7 +6,13 @@
 -- 3. anon can read public columns of episodes belonging to Published titles
 -- 4. anon CANNOT read episodes belonging to Draft, Scheduled, or Archived titles
 -- 5. service_role / postgres has full access to episode_media and episodes
+-- 6. anon / authenticated hold no write privilege on any public table
+-- 7. a table created by a later migration gets no client grants by default
+--
+-- Run against a LOCAL database with all content migrations applied. Everything
+-- happens inside one transaction that is rolled back. The first failure aborts.
 -- ============================================================================
+\set ON_ERROR_STOP on
 
 BEGIN;
 
@@ -82,5 +88,40 @@ BEGIN
     RAISE NOTICE 'TEST PASSED: anon sees 0 episodes belonging to Draft titles.';
   END IF;
 END $$;
+
+-- Test 5: client roles hold no write privilege on any table
+-- (20261011110000_revoke_client_write_grants.sql)
+RESET ROLE;
+DO $$
+DECLARE
+  t RECORD;
+BEGIN
+  FOR t IN
+    SELECT c.oid, c.relname
+    FROM pg_class c
+    JOIN pg_namespace n ON n.oid = c.relnamespace
+    WHERE n.nspname = 'public' AND c.relkind = 'r'
+  LOOP
+    IF has_table_privilege('anon', t.oid, 'INSERT, UPDATE, DELETE, TRUNCATE')
+       OR has_table_privilege('authenticated', t.oid, 'INSERT, UPDATE, DELETE, TRUNCATE')
+       OR has_any_column_privilege('anon', t.oid, 'INSERT, UPDATE')
+       OR has_any_column_privilege('authenticated', t.oid, 'INSERT, UPDATE') THEN
+      RAISE EXCEPTION 'TEST FAILED: a client role holds a write privilege on public.%', t.relname;
+    END IF;
+  END LOOP;
+  RAISE NOTICE 'TEST PASSED: client roles hold no write privilege on any public table.';
+END $$;
+
+-- Test 6: a table created by a later migration is not exposed by default
+CREATE TABLE public.zz_future_table (id int);
+DO $$
+BEGIN
+  IF has_table_privilege('anon', 'public.zz_future_table', 'SELECT')
+     OR has_table_privilege('authenticated', 'public.zz_future_table', 'SELECT') THEN
+    RAISE EXCEPTION 'TEST FAILED: new tables are still auto-granted to anon/authenticated';
+  END IF;
+  RAISE NOTICE 'TEST PASSED: future tables get no anon/authenticated grants by default.';
+END $$;
+DROP TABLE public.zz_future_table;
 
 ROLLBACK;
