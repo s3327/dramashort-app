@@ -4068,3 +4068,34 @@
 * **Still Open After This Change**:
   - The CI result for this fix.
   - The two install scripts npm skipped remain unapproved; no problem has been observed from that.
+
+---
+
+## [2026-10-12] Local Production Build, Patch-Level Dependency Fixes, Lint Warnings Cleared
+* **Milestone**: Follow-up to Task 17.3 (tooling) after an inspection of the project on 2026-10-12.
+* **Goal**: Fix the three issues the inspection found: `npm run build` failing on the development machine, high-severity advisories that had non-breaking fixes but were allowlisted, and five lint warnings.
+* **Implementation Steps Taken**:
+  1. **Local build**: created `.env.production.local` (untracked; `.env*.local` is ignored) holding `PAYMENT_WEBHOOK_SECRET` and `CRON_SECRET`, each 32 random bytes generated locally. They are not the deployed secrets. The file was chosen over `.env.local` because Next.js does not load it for `next dev`, so `/api/cron/rollup` keeps its development-only unauthenticated trigger. Added a note to `.env.example` next to `PAYMENT_WEBHOOK_SECRET`.
+  2. **Dependencies**: ran `npm audit fix` without `--force`. Changed: `next`, `eslint-config-next`, `@next/env`, `@next/eslint-plugin-next`, and the `@next/swc-*` binaries 15.5.24 → 15.5.27; `sharp` and the `@img/sharp-*` binaries 0.35.4 → 0.35.5 (`@img/sharp-libvips-*` 1.3.3 → 1.3.4); `source-map-js` 1.2.1 → 1.2.2; `brace-expansion` 1.1.18 → 1.1.21 and 5.0.9 → 5.0.12. Every change is a patch release; `package.json` and the lockfile's root entry are unchanged.
+  3. **Audit exceptions**: removed the `sharp`, `source-map-js`, and `brace-expansion` entries from `scripts/ci/audit-exceptions.json` (13 → 10). The `postcss` entry stays: `next` 15.5.27 pins `postcss` 8.4.31 exactly, and npm's only fix is Next 16. The `braces` chain stays: its fix forces Tailwind 4.
+  4. **Lint**: in `app/admin/channels/page.tsx` and `app/admin/genres/page.tsx`, wrapped `loadChannels` / `loadTaxonomy` in `useCallback([showToast])` and made the mount effect depend on them; in `app/admin/dramas/[id]/episodes/page.tsx`, added `showToast` to `loadData`'s dependencies. Removed the unused `eslint-disable-next-line react-hooks/rules-of-hooks` in `app/error.tsx` and `eslint-disable-next-line no-control-regex` in `lib/navigation/safe-redirect.ts`.
+* **Key File Diffs**:
+  - Created (local only, not tracked): `.env.production.local`.
+  - Modified: `.env.example`, `package-lock.json`, `scripts/ci/audit-exceptions.json`, `app/admin/channels/page.tsx`, `app/admin/dramas/[id]/episodes/page.tsx`, `app/admin/genres/page.tsx`, `app/error.tsx`, `lib/navigation/safe-redirect.ts`, `ROADMAP.md` (Task 17.3), `CHANGELOG-DEV.md`.
+* **Regression Analysis & Cross-System Impact**:
+  - `showToast` is `useToast().show`, a `useState` setter whose identity never changes. `loadChannels`, `loadTaxonomy`, and `loadData` therefore keep one identity per mount (per `dramaId` for episodes), and each mount effect still runs once. The handlers that call these loaders after create, update, and delete are unchanged.
+  - The `useTheme()` call in `app/error.tsx` and the `CONTROL_CHARS` regex in `safe-redirect.ts` are unchanged; only the comments went.
+  - `npm run dev` behaves as before: it does not load `.env.production.local`. `npm run build` and `npm run start` now see local random values for the two secrets, so a local `next start` accepts only webhooks and cron calls signed with those values.
+  - The CI workflow sets its own values for these variables and never reads `.env.production.local`.
+  - Shared first-load JS went from 102 kB to 103 kB with Next 15.5.27; every route remains within budget.
+* **Verification**:
+  - Before: `npm audit` reported 14 findings (11 high, 3 moderate). After: 11 (8 high, 3 moderate); `sharp`, `source-map-js`, and `brace-expansion` no longer appear. `npm run check:audit` passes with the reduced exception list.
+  - `npm run build` with neither secret in the shell environment: exit 0, `Next.js 15.5.27`, `Environments: .env.production.local, .env.local`, compiled with no lint warnings. Before the change the same command failed with `Missing required production environment variable: PAYMENT_WEBHOOK_SECRET` and `CRON_SECRET`.
+  - `loadEnvConfig` from `@next/env`: dev mode loads `.env.local` only, with neither secret set; production mode loads both files, with both set.
+  - `npm run lint`: 0 errors, 0 warnings (was 5 warnings). `npx tsc --noEmit`: 0 errors.
+  - `npm test`: 1,199 / 1,199 across 356 suites, 0 failed, 0 skipped (Windows, Node 24.19).
+  - `npm run check:budget`: `/` 203.2 kB, `/drama/[slug]` 205.9 kB, `/watch/[slug]` 406.7 kB, all within budget.
+  - **Not run**: the GitHub workflow with the updated lockfile (the Linux `sharp` and `@next/swc` binaries have not been installed anywhere); `npm ci` from the new lockfile on a clean checkout; the Playwright journeys; the channels, genres, and episodes admin pages in a browser.
+* **Still Open After This Change**:
+  - `postcss` 8.4.31 inside `next` stays allowlisted until the move to Next 16.
+  - The `braces` advisory chain stays allowlisted until the move to Tailwind 4.

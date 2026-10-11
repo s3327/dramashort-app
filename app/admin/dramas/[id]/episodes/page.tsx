@@ -114,7 +114,7 @@ export default function AdminEpisodeManagementPage({
     } finally {
       setIsLoading(false);
     }
-  }, [dramaId]);
+  }, [dramaId, showToast]);
 
   useEffect(() => {
     loadData();

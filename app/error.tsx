@@ -17,7 +17,6 @@ export default function GlobalAppError({
 }) {
   let activeTheme: string | undefined;
   try {
-    // eslint-disable-next-line react-hooks/rules-of-hooks
     const ctx = useTheme();
     activeTheme = ctx.theme;
   } catch {

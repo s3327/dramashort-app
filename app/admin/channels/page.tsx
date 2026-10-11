@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
+import { useCallback, useEffect, useState, useMemo } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import {
@@ -61,7 +61,7 @@ export default function AdminChannelsPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Load channels on mount
-  const loadChannels = async () => {
+  const loadChannels = useCallback(async () => {
     setIsLoading(true);
     try {
       const res = await getAdminChannels();
@@ -75,11 +75,11 @@ export default function AdminChannelsPage() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [showToast]);
 
   useEffect(() => {
     loadChannels();
-  }, []);
+  }, [loadChannels]);
 
   // Filter channels by search
   const filteredChannels = useMemo(() => {

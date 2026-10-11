@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
+import { useCallback, useEffect, useState, useMemo } from "react";
 import {
   Search,
   Plus,
@@ -74,7 +74,7 @@ export default function AdminGenresPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Load live data
-  const loadTaxonomy = async () => {
+  const loadTaxonomy = useCallback(async () => {
     setIsLoading(true);
     try {
       const [genresData, tagsData] = await Promise.all([
@@ -89,11 +89,11 @@ export default function AdminGenresPage() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [showToast]);
 
   useEffect(() => {
     loadTaxonomy();
-  }, []);
+  }, [loadTaxonomy]);
 
   // Filtered lists
   const filteredGenres = useMemo(() => {

@@ -52,13 +52,6 @@
       "expires": "2026-12-31"
     },
     {
-      "module": "brace-expansion",
-      "advisory": "*",
-      "severity": "high",
-      "reason": "Transitive build-time dependency in TypeScript ESLint parser. Used during static linting only.",
-      "expires": "2026-12-31"
-    },
-    {
       "module": "postcss",
       "advisory": "*",
       "severity": "high",
@@ -77,20 +70,6 @@
       "advisory": "*",
       "severity": "moderate",
       "reason": "CSS nesting plugin in Tailwind compiler.",
-      "expires": "2026-12-31"
-    },
-    {
-      "module": "sharp",
-      "advisory": "GHSA-wq5f-xc86-pv6w",
-      "severity": "high",
-      "reason": "Image processing library SVG vulnerability. Runtime image optimization uses next/image with sanitized SVG rejection.",
-      "expires": "2026-12-31"
-    },
-    {
-      "module": "source-map-js",
-      "advisory": "GHSA-68fv-2mgg-jv7q",
-      "severity": "high",
-      "reason": "Build-time source map generator in Next.js compiler.",
       "expires": "2026-12-31"
     }
   ]

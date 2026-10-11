@@ -8,7 +8,6 @@
 
 const BASE = "http://same-origin.invalid";
 
-// eslint-disable-next-line no-control-regex
 const CONTROL_CHARS = /[\u0000-\u001f\u007f]/;
 
 export function getSafeRedirect(value: unknown, fallback = "/home"): string {
