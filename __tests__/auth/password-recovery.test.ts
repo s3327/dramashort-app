@@ -45,9 +45,22 @@ describe("Password Recovery & Reset Password Flow (Task 11.2)", () => {
         "config.toml defines [auth.email.template.recovery]"
       );
       assert.ok(
-        config.includes('content_path = "./templates/recovery.html"'),
-        "config.toml binds content_path to ./templates/recovery.html"
+        config.includes('content_path = "./supabase/templates/recovery.html"'),
+        "config.toml binds content_path to ./supabase/templates/recovery.html"
       );
+    });
+
+    it("every email template content_path resolves from the CLI workdir (supabase/user)", () => {
+      // The Supabase CLI resolves content_path against the --workdir, not against
+      // the folder holding config.toml. A path that does not resolve makes every
+      // CLI command for this database fail with DbConfigLoadError.
+      const config = fs.readFileSync(configPath, "utf-8");
+      const workdir = path.join(process.cwd(), "supabase", "user");
+      const paths = [...config.matchAll(/^content_path\s*=\s*"([^"]+)"/gm)].map((m) => m[1]);
+      assert.ok(paths.length >= 2, "confirmation and recovery templates are configured");
+      for (const p of paths) {
+        assert.ok(fs.existsSync(path.resolve(workdir, p)), `${p} resolves to an existing file from supabase/user`);
+      }
     });
   });
 

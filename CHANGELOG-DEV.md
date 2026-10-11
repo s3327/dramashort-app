@@ -3824,3 +3824,99 @@
   - CI: the build step lacks the two required secrets and uses placeholder anon keys the validator rejects; the test step runs before the build although two tests need `.next`.
   - Payments (deferred to `FUTURE_PLAN.md` §7): no real purchase path, webhook can lose payments, refunds do not claw back, replay check skipped for un-timestamped signatures.
   - Unlock route does not validate episode identifiers against the catalog; bundle unlock is not one transaction; nothing verifies playback tokens; rate limits for checkout and webhook are unapplied; audit gate allowlists every current high advisory; maintenance mode reads an unset variable in the two-project setup; the `editor` role is blocked by middleware.
+
+---
+
+## [2026-10-11] Local Execution of the Migration Chains and Lock-Down (Verification Only)
+* **Milestone**: Verification of the 2026-10-10 post-audit fixes (Tasks 8.1, 10.2, 13.2) — closes the "Not run" items of the previous entry.
+* **Goal**: Execute both migration chains, the function lock-down, and the RLS verification script in a real PostgreSQL before anything is applied to the live Supabase projects, and check what a client can still reach afterwards.
+* **Implementation Steps Taken**:
+  1. **Test database**: installed `@electric-sql/pglite` 0.5.8 (PostgreSQL 18.3 compiled to WebAssembly, about 25 MB) into a temporary folder outside the repository. A preamble recreates what a fresh Supabase project provides: the `anon`, `authenticated`, `service_role` roles, the `auth` and `storage` schemas with `auth.users`, `auth.uid()`, `auth.role()`, `auth.jwt()`, `storage.buckets`, `storage.objects`, and Supabase's default privileges for objects created in `public`.
+  2. **Two runner modes**: every script ran once as the built-in superuser and once as a non-superuser owner with the attributes Supabase gives `postgres` (`CREATEDB CREATEROLE REPLICATION BYPASSRLS`, database owner, member of the API roles). In the second mode the role is named `sb_postgres` and the identifier `postgres` in the project SQL is substituted before execution, because the built-in superuser already owns that name.
+  3. **Chains**: applied each chain as of the previous commit (negative control) and as committed now; recorded who may execute the seven privileged procedures before and after the lock-down.
+  4. **Behaviour**: called every privileged procedure as `anon` and as a signed-in user; exercised the money paths as `service_role`; checked direct table writes by a client; ran `scripts/sql/verify-user-db-rls.sql`.
+  5. **Equivalence**: applied each of the six edited migrations and its original, both read from git, to databases where the guarded table exists, and compared the resulting catalogs.
+  6. **Standalone lock-down**: applied `20261010110000` on its own to four partially migrated user-database states, then the rest of the chain on top.
+  7. **Reachability sweep**: listed from the catalog every project function and table in `public` and `content` with what `anon` and `authenticated` hold, and probed draft visibility, raw video URLs, search, the audit log, settings, support tickets, analytics tables, and profile columns.
+* **Key File Diffs**:
+  - Application and database code: none.
+  - Modified (docs): `ROADMAP.md` (Tasks 8.1, 10.2, 13.2), `CHANGELOG-DEV.md`.
+  - Not in the repository: the test harness (five scripts) lives in a temporary folder.
+* **Regression Analysis & Cross-System Impact**:
+  - Nothing in the repository's code changed, and nothing was applied to or read from the live Supabase projects.
+  - Working tree: the 26 files of commit `2d08f73` had been rewritten with CRLF line endings by a branch switch (`core.autocrlf=true`, no `.gitattributes`). They were restored to LF, byte-identical to the committed versions; `git status` is clean. With CRLF, the `\set` lines of `verify-user-db-rls.sql` would carry a trailing carriage return when piped to psql.
+* **Verification**:
+  - **Negative control**: the previous chains fail on a fresh database — user DB at `20261009100000` (`relation "public.titles" does not exist`, 9 of 22 files applied), content DB at `20261009170000` (`relation "public.profiles" does not exist`, 12 of 18 files applied).
+  - **Fixed chains**: 23 of 23 user files and 19 of 19 content files apply, in both runner modes.
+  - **Lock-down**: before it, all seven procedures (five in the content DB) are executable by `anon` and `authenticated`; after it, none are, `service_role` is, the owner keeps its own entry, and no `PUBLIC` entry remains. Applying it twice is harmless.
+  - **Behaviour** (56 checks in the non-superuser mode, all passing): `anon` and a signed-in user are refused with 42501 on all seven procedures. As `service_role`: credit, debit, overdraw refusal, single unlock and its idempotent repeat, daily check-in and its same-day refusal, duplicate purchase reference (23505, no credit), order fulfilment, duplicate fulfilment, refunded order (`ORDER_NOT_PAYABLE`), unknown order (`ORDER_NOT_FOUND`), VIP order, and the analytics rollup all behave correctly; the wallet balance equals the ledger sum and the profile mirror follows. A signed-in client reads only its own wallet and cannot write wallets, ledger rows, entitlements, orders, or its mirrored coin balance; it can still edit its display name and add a favourite. Search and taxonomy functions stay callable by `anon`. A function created after the lock-down is not client-callable; a trigger function created after it still fires for a client's own write.
+  - **Project verification script**: ran to `ALL TASK 10.2 CHECKS PASSED` with 24 PASS notices in both modes (the two `\set` variables were inlined; psql meta-commands are unavailable outside psql).
+  - **Equivalence** (28 checks per mode, all passing): for the four user mirrors and the two content mirrors, original and edited versions leave identical columns, indexes, constraints, triggers, grants, function bodies, and policies where the guarded table exists, and the guarded statements did run (8 catalog columns, 3 ban columns, 3 wallet mirror columns added).
+  - **Standalone lock-down**: applies to user databases holding 0, 1, 6, and 7 of the procedures; the remaining migrations apply afterwards and all seven end up locked.
+  - **Reachability sweep** (62 checks plus 12 write probes on the content DB, all passing): user DB has 30 project functions — 10 client-callable, all read-only search or taxonomy functions; 7 service-only; 13 trigger functions. Content DB has 20 — 5 client-callable and read-only, 5 service-only, 10 trigger functions. Every table in both databases has row security enabled. Draft titles, their episodes, `episodes.video_url`, and `episode_media` are not readable by clients, and search returns the published title but not the draft. A non-admin cannot forge or read audit-log entries, write settings, insert into analytics, import, webhook, genre, or tag tables, read or take over another user's support ticket, or set `role`, `is_banned`, `banned_until`, `is_vip`, `vip_expires_at`, or `coin_balance` on its own profile.
+  - **Limits**: this is not Supabase. The platform's roles, schemas, and default privileges were stubbed by hand from memory of Supabase's initial schema; the engine was PostgreSQL 18.3 while the project targets 17; supautils, PostgREST, and Supabase Auth were not present. **Not run**: anything against the live projects, the Docker-based CI database job, and the Playwright end-to-end tests. An attempted independent review by three parallel reviewers did not complete and contributed nothing.
+* **Findings From This Run (Not Fixed)**:
+  - **User DB `public.get_distinct_genres()` is broken**: the mirrored `20261009160000_taxonomy_management.sql` makes it read `public.titles`, which does not exist in the user DB; it raises an error for every caller, the owner included, whenever no visible genre rows exist. The app calls this function on the content database and falls back on error, so nothing is affected today.
+  - **Content DB relies on row security alone**: `anon` and `authenticated` hold table-level `INSERT` / `UPDATE` / `DELETE` on `titles`, `episodes`, `channels`, `genres`, `tags`, and `app_settings`. All 12 write probes were refused, because only `SELECT` policies exist. The content DB never received the grant hardening of Task 10.2.
+  - **Global default-privilege change and extensions**: in the Supabase-like mode an extension installed after the lock-down keeps client access to its functions (47 of 47 for `citext`). In a plain PostgreSQL where the migration role is the installing superuser, 0 of 47 are callable by `anon`.
+  - **Line endings**: `core.autocrlf=true` with no `.gitattributes` converts files to CRLF whenever git rewrites them on this machine.
+  - **`app_settings` is readable by `anon`** (keys `ads`, `features`, `general`, `site`, `users`). This is what the maintenance check relies on; nothing secret may be stored there.
+  - Seven trigger functions are `SECURITY DEFINER` without a fixed `search_path` (four in the user DB's `content` schema, three in the content DB). They cannot be called through the API.
+* **Still Open After This Run**:
+  - The live databases are unchanged: `20261010110000` has not been applied to them, and which migrations they hold has not been checked.
+  - Everything listed under "Still Open After This Change" in the previous entry.
+
+---
+
+## [2026-10-11] Live Database State Check (Read-Only)
+* **Milestone**: Step before applying the 2026-10-10 lock-down to the live Supabase projects (Tasks 8.1, 10.2, 10.6, 13.2).
+* **Goal**: Find out which migrations the live user database (`bpidsbcrvpkavvdvtpgh`) and the live content database (`czkkzoiuyqybafacpgsp`) actually hold, before deciding what to apply.
+* **Implementation Steps Taken**:
+  1. Ran `supabase migration list` for both projects (Supabase CLI 2.118.0, signed in by the project owner).
+  2. The command for the user database failed on the repository's own configuration, so it was run against a temporary copy of `supabase/user` with the two email-template paths corrected. The repository file was not changed.
+  3. Ran `supabase gen types typescript` for both projects into temporary files to read the live table, column, and function names. No row data was read.
+* **Key File Diffs**:
+  - Application and database code: none. Nothing was written to either live database.
+  - Modified (docs): `ROADMAP.md` (Tasks 8.1, 10.2, 10.6), `CHANGELOG-DEV.md`.
+* **Findings**:
+  - **Live user database: 3 of 23 migrations applied** (`20260930150000`, `20260930163000`, `20261004120000`). The live schema has five tables (`profiles`, `favorites`, `watch_history`, `custom_lists`, `custom_list_items`) and no functions.
+  - **Live content database: 2 of 19 migrations applied** (`20260930150000`, `20260930163000`). The live schema has three tables (`channels`, `titles`, `episodes`) and no functions.
+  - **No database-dependent work since 2026-10-04 exists on the live databases.** This covers support tickets, watch-progress semantics, the `content` schema, search and taxonomy functions, playback events and rollups, episode media, scheduled publishing, the audit log, settings, taxonomy tables, user bans, bulk import, wallets, entitlements, check-ins, payment orders, and the lock-down. Tasks that depend on them were verified against in-memory test clients and a local build only.
+  - **The open wallet procedures are not exposed on the live databases**, because the procedures were never created there.
+  - **Live exposure that does exist**: the content database was never given `20261005120000_episode_media_lockdown.sql`. The two applied migrations grant `SELECT` on the whole `episodes` table to `anon` and `authenticated` under the policy `USING (true)`, so anyone holding the public anon key can read every episode row, `video_url` included, and the episodes of unpublished titles. Read from the migration files and the live column list; no rows were queried to confirm it.
+  - **Root cause for the user database**: `supabase/user/supabase/config.toml` points `auth.email.template.confirmation.content_path` and `auth.email.template.recovery.content_path` at `./templates/...`, which the CLI resolves to `supabase/user/templates/`; the files are in `supabase/user/supabase/templates/`. `migration list` and `db push` fail with `DbConfigLoadError`, so `npm run db:user:push` cannot have worked since Task 11.1. Not fixed.
+  - **Root cause for both chains**: until commit `2d08f73` each chain contained a migration that fails on these databases (user at `20261009100000`, content at `20261009170000`).
+* **Verification**:
+  - `supabase migration list --workdir supabase/content`: 19 local, 2 remote.
+  - `supabase migration list` on the temporary user copy: 23 local, 3 remote.
+  - `supabase gen types` output for both projects matches those lists (tables and functions as stated above).
+  - **Not run**: `supabase db push`, with or without `--dry-run`; any query that reads rows; any backup. Whether the live databases hold real user data or only development data was not checked.
+* **Still Open After This Check**:
+  - Both live databases are unchanged and far behind the code; the `episodes` exposure on the content database is live.
+  - The user-database config path must be corrected before the CLI can push that chain.
+  - The local execution on this date used empty databases. Migrations that alter or backfill existing rows (`20261005120000`, `20261006120000`, `20261006150000`, `20261007120000`, and the purchase-reference unique index in `20261010100000`) have not been tried against a copy of the live data.
+
+---
+
+## [2026-10-11] Fix Email Template Paths in the User Database Config
+* **Milestone**: Unblocks Supabase CLI commands for the user database (Tasks 11.1, 11.2, 10.2).
+* **Goal**: Make `supabase migration list` and `supabase db push` work for `supabase/user` again, so the pending migration chain can be pushed.
+* **Implementation Steps Taken**:
+  1. `supabase/user/supabase/config.toml`: changed `auth.email.template.confirmation.content_path` and `auth.email.template.recovery.content_path` from `./templates/...` to `./supabase/templates/...`. The CLI resolves these against the `--workdir` (`supabase/user`), and the files are in `supabase/user/supabase/templates/`.
+  2. `__tests__/auth/password-recovery.test.ts`: the existing assertion required the wrong path; it now requires the corrected one. Added a test that every configured `content_path` resolves to an existing file from the CLI workdir.
+* **Key File Diffs**:
+  - Modified: `supabase/user/supabase/config.toml` (2 lines), `__tests__/auth/password-recovery.test.ts` (+1 test), `ROADMAP.md`, `CHANGELOG-DEV.md`.
+* **Regression Analysis & Cross-System Impact**:
+  - Only the local CLI configuration is affected. The hosted project's email templates are set in the Supabase dashboard (or by `supabase config push`, which was not run), so no email changes.
+  - `npm run db:user:push` and `supabase migration list --workdir supabase/user` no longer fail at config load.
+  - The content database config has no template paths and is unchanged.
+* **Verification**:
+  - `supabase migration list --workdir supabase/user` against the live project with the repository's config: succeeds, 23 local migrations, 3 applied (`20260930150000`, `20260930163000`, `20261004120000`). Before the fix the same command failed with `DbConfigLoadError`.
+  - `npx tsc --noEmit`: 0 errors.
+  - `npm test`: 1,187 / 1,187 pass across 352 suites, 0 failed, 0 skipped (was 1,186; one test added).
+  - **Not run**: `supabase db push` (with or without `--dry-run`); `supabase start` (Docker), which also reads these paths.
+* **Context Recorded**:
+  - The project owner confirmed on 2026-10-11 that both live databases hold development data only.
+* **Still Open After This Change**:
+  - Both live databases remain at 3 of 23 (user) and 2 of 19 (content) migrations. Nothing has been pushed.
+  - The `episodes` exposure on the live content database remains until `20261005120000_episode_media_lockdown.sql` is applied there.
