@@ -3985,3 +3985,86 @@
   - The pgTAP files under `supabase/*/supabase/tests/` are no longer run by CI. They call `tests.rls_enabled`, a helper this repository does not install.
   - No browser journey runs against a real backend in CI.
   - The audit gate still allowlists every current high advisory.
+
+---
+
+## [2026-10-11] Two Follow-Up Migrations Applied to the Live Databases
+* **Milestone**: Deployment of `20261011110000_revoke_client_write_grants.sql` (content) and `20261011100000_fix_distinct_genres_in_user_db.sql` (user) — Tasks 10.2 and 13.2.
+* **Goal**: Bring both live databases to the head of the repository's chains after commit `0f496f4`.
+* **Implementation Steps Taken**:
+  1. `supabase db push --dry-run` for both projects showed exactly one pending migration each.
+  2. The project owner ran `supabase db push --workdir supabase/content` and `supabase db push --workdir supabase/user`. The assistant's own attempt to run the content push was blocked by the tool's safety check a second time and changed nothing.
+  3. Verified with `supabase migration list` and status-code probes using the public anon key.
+* **Key File Diffs**:
+  - Application and database code: none.
+  - Modified (docs): `ROADMAP.md` (Tasks 10.2, 13.2), `CHANGELOG-DEV.md`.
+* **Regression Analysis & Cross-System Impact**:
+  - Content database: client roles no longer hold any write privilege on `public` tables, and tables created there from now on are not readable by clients until a migration grants it.
+  - User database: `public.get_distinct_genres()` no longer raises an error.
+* **Verification**:
+  - `supabase migration list`: content 20 of 20 applied, user 24 of 24 applied, nothing pending.
+  - Live content database, public anon key: `PATCH titles`, `DELETE genres`, and `PATCH app_settings`, each aimed at a key that matches no row, return HTTP 401 `42501 permission denied for table` (before this migration such requests were accepted and matched zero rows). `admin_audit_log` returns `42501`. `titles`, `episodes?select=id,episode_number,release_at`, `app_settings`, `genres`, and `rpc/get_popular_tags` return rows. `episodes?select=video_url` still returns `42501`.
+  - Live user database, public anon key: `rpc/get_distinct_genres` returns HTTP 200 with an empty list; `rpc/credit_wallet_coins` still returns `42501 permission denied for function`.
+  - **Not run against the live databases**: calls as a signed-in user or with the service role key; `verify-content-db-rls.sql` and `verify-user-db-rls.sql` (they are for local databases only); the application itself.
+* **Still Open After This Change**:
+  - The result of the first GitHub Actions run for commit `0f496f4` is not known here.
+  - The app has not been run end to end against the migrated live databases.
+
+---
+
+## [2026-10-11] Unit Tests No Longer Depend on a Hand-Edited `node_modules`
+* **Milestone**: Follow-up to the CI repair (Tasks 13.4 and 17.3), after the first GitHub Actions run of commit `0f496f4`.
+* **Goal**: Make the unit-test step pass on a fresh install, where `server-only` is the real package from npm.
+* **What the CI run showed** (run #76, log supplied by the project owner):
+  - `Supabase Database RLS & Policy Gate`: passed. This is the job that could not be tried locally.
+  - `Typecheck, Lint, Build, Test & Audit Gate`: typecheck, lint, and build passed; the test step failed — 796 tests reported, 760 passed, 36 failed, every failure being `Error: This module cannot be imported from a Client Component module. It should only be used from a Server Component.` raised at `node_modules/server-only/index.js:1`. Test files that could not be loaded did not report their tests, which is why the total is below the local 1,196.
+  - `Playwright Integration & E2E Gate`: skipped, because it depends on the failed job.
+* **Root cause**: Task 13.4 (2026-10-07) "configured `node_modules/server-only`" — it rewrote that package on the development machine so that it does not throw when a test runner is detected. The folder there has four files created on 2026-10-08, including an `index.d.ts` the real package does not ship. `node_modules` is not in the repository, so the edit never reached CI. Every local test run since then, including the ones recorded in this changelog, passed because of that edit.
+* **Implementation Steps Taken**:
+  1. Added `scripts/test/stub-server-only.cjs`: resolves the package's entry point and registers it in `require.cache` as an already loaded module with empty exports. It changes nothing on disk.
+  2. `package.json`: `test` is now `tsx --require ./scripts/test/stub-server-only.cjs --test "__tests__/**/*.test.ts"`; added `test:file` (same preload, no pattern) for running single files: `npm run test:file -- __tests__/path/to.test.ts`.
+  3. `__tests__/tooling/bundle-budget-and-tooling.test.ts`: three tests — both scripts preload the stub; inside the test process `server-only` is a pre-registered empty module; the stub contains no file-writing calls.
+* **Key File Diffs**:
+  - Created: `scripts/test/stub-server-only.cjs`.
+  - Modified: `package.json`, `__tests__/tooling/bundle-budget-and-tooling.test.ts`, `ROADMAP.md`, `CHANGELOG-DEV.md`.
+* **Regression Analysis & Cross-System Impact**:
+  - Application code is unchanged. `lib/server/*` still begins with `import "server-only"`, and the Next.js build still enforces it (the build passed on CI with the real package).
+  - Running a test file directly with `npx tsx --test <file>` only works where `node_modules/server-only` is hand-edited. On a clean install use `npm run test:file -- <file>`.
+  - The second new test fails if the suite is started without the preload, by design.
+* **Verification**:
+  - Reproduced the CI failure locally: after temporarily replacing `node_modules/server-only` with a copy that throws like the real package (the original folder was backed up and has been put back unchanged), the old command failed two sampled test files with the same error and the new command passed all 42 of their tests.
+  - Full suite with the throwing copy in place and the new command: 1,196 / 1,196 on Node 24.19 through `npm test`, and 1,196 / 1,196 on Node 22.23.2 (CI uses Node 22.23.3), with zero occurrences of the error.
+  - After adding the three tests and restoring the original folder: `npm test` 1,199 / 1,199 across 356 suites, 0 failed, 0 skipped; `npx tsc --noEmit` 0 errors; `npm run lint` 0 errors, 5 warnings (unchanged).
+  - Other suspects ruled out before the log arrived: the suite also passes locally with `CI=true` and `TZ=UTC`, on Node 22, and with a file-access check that flags paths resolving only through Windows' case-insensitivity (none found).
+  - A scan of 378 installed packages found no other package whose source files are dated more than five minutes from its own `package.json`. Before this work `server-only` was the one package that matched (its `index.js` is 19 minutes newer). This is a heuristic.
+  - **Not run**: the real `server-only` tarball from npm was not downloaded; the throwing copy was written by hand from the CI stack trace. The workflow has not been re-run on GitHub. `npm ci` was not run on the development machine.
+* **Still Open After This Change**:
+  - Whether the remaining 400 or so tests that never loaded on CI pass on Linux is only known for Windows.
+  - The e2e job has still never run on GitHub.
+  - The development machine keeps the hand-edited `node_modules/server-only` until `npm ci` or a reinstall.
+  - Every "tests pass" line in earlier entries was obtained with that hand-edited package in place.
+
+---
+
+## [2026-10-11] Clean Install on the Development Machine; Fix Re-Verified Against the Real `server-only`
+* **Milestone**: Closes the open items of the previous entry (Tasks 13.4, 17.3).
+* **Goal**: Remove the hand-edited `node_modules/server-only` from the development machine and confirm the test preload works with the package npm actually ships.
+* **Implementation Steps Taken**:
+  1. The project owner ran `npm ci` (400 packages added, 401 audited).
+  2. Inspected the installed `server-only@0.0.1` and re-ran the checks.
+* **Key File Diffs**:
+  - Application and test code: none in this step.
+  - Modified (docs): `ROADMAP.md` (Task 13.4), `CHANGELOG-DEV.md`.
+* **Regression Analysis & Cross-System Impact**:
+  - `node_modules` on the development machine now matches `package-lock.json`. Running a test file with plain `npx tsx --test <file>` fails there for any file that imports a server module, exactly as on CI; `npm test` and `npm run test:file -- <file>` are the supported ways.
+  - npm reported that the install scripts of `esbuild@0.28.2` and `unrs-resolver@1.12.2` were not run (not yet approved under `allowScripts`). Both packages load and work without them: esbuild transforms TypeScript, tsx starts, and ESLint runs.
+  - npm reported 14 vulnerabilities (3 moderate, 11 high). This is the same set the audit gate already allowlists; nothing changed.
+* **Verification**:
+  - `node_modules/server-only` contains `index.js`, `empty.js`, and `package.json` only. `index.js` is the four-line `throw new Error(...)`; it is identical to the copy written by hand for the previous entry's reproduction. The hand-added `index.d.ts` is gone.
+  - Old command (`npx tsx --test __tests__/playback/playback.test.ts`) against the real package: fails with `This module cannot be imported from a Client Component module`.
+  - `npm test` against the real package: 1,199 / 1,199 across 356 suites, 0 failed, 0 skipped, zero occurrences of that error.
+  - `npx tsc --noEmit`: 0 errors. `npm run lint`: 0 errors, 5 warnings (unchanged).
+  - **Not run**: the workflow on GitHub (the fix is not pushed at the time of writing); `npm run build` after the clean install.
+* **Still Open After This Change**:
+  - The CI result for this fix.
+  - The two install scripts npm skipped remain unapproved; no problem has been observed from that.

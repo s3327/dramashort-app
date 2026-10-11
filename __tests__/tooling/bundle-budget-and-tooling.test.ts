@@ -2,6 +2,7 @@ import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
+import { createRequire } from "node:module";
 import {
   evaluateBundleBudgets,
   ROUTE_BUDGETS_KB,
@@ -220,6 +221,39 @@ describe("Task 17.3: Tooling Upgrades & Performance Budgets", () => {
     test(".gitattributes keeps text files on LF for every contributor", () => {
       const attrs = fs.readFileSync(path.join(ROOT, ".gitattributes"), "utf-8");
       assert.match(attrs, /^\* text=auto eol=lf$/m);
+    });
+  });
+
+  describe("R7. Unit Tests Run Against Unmodified Dependencies", () => {
+    // The real `server-only` package throws on import. The suite used to pass only
+    // on machines where node_modules/server-only had been edited by hand, and failed
+    // on every fresh install. The test scripts now preload a stub instead.
+    const STUB = "./scripts/test/stub-server-only.cjs";
+
+    test("both test scripts preload the server-only stub", () => {
+      const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, "package.json"), "utf-8"));
+      for (const name of ["test", "test:file"]) {
+        assert.ok(
+          String(pkg.scripts[name]).includes(`--require ${STUB}`),
+          `npm run ${name} must preload ${STUB}`
+        );
+      }
+      assert.ok(fs.existsSync(path.join(ROOT, STUB)), "the stub file must exist");
+    });
+
+    test("inside the test process, server-only is an empty module that was never executed", () => {
+      const projectRequire = createRequire(path.join(ROOT, "package.json"));
+      const entry = projectRequire.resolve("server-only");
+      const cached = projectRequire.cache[entry];
+      assert.ok(cached, "server-only must be pre-registered; run the suite through `npm test` or `npm run test:file -- <file>`");
+      assert.equal(cached.loaded, true);
+      assert.deepEqual(cached.exports, {});
+      assert.doesNotThrow(() => projectRequire("server-only"));
+    });
+
+    test("the stub does not change anything inside node_modules", () => {
+      const stub = fs.readFileSync(path.join(ROOT, STUB), "utf-8");
+      assert.doesNotMatch(stub, /writeFile|appendFile|copyFile|rename|unlink|rmSync|mkdir/);
     });
   });
 });
