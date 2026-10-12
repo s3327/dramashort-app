@@ -231,3 +231,5 @@ npm run db:stop                  # stop the local stack and delete its data
 npm run db:push                  # apply new migrations
 npm run types                    # regenerate types/supabase.ts
 ```
+
+`db:seed:dev`, `db:clean:dev` and `admin:create` change the project in `.env.local` (shell variables take precedence). They refuse any hosted project unless `--confirm-production` is passed, so against a hosted project run, for example, `npm run admin:create -- --email you@example.com --confirm-production`.
