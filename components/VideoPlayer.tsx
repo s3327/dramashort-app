@@ -1409,6 +1409,10 @@ export default function VideoPlayer({
     }
   }, [aspectMode, isMobileFullViewport]);
 
+  // In full-viewport mode WatchOverlay draws the phone controls, so the player's
+  // own top and bottom bars only show from md up.
+  const chromeDisplayClass = isMobileFullViewport ? "hidden md:flex" : "flex";
+
   return (
     <div
       ref={containerRef}
@@ -1698,7 +1702,7 @@ export default function VideoPlayer({
 
       {/* Top Header Overlay */}
       <div
-        className={`absolute top-0 inset-x-0 p-4 bg-gradient-to-b from-black/80 via-black/40 to-transparent flex items-center justify-between text-white transition-opacity duration-300 pointer-events-auto ${
+        className={`absolute top-0 inset-x-0 p-4 bg-gradient-to-b from-black/80 via-black/40 to-transparent ${chromeDisplayClass} items-center justify-between text-white transition-opacity duration-300 pointer-events-auto ${
           controlsVisible ? "opacity-100" : "opacity-0 pointer-events-none"
         }`}
       >
@@ -1761,7 +1765,7 @@ export default function VideoPlayer({
 
       {/* Bottom Controls Overlay */}
       <div
-        className={`absolute bottom-0 inset-x-0 p-3 sm:p-4 bg-gradient-to-t from-black/95 via-black/60 to-transparent flex flex-col gap-2.5 text-white transition-opacity duration-300 pointer-events-auto ${
+        className={`absolute bottom-0 inset-x-0 p-3 sm:p-4 bg-gradient-to-t from-black/95 via-black/60 to-transparent ${chromeDisplayClass} flex-col gap-2.5 text-white transition-opacity duration-300 pointer-events-auto ${
           controlsVisible ? "opacity-100" : "opacity-0 pointer-events-none"
         }`}
       >

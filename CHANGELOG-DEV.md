@@ -4099,3 +4099,32 @@
 * **Still Open After This Change**:
   - `postcss` 8.4.31 inside `next` stays allowlisted until the move to Next 16.
   - The `braces` advisory chain stays allowlisted until the move to Tailwind 4.
+
+---
+
+## [2026-10-12] First Local Playwright Run; Mobile Player Chrome Fix; Real Swipe in the Swipe Journey
+* **Milestone**: Tasks 17.2 (end-to-end tests) and 14.1 (mobile watch mode).
+* **Goal**: Run the browser journeys for the first time, against the live projects, and fix what they found.
+* **Implementation Steps Taken**:
+  1. The project owner ran `npm init playwright`, which installed the browsers but replaced `playwright.config.ts` with the starter template (`testDir: ./tests`, no `webServer`, desktop-only projects), added `tests/example.spec.ts` and `.github/workflows/playwright.yml` (triggers on `main`/`master` only), and appended duplicate entries to `.gitignore`. The owner reverted all of it. `.gitignore` then gained `/blob-report/`, `/playwright/.cache/`, and `/playwright/.auth/`.
+  2. Ran the six read-only journeys on Desktop Chrome, Mobile Chrome, and Mobile Safari against `next start`: 16 passed, 2 failed (both Mobile Safari).
+  3. Probed `/watch/the-arranged-marriage-ghs?ep=1` in the Pixel 7 and iPhone 14 profiles at 390×844. In both engines: two visible title headings, two control bars, and the element at the centre of the player's Subtitles button was the overlay's seek scrubber. Cause: `VideoPlayer`'s top and bottom bars had no breakpoint, while `WatchOverlay` (`block md:hidden`) draws the phone controls on top.
+  4. Added a failing check to `__tests__/player/mobile-vertical-watch.test.ts`, then added `chromeDisplayClass` (`"hidden md:flex"` when `isMobileFullViewport`, else `"flex"`) to both bars in `components/VideoPlayer.tsx`.
+  5. Rewrote step 3 of `e2e/journey-mobile-swipe-player.spec.ts`. The old code built `new Touch()` objects (WebKit throws `Illegal constructor`) and dispatched them on `<main>`, which is an ancestor of the player, so the swipe handlers never received them in any browser and nothing was asserted. On Chromium the step now sends a hit-tested touch sequence through `Input.dispatchTouchEvent` and asserts `ep=2` in the URL. On other engines it records a `skipped-step` annotation. The stray `touchscreen.tap()` before the swipe was removed.
+  6. Traced the "Playback Error" shown in every browser: the episode source is `https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4`, which returns HTTP 403 `AccessDenied` (Chromium reports `ERR_BLOCKED_BY_ORB`, media error 4). Not changed.
+* **Key File Diffs**:
+  - Modified: `components/VideoPlayer.tsx`, `__tests__/player/mobile-vertical-watch.test.ts`, `e2e/journey-mobile-swipe-player.spec.ts`, `.gitignore`, `ROADMAP.md` (Tasks 14.1, 17.2), `CHANGELOG-DEV.md`.
+* **Regression Analysis & Cross-System Impact**:
+  - Only `WatchPlayerIsland` passes `isMobileFullViewport`, so other players keep their bars at every width. On the watch page from `md` up the classes resolve to `flex` as before.
+  - Below `md` the player's own Picture-in-Picture and keyboard-shortcuts buttons are no longer reachable; `WatchOverlay` has no equivalents. Before the change they were drawn in the same crowded row; whether they could be tapped was not checked.
+  - A real swipe was confirmed to advance to `ep=2` before the change, so mobile swipe navigation itself was not broken; only the test never exercised it.
+* **Verification**:
+  - Unit: the new check failed before the fix (20 / 21) and passes after (21 / 21). Full `npm test`: 1,200 / 1,200.
+  - `npx tsc --noEmit` 0 errors; `npm run lint` 0 errors, 0 warnings; `npm run build` passed.
+  - Playwright, six journeys × three projects, after the fixes: 18 / 18 passed. The swipe assertion ran on Desktop Chrome and Mobile Chrome.
+  - Layout probe after the fix, both profiles: one visible title heading; the player's Subtitles button has no box on phones; the overlay's Subtitles button is the element under its centre. The Mobile Safari screenshot shows one header, one scrubber, and the side rail.
+  - **Not run**: the signup, password-recovery, and support-ticket journeys (they write to the live projects); any signed-in path; real iOS Safari; the e2e job on GitHub.
+* **Still Open After This Change**:
+  - The sample video URLs return 403, so no episode plays. Needs a replacement source, then an update to the live episode rows, `scripts/seed-dev-content.ts`, and the examples in `app/admin/import/page.tsx`.
+  - While playback fails, the overlay's centre play button covers the error message.
+  - The subtitles journey's first locator now matches the hidden player button on phones, so its click step is skipped there; most journeys still pass silently when an element is missing.

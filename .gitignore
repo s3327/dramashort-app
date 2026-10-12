@@ -33,3 +33,8 @@ supabase/.temp/
 # test results & reports
 playwright-report/
 test-results/
+
+# Playwright (blob reports, browser cache, saved auth state)
+/blob-report/
+/playwright/.cache/
+/playwright/.auth/

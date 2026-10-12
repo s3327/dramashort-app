@@ -18,6 +18,8 @@ test.describe("Journey 5: Mobile-Viewport Immersive Watch & Touch Gestures", () 
 
   test("mobile-viewport: 100dvh layout → touch swipe navigation → episode drawer with accessibility audits", async ({
     page,
+    context,
+    browserName,
   }) => {
     // Explicitly set mobile viewport before navigation
     await page.setViewportSize({ width: 390, height: 844 });
@@ -41,30 +43,32 @@ test.describe("Journey 5: Mobile-Viewport Immersive Watch & Touch Gestures", () 
       disabledRules: ["color-contrast"], // Dynamic video canvas contrast
     });
 
-    // 3. Simulate Mobile Touch Swipe Gestures
-    // Swipe UP (scroll down) to advance to next episode (deltaY > 60px)
-    await page.touchscreen.tap(195, 422).catch(() => {});
+    // 3. Swipe UP to advance to the next episode (episode 2 is free, so no paywall)
+    // Playwright can only send a hit-tested touch sequence through the Chrome
+    // DevTools Protocol. WebKit has no equivalent and rejects `new Touch()`, so a
+    // synthetic sequence there would neither run nor reach the element under the finger.
+    if (browserName === "chromium") {
+      const cdp = await context.newCDPSession(page);
+      const touch = (type: "touchStart" | "touchMove" | "touchEnd", y?: number) =>
+        cdp.send("Input.dispatchTouchEvent", {
+          type,
+          touchPoints: y === undefined ? [] : [{ x: 195, y }],
+        });
 
-    // Simulate vertical swipe gesture on video player container
-    await page.evaluate(() => {
-      const target = document.querySelector("main") || document.body;
-      const touchStart = new Touch({
-        identifier: Date.now(),
-        target,
-        clientX: 195,
-        clientY: 550,
-      });
-      const touchMove = new Touch({
-        identifier: Date.now(),
-        target,
-        clientX: 195,
-        clientY: 350,
-      });
+      await touch("touchStart", 600);
+      for (const y of [560, 500, 440, 380, 330]) {
+        await touch("touchMove", y);
+        await page.waitForTimeout(30);
+      }
+      await touch("touchEnd");
 
-      target.dispatchEvent(new TouchEvent("touchstart", { touches: [touchStart], bubbles: true }));
-      target.dispatchEvent(new TouchEvent("touchmove", { touches: [touchMove], bubbles: true }));
-      target.dispatchEvent(new TouchEvent("touchend", { changedTouches: [touchMove], bubbles: true }));
-    });
+      await expect(page).toHaveURL(/[?&]ep=2\b/);
+    } else {
+      test.info().annotations.push({
+        type: "skipped-step",
+        description: `swipe gesture not exercised on ${browserName}: no hit-tested touch input outside Chromium`,
+      });
+    }
 
     // 4. Test Mobile Episode Drawer
     const episodeButton = page.locator('button[aria-label="View all episodes"]').first();

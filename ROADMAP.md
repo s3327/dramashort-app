@@ -2116,6 +2116,13 @@ These items stay ✅ for history; the gaps are tracked as new tasks.
   - Full test runner `npm test`: all test suites pass with 0 failures across 642 tests.
   - `npm run build`: cleanly compiles all 64 Next.js routes.
 
+* **Post-Audit Correction (2026-10-12)**:
+  - **Gap found** (by the first local Playwright run, Task 17.2): below `md`, `VideoPlayer` still drew its own top bar (EP badge, title, aspect and Auto-Next toggles) and bottom control row underneath `WatchOverlay`. On a 390×844 phone viewport the title appeared twice with overlapping controls, and the overlay's seek scrubber sat on top of the player's Subtitles button, so taps on it hit the scrubber. Same result in Chromium (Pixel 7 profile) and WebKit (iPhone 14 profile).
+  - **Fix**: `components/VideoPlayer.tsx` derives `chromeDisplayClass` (`"hidden md:flex"` when `isMobileFullViewport`, otherwise `"flex"`) and applies it to both bars. Phones get `WatchOverlay` only; from `md` up nothing changes. Players without `isMobileFullViewport` are unaffected.
+  - **Test**: `__tests__/player/mobile-vertical-watch.test.ts` gained a check that both bars use `chromeDisplayClass` (failed before the fix, passes after).
+  - **Verified**: in both profiles, one title heading is visible and the overlay's Subtitles button is the element under its own centre point; screenshot reviewed.
+  - **Not fixed**: while the video fails to load, the overlay's centre play button is drawn over the "Playback Error" message.
+
 ---
 
 ### Task 14.2: Gesture Model Fixes
@@ -3110,6 +3117,14 @@ These items stay ✅ for history; the gaps are tracked as new tasks.
   - **Gap found**: two of the nine journeys (`journey-signup-watch-resume`, `journey-mobile-swipe-player`) open `/watch/the-arranged-marriage-ghs`, which is a 404 unless the app is connected to a Supabase project seeded with that title. The first of them also submits a real signup with a fresh address on every run. The "9 / 9 pass" results recorded for this task were obtained against the live development project.
   - **Change**: both journeys are skipped when `CI` is set and `E2E_SEEDED_BACKEND` is not. Local runs are unaffected. In a CI-style run on this machine (placeholder keys, no backend) the result is 7 passed, 2 skipped.
   - **Remaining**: no journey exercises a real backend in CI. Doing that needs a seeded Supabase project for CI (for example the local stack started in the workflow) and `E2E_SEEDED_BACKEND=1`.
+
+* **First Local Run Against the Live Projects (2026-10-12)**:
+  - **Scope**: the six journeys that only read data (mobile swipe, subtitles/hotkeys, paywall, favorites, daily check-in, admin publish) on all three projects, against `next build` + `next start` and the live Supabase projects, as a guest. Signup, password recovery, and support ticket were not run: they create auth users, send emails to undeliverable `@dramashort.test` addresses, or insert rows into the live database.
+  - **First result**: 16 passed, 2 failed, both on Mobile Safari. `journey-mobile-swipe-player` crashed on `new Touch()` (`Illegal constructor` in WebKit). `journey-player-subtitles-hotkeys` timed out because the seek scrubber covered the Subtitles button, a real layout bug in both engines (see the Task 14.1 correction).
+  - **Swipe journey rewritten**: it used to dispatch synthetic touch events on `<main>`, an ancestor of the player, so even in Chromium the swipe handlers never saw them and nothing was asserted. On Chromium it now sends a hit-tested touch sequence through the DevTools Protocol and asserts the URL moves to `ep=2`. WebKit has no such input in Playwright, so on Mobile Safari the swipe step is skipped with a `skipped-step` annotation; the layout, drawer, and accessibility steps still run there.
+  - **After the fixes**: 18 / 18 passed.
+  - **Limits**: most journeys still wrap steps in `if (await x.isVisible())`, so a missing element passes silently, and as a guest the signed-in paths (wallet dashboard, top-up modal, admin console) do not run. After the Task 14.1 fix, the subtitles journey's first locator matches the player's Subtitles button, which is now hidden on phones, so that step is skipped on the mobile projects; the layout was verified separately.
+  - **Found, not fixed**: every episode of the sample title plays `https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4`, which now returns HTTP 403 `AccessDenied`. The player shows "Playback Error" in every browser. The same URLs are used by `scripts/seed-dev-content.ts` and the examples in `app/admin/import/page.tsx`.
 
 ---
 

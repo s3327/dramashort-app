@@ -165,6 +165,23 @@ describe("Task 14.1: Full-Screen Vertical Watch Mode & Player Modularization", (
       assert.ok(overlayCode.includes('type="range"'), "Must render range input for seeking");
       assert.ok(overlayCode.includes("onSeek?.(val)"), "Must invoke onSeek on scrub change");
     });
+
+    it("verifies VideoPlayer hides its own top and bottom bars below md when WatchOverlay replaces them", () => {
+      // Both layers rendered on phones: doubled title, and the overlay's seek
+      // scrubber covered the player's Subtitles button (found by the 2026-10-12 e2e run).
+      const playerCode = fs.readFileSync(path.resolve(process.cwd(), "components/VideoPlayer.tsx"), "utf-8");
+      assert.ok(
+        playerCode.includes('const chromeDisplayClass = isMobileFullViewport ? "hidden md:flex" : "flex";'),
+        "VideoPlayer must derive a display class that hides its chrome below md in full-viewport mode"
+      );
+      for (const marker of ["{/* Top Header Overlay */}", "{/* Bottom Controls Overlay */}"]) {
+        const start = playerCode.indexOf(marker);
+        assert.ok(start !== -1, `${marker} must exist`);
+        const classAttr = playerCode.slice(start, playerCode.indexOf("}`}", start));
+        assert.ok(classAttr.includes("${chromeDisplayClass}"), `${marker} must use chromeDisplayClass`);
+        assert.ok(!/\bto-transparent flex\b|\bflex flex-col gap-2\.5\b/.test(classAttr), `${marker} must not hard-code flex`);
+      }
+    });
   });
 
   describe("R5: Player Modularization & Hook Exports", () => {
