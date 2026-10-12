@@ -53,6 +53,17 @@ describe("single-project credentials (ADR-0005)", () => {
     assert.ok(errors.some((e: string) => e.includes("NEXT_PUBLIC_SUPABASE_ANON_KEY")));
   });
 
+  // Without it a deployment builds, then payments, cron, /contact and account deletion
+  // fail at runtime and admin pages silently read through the anon key.
+  it("a production build also requires SUPABASE_SERVICE_ROLE_KEY", () => {
+    const { valid, errors } = validateEnvironment(
+      { ...PROD, NEXT_PUBLIC_SUPABASE_URL: PROJECT_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY: "anon-123", PAYMENT_WEBHOOK_SECRET: "a", CRON_SECRET: "b" },
+      { throws: false }
+    );
+    assert.equal(valid, false);
+    assert.ok(errors.some((e: string) => e.includes("SUPABASE_SERVICE_ROLE_KEY")), errors.join("\n"));
+  });
+
   it("nothing outside tests reads the old variable names", () => {
     const roots = ["app", "lib", "components", "hooks", "contexts", "scripts"];
     const old = /NEXT_PUBLIC_(CONTENT|USER)_SUPABASE|(CONTENT|USER)_SUPABASE_SERVICE_ROLE_KEY|SUPABASE_CONTENT_SERVICE_ROLE_KEY|SUPABASE_DATABASE_TOPOLOGY|NEXT_PUBLIC_SUPABASE_TOPOLOGY/;

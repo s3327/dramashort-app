@@ -35,13 +35,14 @@ jobs:
 
       # The values below only satisfy lib/config/env-validator.mjs, which refuses
       # to build in production with missing or placeholder configuration. None of
-      # them is a real credential: requests to Supabase made during the build are
-      # rejected with "Invalid API key" and the pages fall back to empty data.
+      # them is a real credential: the project does not exist, so requests to Supabase
+      # made during the build fail and the pages fall back to empty data.
       - name: Next.js Production Build
         run: npm run build
         env:
           NEXT_PUBLIC_SUPABASE_URL: https://ci-not-a-real-project.supabase.co
           NEXT_PUBLIC_SUPABASE_ANON_KEY: ci-anon-key-not-a-real-credential
+          SUPABASE_SERVICE_ROLE_KEY: ci-service-role-key-not-a-real-credential
           PAYMENT_WEBHOOK_SECRET: ci-webhook-secret-not-a-real-credential
           CRON_SECRET: ci-cron-secret-not-a-real-credential
 
@@ -106,6 +107,7 @@ jobs:
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
+      SUPABASE_SERVICE_ROLE_KEY: ci-service-role-key-not-a-real-credential
         with:
           node-version: 22
           cache: npm

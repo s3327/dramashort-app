@@ -211,7 +211,7 @@ The app uses one Supabase project with every table in the `public` schema ([ADR-
 |---|---|
 | `NEXT_PUBLIC_SUPABASE_URL` | browser and server |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | browser and server |
-| `SUPABASE_SERVICE_ROLE_KEY` | server only (admin writes, seed and admin scripts); never expose it to the browser |
+| `SUPABASE_SERVICE_ROLE_KEY` | server only (admin writes, payments, cron, seed and admin scripts); required for production builds; never expose it to the browser |
 
 `NEXT_PUBLIC_*` values are built into the browser code, so rebuild after changing them. `npm run build` and `npm run start` also need `PAYMENT_WEBHOOK_SECRET` and `CRON_SECRET`; for local builds put them in `.env.production.local` (see `.env.example`).
 

@@ -68,6 +68,7 @@ describe("Task 12.4: Remove Mock Data From Production Runtime", () => {
         NODE_ENV: "production",
         NEXT_PUBLIC_SUPABASE_URL: "https://abcdefghijklmnopqrst.supabase.co",
         NEXT_PUBLIC_SUPABASE_ANON_KEY: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.test1",
+        SUPABASE_SERVICE_ROLE_KEY: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.test2",
         PAYMENT_WEBHOOK_SECRET: "whsec_live_mock_secret_abcdef123456",
         CRON_SECRET: "cron_live_mock_secret_abcdef123456",
       };
