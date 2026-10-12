@@ -4407,3 +4407,42 @@
   - `npx tsc --noEmit`: 0 errors. `npm run lint`: 0 problems.
   - `npm test`: 1,194 tests, 1,193 passed, 1 skipped (the bundle check, not requested), 0 failed.
   - **Not run**: CI itself, because nothing is pushed until Task 14 Step 1.
+
+---
+
+## [2026-10-13] Task 13.7 / Final Review Minor Findings Fixed
+* **Milestone**: Task 13.7, Phase 1. The owner asked for all five deferred minor findings of the final review to be fixed in one pass.
+* **Goal**: Close the review's minor findings before the first live step (Task 9).
+* **Implementation Steps Taken** (each with a check that failed first):
+  1. **CLI state in git.**
+     - `supabase/.branches/_current_branch`, `supabase/user/supabase/.branches/_current_branch` and `supabase/content/supabase/.gitignore` were tracked, and nothing ignored `.branches`, `.temp` or `.env.keys` in the root workdir.
+     - Added `supabase/.gitignore`, untracked the root branch file, and removed the two leftovers.
+     - Test: the workdir tracks only `config.toml`, `.gitignore`, migrations, templates and tests, and the CLI state paths are ignored. It failed listing the three files.
+     - The old folders still hold ignored CLI link state on this machine; they are untracked and can be deleted locally.
+  2. **`verify-catalog-rls.sql` Test 5** skipped all checks for the five tables users write their own rows in. It now skips only the `authenticated` checks there; `anon` may write to no table. With `GRANT INSERT ON public.favorites TO anon` in a rolled-back transaction, the old Test 5 printed "TEST PASSED" and the new one fails on `public.favorites`.
+  3. **Catalog browser client.** `createContentClient` now keeps no session (`persistSession`, `autoRefreshToken` and `detectSessionInUrl` all false) and uses its own storage key. Before, it shared `sb-<ref>-auth-token` with the user client once both targeted one project, which made auth-js warn about multiple GoTrueClient instances. It is used only for anonymous catalog reads; artwork uploads go through server routes with the service role. Test: failed with `persistSession` true, then passed.
+  4. **Docs.**
+     - `__tests__/docs/reusable-content-api.test.ts` restores the guide checks that were deleted with `topology-consolidation.test.ts` §5, for one schema: boundaries, samples, caching, cross-links, no broken links in the guide or the operations runbook, and no `content`-schema access described.
+     - The test failed on `README.md` ("Multi-schema catalog access"), now reworded. The same guard matches 5 lines of the guide as it was before ADR-0005.
+     - The ADR registry no longer states the fingerprint check or Vercel `sin1` as current.
+  5. **Schema fingerprint.**
+     - The query now records PUBLIC grantees, permissive or restrictive policies, function volatility and owner, full column types (`format_type`, so `varchar(50)[]` no longer reads as `ARRAY`), storage policies and buckets, and extensions.
+     - Allowed differences now name the merged state they accept (`null` when the fact is absent, else the exact detail); any other state is reported again. `merge-allowed-differences.json` was converted: 22 absent, 2 `"none"`.
+     - Tests: 3 new comparison tests failed, then passed.
+     - Seven changes made in one rolled-back transaction: a PUBLIC table grant, a policy recreated as RESTRICTIVE, an IMMUTABLE trigger function, `tags` as `varchar(50)[]`, a storage policy, the bucket made private, and `citext` installed. The old query reported 0 differences, the new one all 7.
+     - Re-verified the merge with the new query. New reference fingerprints came from fresh stacks of both pre-merge chains at `6eaa6bc`, run through a temporary worktree: content 20 migrations / 604 facts, user 24 migrations / 674 facts. Against the merged database (818 facts), the comparison prints "Fingerprints match."; without the allowed list, exactly the 24 reviewed differences remain (22 missing, 2 changed).
+     - Plan: Task 10 checks `postgres_engine: 17`, and Task 11 Step 3 also compares the extended fingerprint of the live and local databases (storage, extensions and grants, which the `public` dump does not cover).
+* **Key File Diffs**:
+  - Created: `supabase/.gitignore`, `__tests__/docs/reusable-content-api.test.ts`.
+  - Removed from git: the three CLI and leftover files above.
+  - Modified: `scripts/sql/verify-catalog-rls.sql`, `lib/supabase/content.ts`, `scripts/db/schema-fingerprint.sql`, `scripts/db/compare-fingerprints.mjs`, `scripts/db/merge-allowed-differences.json`, `README.md`, `docs/adr/README.md`, `docs/superpowers/plans/2026-10-12-single-supabase-project.md`, `__tests__/tooling/bundle-budget-and-tooling.test.ts`, `__tests__/database/single-project-credentials.test.ts`, `__tests__/database/fingerprint-compare.test.ts`, `ROADMAP.md`, `CHANGELOG-DEV.md`.
+* **Regression Analysis & Cross-System Impact**:
+  - Catalog reads in the browser carry no user session, as before the merge.
+  - Fingerprint files made with the old query cannot be compared with new ones (the column format changed); both references were regenerated.
+  - The local stack was stopped and restarted, with its data kept.
+  - Nothing live was touched.
+* **Verification**:
+  - `verify-catalog-rls.sql` 5 PASS and `verify-user-side-rls.sql` 25 PASS on the local database.
+  - `npx tsc --noEmit`: 0 errors. `npm run lint`: 0 problems.
+  - `npm test`: 1,206 tests, 1,205 passed, 1 skipped (the opt-in bundle check), 0 failed.
+  - **Not checked in a browser**: the GoTrueClient warning is gone (planned with the rebuild in Task 14 Step 5).

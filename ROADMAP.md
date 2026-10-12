@@ -2102,6 +2102,12 @@ These items stay ✅ for history; the gaps are tracked as new tasks.
     5. The RLS script rejects a signup that claims an admin role in its metadata.
 
     Five minor findings were deferred and listed for the owner.
+  - Minor findings (2026-10-13, owner asked for all five):
+    1. The Supabase workdir ignores CLI state (`supabase/.gitignore`); tracked leftovers removed.
+    2. The catalog RLS check keeps its `anon` write checks on every table.
+    3. The catalog browser client keeps no session and has its own storage key.
+    4. The catalog API guide checks are restored, and the README and ADR registry corrected.
+    5. The schema fingerprint covers PUBLIC grants, policy mode, function volatility and owner, full column types, storage policies and buckets, and extensions; allowed differences name the merged state they accept. Re-run against fresh stacks of both pre-merge chains: "Fingerprints match."
 
 ---
 
