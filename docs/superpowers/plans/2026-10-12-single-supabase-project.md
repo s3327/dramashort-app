@@ -1379,11 +1379,12 @@ Expected: no differences other than the platform function `rls_auto_enable` and 
 ```bash
 docker exec -i -e PGPASSWORD supabase_db_dramashort psql "<session pooler connection string without password>" \
   -v ON_ERROR_STOP=1 --single-transaction \
-  -c "SET session_replication_role = replica" -f - < "C:/dramashort-backups/2026-10-12/content-public-data.sql"
+  -c "SET session_replication_role = replica" -c "TRUNCATE public.app_settings" \
+  -f - < "C:/dramashort-backups/2026-10-12/content-public-data.sql"
 unset PGPASSWORD
 ```
 
-Expected: exit 0. `session_replication_role = replica` keeps the publication and audit triggers from firing on copied rows.
+Expected: exit 0. `session_replication_role = replica` keeps the publication and audit triggers from firing on copied rows. `TRUNCATE public.app_settings` (same transaction) is needed because `20261009180000_platform_settings.sql` seeds the five default settings during the push: without it the restore stops on `app_settings_pkey` (key `general`) and rolls back, and with it the copied settings replace the defaults. Rehearsed locally on 2026-10-13 with a `--local` dump made like Task 9 and a freshly reset database: the command as first written exited 3 on that key; the command above exited 0 with all counts equal.
 
 - [ ] **Step 3: Verify**
 
@@ -1400,7 +1401,13 @@ FROM public.titles t
 WHERE row_to_json(t)::text LIKE '%czkkzoiuyqybafacpgsp%' OR row_to_json(t)::text LIKE '%bpidsbcrvpkavvdvtpgh%';
 ```
 
-Expected: `0 | 0` and `0`. A non-zero last count means artwork files referenced by those rows must be copied to the new `artwork` bucket and the URLs rewritten before going on.
+Then the maintenance flag, which takes effect for the first time on this project (Task 5 fixed maintenance mode reading the wrong project):
+
+```sql
+SELECT value->>'maintenanceMode' AS maintenance_mode FROM public.app_settings WHERE key = 'general';
+```
+
+Expected: `0 | 0`, `0` and `false`. If `maintenance_mode` is `true`, the owner decides before Task 14 whether to switch it off in `/admin/settings`; otherwise every visitor sees the maintenance page after the deploy. A non-zero `rows_pointing_at_old_projects` count means artwork files referenced by those rows must be copied to the new `artwork` bucket and the URLs rewritten before going on.
 
 With the new project's public anon key: `GET titles?status=eq.Published` returns the published titles; `PATCH titles` and `DELETE genres` (aimed at no row) return 401 `42501`; `episodes?select=video_url` returns `42501`; `rpc/credit_wallet_coins` and `rpc/fulfill_payment_order` return `42501`.
 
@@ -1408,7 +1415,7 @@ With the new project's public anon key: `GET titles?status=eq.Published` returns
 
 Authentication → Sign In / Providers, Emails, URL Configuration, values from `supabase/config.toml`:
 - [ ] Site URL: the production address (for example `https://dramashort.com`).
-- [ ] Redirect URLs: the ten entries of `additional_redirect_urls` in `supabase/config.toml`.
+- [ ] Redirect URLs: the entries of `additional_redirect_urls` in `supabase/config.toml`, except `https://*.vercel.app` and `https://*.vercel.app/auth/callback`: those accept any site hosted on Vercel. Use this project's own Vercel domains instead (its production domain and its preview pattern, known once the Vercel project exists).
 - [ ] Email confirmations on; secure password change on; minimum password length 8; password requirements: lowercase, uppercase letters and digits.
 - [ ] Email templates: "Confirm signup" subject `Confirm your DramaShort account` with the body of `supabase/templates/confirmation.html`; "Reset password" subject `Reset your DramaShort password` with the body of `supabase/templates/recovery.html`.
 - [ ] SMTP: if dramashort-user had custom SMTP configured, copy it; otherwise the default sender (low hourly limit, fine for testing).
