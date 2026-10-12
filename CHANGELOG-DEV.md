@@ -4263,3 +4263,26 @@
   - Fingerprint comparison with both references: `Fingerprints match.` (24 reviewed exceptions).
   - `verify-user-side-rls.sql`: exit 0, 25 `PASS`, `ALL TASK 10.2 CHECKS PASSED`. `verify-catalog-rls.sql`: exit 0, 5 `PASS`.
   - `npm test`: 1,176 / 1,176. `npx tsc --noEmit`: 0 errors.
+
+---
+
+## [2026-10-12] Task 13.7 / Plan Task 5: One Credential Set, Inlined into Browser Code (Fixes Browser Sign-In)
+* **Milestone**: Task 13.7, Phase 1 (local), plan Task 5.
+* **Goal**: Three environment variables for the single project, read so that Next.js inlines the public ones into browser bundles.
+* **Implementation Steps Taken**:
+  1. Tests first: `__tests__/database/single-project-credentials.test.ts` (8 tests: values, local fallback, production errors naming the new variables even when only old names are set, placeholder rejection, service key, literal `process.env` reads, validator, and a scan proving nothing outside tests reads the old names), `__tests__/tooling/browser-bundle-env.test.ts` (the last build's client chunks contain `NEXT_PUBLIC_SUPABASE_URL`; skipped with a reason when the variable is not set), and a CSP test. They failed (`Cannot find module '@/lib/supabase/credentials'`; CSP without the local origin).
+  2. Added `lib/supabase/credentials.ts` (`getSupabaseCredentials`, `getServiceRoleKey`). Rewrote `lib/supabase/content.ts` and `user-client.ts`; `user-server.ts`, `lib/supabase/middleware.ts` and `lib/middleware/maintenance.ts` now use it; preview tokens fall back to `SUPABASE_SERVICE_ROLE_KEY`; `content.service.ts` checks that one key.
+  3. `lib/config/env-validator.mjs` requires `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` (plus the new example placeholders); `lib/env.ts` exposes the three names; `lib/config/security-headers.mjs` adds the origin of a non-`*.supabase.co` `NEXT_PUBLIC_SUPABASE_URL` (and its ws/wss form) to `img-src`, `media-src`, `connect-src`, with a JSDoc parameter type so TypeScript accepts plain objects.
+  4. Scripts (`create-admin`, `seed-dev-content` — service key only, `backfill-admin-roles`), `.env.example` (one Supabase section), CI (both env blocks: two public variables with a neutral `ci-not-a-real-project` URL), and two tests that set the old names.
+  5. Deleted `scripts/migrate-content-to-unified.ts`.
+* **Key File Diffs**:
+  - Created: `lib/supabase/credentials.ts`, 2 test files. Deleted: `scripts/migrate-content-to-unified.ts`.
+  - Modified: `lib/supabase/{content,user-client,user-server,middleware}.ts`, `lib/middleware/maintenance.ts`, `lib/auth/preview-token.ts`, `lib/services/content.service.ts`, `lib/env.ts`, `lib/config/env-validator.mjs`, `lib/config/security-headers.mjs`, 3 scripts, `.env.example`, `.github/workflows/ci.yml`, 3 test files, `ROADMAP.md`, `CHANGELOG-DEV.md`.
+* **Regression Analysis & Cross-System Impact**:
+  - Removed exports: `isUnifiedContentMode`, `getContentSchemaName`, `getContentCredentials`, `resetContentClient`, `getUserClientCredentials`, `getUserServerCredentials`, `TopologyMode` (only the deleted topology test used them). All client factory names and signatures are unchanged.
+  - **The app now needs the three new variables.** `.env.local` still has the old names until plan Task 14, so local `next dev` / `next build` run against the local fallback (`http://127.0.0.1:54321`) unless the variables are exported; production builds fail with "Missing required environment variable: NEXT_PUBLIC_SUPABASE_URL". Nothing is pushed until Vercel has the new names.
+  - Maintenance mode reads the configured project instead of `127.0.0.1:54321`.
+* **Verification**:
+  - New tests failed first, then passed. `npx tsc --noEmit`: 0 errors. `npm run lint`: 0 errors, 0 warnings. `npm test`: 1,185 passed, 1 skipped (the bundle test, variable not set), 0 failed; console output identical to the previous run apart from the renamed variable.
+  - Build with `NEXT_PUBLIC_SUPABASE_URL=https://abcdefghijklmnopqrst.supabase.co`: passed; the bundle test ran and passed; the URL is inlined in 3 client chunks; `127.0.0.1:54322` appears in none.
+  - **Not run yet**: sign-in in a browser (plan Task 7).

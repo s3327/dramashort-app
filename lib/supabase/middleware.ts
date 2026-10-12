@@ -3,31 +3,9 @@ import { createServerClient, type CookieOptions } from "@supabase/ssr";
 import type { User } from "@supabase/supabase-js";
 import type { Database } from "@/types/supabase-user";
 
-import { isPlaceholderUrl, isPlaceholderKey } from "@/lib/config/env-validator.mjs";
+import { getSupabaseCredentials } from "@/lib/supabase/credentials";
 
-function getMiddlewareCredentials() {
-  const isProduction = process.env.NODE_ENV === "production";
-  const url = process.env.NEXT_PUBLIC_USER_SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const anonKey = process.env.NEXT_PUBLIC_USER_SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-
-  if (isProduction) {
-    const urlVar = process.env.NEXT_PUBLIC_USER_SUPABASE_URL ? "NEXT_PUBLIC_USER_SUPABASE_URL" : "NEXT_PUBLIC_SUPABASE_URL";
-    const keyVar = process.env.NEXT_PUBLIC_USER_SUPABASE_ANON_KEY ? "NEXT_PUBLIC_USER_SUPABASE_ANON_KEY" : "NEXT_PUBLIC_SUPABASE_ANON_KEY";
-    if (!url || isPlaceholderUrl(url)) {
-      throw new Error(`Invalid or missing ${urlVar} in production: "${url}"`);
-    }
-    if (!anonKey || isPlaceholderKey(anonKey)) {
-      throw new Error(`Invalid or placeholder ${keyVar} in production.`);
-    }
-  }
-
-  return {
-    url: url || "http://127.0.0.1:54322",
-    anonKey: anonKey || "dev-anon-key",
-  };
-}
-
-const { url: userUrl, anonKey: userAnonKey } = getMiddlewareCredentials();
+const { url: userUrl, anonKey: userAnonKey } = getSupabaseCredentials();
 
 type PendingCookie = { name: string; value: string; options: CookieOptions };
 

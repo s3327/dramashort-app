@@ -8,13 +8,11 @@ import { getChannelCode, createDramaSlug } from "../lib/slug";
 // Load environment variables from .env.local
 dotenv.config({ path: path.resolve(process.cwd(), ".env.local") });
 
-const contentUrl = process.env.NEXT_PUBLIC_CONTENT_SUPABASE_URL;
-const serviceKey =
-  process.env.CONTENT_SUPABASE_SERVICE_ROLE_KEY ||
-  process.env.NEXT_PUBLIC_CONTENT_SUPABASE_ANON_KEY;
+const contentUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
 if (!contentUrl || !serviceKey) {
-  console.error("❌ Missing NEXT_PUBLIC_CONTENT_SUPABASE_URL or CONTENT_SUPABASE_SERVICE_ROLE_KEY in .env.local");
+  console.error("❌ Missing NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY in .env.local");
   process.exit(1);
 }
 

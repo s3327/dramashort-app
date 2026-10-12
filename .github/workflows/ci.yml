@@ -40,10 +40,8 @@ jobs:
       - name: Next.js Production Build
         run: npm run build
         env:
-          NEXT_PUBLIC_CONTENT_SUPABASE_URL: https://czkkzoiuyqybafacpgsp.supabase.co
-          NEXT_PUBLIC_CONTENT_SUPABASE_ANON_KEY: ci-anon-key-not-a-real-credential
-          NEXT_PUBLIC_USER_SUPABASE_URL: https://bpidsbcrvpkavvdvtpgh.supabase.co
-          NEXT_PUBLIC_USER_SUPABASE_ANON_KEY: ci-anon-key-not-a-real-credential
+          NEXT_PUBLIC_SUPABASE_URL: https://ci-not-a-real-project.supabase.co
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ci-anon-key-not-a-real-credential
           PAYMENT_WEBHOOK_SECRET: ci-webhook-secret-not-a-real-credential
           CRON_SECRET: ci-cron-secret-not-a-real-credential
 
@@ -98,10 +96,8 @@ jobs:
     # Needed by the build and again by `next start`, which re-validates the
     # environment when it loads next.config.mjs. Not real credentials (see above).
     env:
-      NEXT_PUBLIC_CONTENT_SUPABASE_URL: https://czkkzoiuyqybafacpgsp.supabase.co
-      NEXT_PUBLIC_CONTENT_SUPABASE_ANON_KEY: ci-anon-key-not-a-real-credential
-      NEXT_PUBLIC_USER_SUPABASE_URL: https://bpidsbcrvpkavvdvtpgh.supabase.co
-      NEXT_PUBLIC_USER_SUPABASE_ANON_KEY: ci-anon-key-not-a-real-credential
+      NEXT_PUBLIC_SUPABASE_URL: https://ci-not-a-real-project.supabase.co
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: ci-anon-key-not-a-real-credential
       PAYMENT_WEBHOOK_SECRET: ci-webhook-secret-not-a-real-credential
       CRON_SECRET: ci-cron-secret-not-a-real-credential
     steps:

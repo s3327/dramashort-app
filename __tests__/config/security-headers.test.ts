@@ -56,4 +56,13 @@ describe("HTTP Security Headers & CSP Configuration (Task 10.8)", () => {
     assert.ok(map.get("Strict-Transport-Security")?.includes("max-age=31536000"));
     assert.ok(map.get("Strict-Transport-Security")?.includes("preload"));
   });
+
+  it("ADR-0005: CSP allows a local Supabase stack's origin and adds nothing for *.supabase.co", () => {
+    const local = buildContentSecurityPolicy({ NEXT_PUBLIC_SUPABASE_URL: "http://127.0.0.1:54321" });
+    const connect = local.split("; ").find((d) => d.startsWith("connect-src")) ?? "";
+    assert.ok(connect.includes("http://127.0.0.1:54321"));
+    assert.ok(connect.includes("ws://127.0.0.1:54321"));
+    const hosted = buildContentSecurityPolicy({ NEXT_PUBLIC_SUPABASE_URL: "https://abcdefghijklmnopqrst.supabase.co" });
+    assert.equal(hosted, buildContentSecurityPolicy({}));
+  });
 });

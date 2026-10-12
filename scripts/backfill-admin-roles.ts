@@ -36,8 +36,8 @@ import * as path from "path";
 
 dotenv.config({ path: path.resolve(process.cwd(), ".env.local") });
 
-const userUrl = process.env.NEXT_PUBLIC_USER_SUPABASE_URL;
-const serviceKey = process.env.USER_SUPABASE_SERVICE_ROLE_KEY;
+const userUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
 if (!userUrl || !serviceKey) {
   console.error("❌ Missing User Supabase environment variables in .env.local");

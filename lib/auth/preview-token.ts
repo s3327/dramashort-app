@@ -19,10 +19,7 @@ export type VerifyPreviewResult =
 function getPreviewSecret(): string | null {
   const secret =
     process.env.PREVIEW_SECRET ||
-    process.env.USER_SUPABASE_SERVICE_ROLE_KEY ||
-    process.env.SUPABASE_SERVICE_ROLE_KEY ||
-    process.env.CONTENT_SUPABASE_SERVICE_ROLE_KEY ||
-    process.env.SUPABASE_CONTENT_SERVICE_ROLE_KEY;
+    process.env.SUPABASE_SERVICE_ROLE_KEY;
   return secret && secret.trim() ? secret : null;
 }
 

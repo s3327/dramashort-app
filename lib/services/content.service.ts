@@ -1135,10 +1135,7 @@ export async function getDramaById(id: string): Promise<Drama | null> {
 
   // 2. Server-side or Node test context
   try {
-    if (
-      process.env.CONTENT_SUPABASE_SERVICE_ROLE_KEY ||
-      process.env.SUPABASE_CONTENT_SERVICE_ROLE_KEY
-    ) {
+    if (process.env.SUPABASE_SERVICE_ROLE_KEY) {
       const adminClient = getContentAdminClient();
       const { data, error } = await adminClient
         .from("titles")
@@ -1250,10 +1247,7 @@ export async function getAdminDramas(
 
   // 2. Server-side or Node test context
   try {
-    if (
-      process.env.CONTENT_SUPABASE_SERVICE_ROLE_KEY ||
-      process.env.SUPABASE_CONTENT_SERVICE_ROLE_KEY
-    ) {
+    if (process.env.SUPABASE_SERVICE_ROLE_KEY) {
       const adminClient = getContentAdminClient();
       let query = adminClient
         .from("titles")

@@ -297,13 +297,7 @@ describe("Task 16.4: Drama Lifecycle Actions & Bulk Operations", () => {
   /* Test 2: Preview Token Cryptographic Verification                           */
   /* -------------------------------------------------------------------------- */
   it("has no built-in preview secret: signing throws and verification fails when unconfigured", () => {
-    const names = [
-      "PREVIEW_SECRET",
-      "USER_SUPABASE_SERVICE_ROLE_KEY",
-      "SUPABASE_SERVICE_ROLE_KEY",
-      "CONTENT_SUPABASE_SERVICE_ROLE_KEY",
-      "SUPABASE_CONTENT_SERVICE_ROLE_KEY",
-    ];
+    const names = ["PREVIEW_SECRET", "SUPABASE_SERVICE_ROLE_KEY"];
     const saved = names.map((name) => process.env[name]);
     const token = generatePreviewToken("test-drama-id", "secret-draft-slug-ds", 60000);
     for (const name of names) delete process.env[name];
