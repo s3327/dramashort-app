@@ -1,3 +1,5 @@
+-- Ported from the dramashort-user chain (20261008180000_analytics_rollups.sql) by ADR-0005.
+-- The single project is built from this chain (ADR-0005); this file runs after the catalog chain.
 -- ==============================================================================
 -- Migration: Analytics Rollups (Task 15.3, ADR-0003)
 -- Description: Creates title_stats_daily and episode_stats_daily summary tables,

@@ -283,13 +283,8 @@ describe("Task 16.4: Drama Lifecycle Actions & Bulk Operations", () => {
       process.cwd(),
       "supabase/migrations/20261009140000_drama_lifecycle_and_audit.sql"
     );
-    const migrationUserPath = path.resolve(
-      process.cwd(),
-      "supabase/user/supabase/migrations/20261009140000_drama_lifecycle_and_audit.sql"
-    );
 
     assert.ok(fs.existsSync(migrationContentPath), "Content migration must exist");
-    assert.ok(fs.existsSync(migrationUserPath), "User migration mirror must exist");
 
     const sql = fs.readFileSync(migrationContentPath, "utf8");
     assert.match(sql, /has_been_published\s+BOOLEAN/i, "Must add has_been_published column");

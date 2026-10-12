@@ -1,3 +1,5 @@
+-- Ported from the dramashort-user chain (20260930150000_user_schema.sql) by ADR-0005.
+-- The single project is built from this chain (ADR-0005); this file runs after the catalog chain.
 -- ============================================================================
 -- USER & ENGAGEMENT DATABASE SCHEMA (Project 2: DramaShort App Specific)
 -- ============================================================================

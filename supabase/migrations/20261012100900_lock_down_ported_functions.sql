@@ -1,3 +1,7 @@
+-- ADR-0005: copy of 20261010110000_lock_down_function_execute.sql. The functions it
+-- locks that come from the dramashort-user chain (fulfill_payment_order,
+-- rollup_daily_playback_stats) are created by the ported migrations above, after the
+-- original runs in this chain, so its statements are applied again here.
 -- ============================================================================
 -- SECURITY: LOCK DOWN EXECUTE ON PRIVILEGED (SECURITY DEFINER) FUNCTIONS
 -- ============================================================================

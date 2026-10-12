@@ -1,3 +1,5 @@
+-- Ported from the dramashort-user chain (20261004120000_harden_rls_and_grants.sql) by ADR-0005.
+-- The single project is built from this chain (ADR-0005); this file runs after the catalog chain.
 -- ============================================================================
 -- TASK 10.2: USER DATABASE RLS & COLUMN-LEVEL PRIVILEGE HARDENING
 -- ============================================================================

@@ -41,10 +41,8 @@ describe("Support Contact & Report Issue Pipeline (Task 11.4)", () => {
     const migrationPath = path.join(
       process.cwd(),
       "supabase",
-      "user",
-      "supabase",
       "migrations",
-      "20261005160000_support_tickets.sql"
+      "20261012100300_support_tickets.sql"
     );
 
     it("migration file exists in User DB migrations directory", () => {

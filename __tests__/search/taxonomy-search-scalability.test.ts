@@ -21,10 +21,6 @@ import { setTestContentClient } from "@/lib/supabase/content";
 
 describe("Task 13.5: Search & Taxonomy Scalability Contracts", () => {
   const rootDir = process.cwd();
-  const userMigrationPath = path.resolve(
-    rootDir,
-    "supabase/user/supabase/migrations/20261008120000_search_and_taxonomy_scalability.sql"
-  );
   const contentMigrationPath = path.resolve(
     rootDir,
     "supabase/migrations/20261008120000_search_and_taxonomy_scalability.sql"
@@ -38,21 +34,14 @@ describe("Task 13.5: Search & Taxonomy Scalability Contracts", () => {
   // 1. Database Migrations, Indexing & RPC Definitions (R1 & R2)
   // ==========================================================================
   describe("1. Database Migrations, Indexing & RPC Definitions (R1 & R2)", () => {
-    it("migration files exist on disk for both user and content databases", () => {
-      assert.ok(fs.existsSync(userMigrationPath), "User DB migration file must exist");
+    it("migration file exists in the single chain", () => {
       assert.ok(fs.existsSync(contentMigrationPath), "Content DB migration file must exist");
-      assert.ok(fs.statSync(userMigrationPath).size > 1500, "User migration must be substantive");
       assert.ok(fs.statSync(contentMigrationPath).size > 1500, "Content migration must be substantive");
     });
 
     it("enables pg_trgm extension in PostgreSQL", () => {
-      const userSql = fs.readFileSync(userMigrationPath, "utf-8");
       const contentSql = fs.readFileSync(contentMigrationPath, "utf-8");
 
-      assert.ok(
-        userSql.includes("CREATE EXTENSION IF NOT EXISTS pg_trgm;"),
-        "User DB migration must enable pg_trgm"
-      );
       assert.ok(
         contentSql.includes("CREATE EXTENSION IF NOT EXISTS pg_trgm;"),
         "Content DB migration must enable pg_trgm"
@@ -60,26 +49,10 @@ describe("Task 13.5: Search & Taxonomy Scalability Contracts", () => {
     });
 
     it("creates GIN trigram indexes on title and synopsis using gin_trgm_ops", () => {
-      const userSql = fs.readFileSync(userMigrationPath, "utf-8");
       const contentSql = fs.readFileSync(contentMigrationPath, "utf-8");
 
       // User DB migration: content.titles GIN trigram indexes
-      assert.ok(
-        userSql.includes("idx_content_titles_title_trgm") &&
-          userSql.includes("content.titles USING gin (title gin_trgm_ops)"),
-        "User migration must create GIN trigram index on content.titles(title)"
-      );
-      assert.ok(
-        userSql.includes("idx_content_titles_synopsis_trgm") &&
-          userSql.includes("content.titles USING gin (synopsis gin_trgm_ops)"),
-        "User migration must create GIN trigram index on content.titles(synopsis)"
-      );
       // Dual-mode compatibility for public.titles
-      assert.ok(
-        userSql.includes("idx_public_titles_title_trgm") &&
-          userSql.includes("public.titles USING gin (title gin_trgm_ops)"),
-        "User migration must support GIN trigram index across public.titles"
-      );
 
       // Content DB migration: public.titles GIN trigram indexes
       assert.ok(
@@ -95,15 +68,9 @@ describe("Task 13.5: Search & Taxonomy Scalability Contracts", () => {
     });
 
     it("creates GIN index on tags text array and B-tree index on genre where status = 'Published'", () => {
-      const userSql = fs.readFileSync(userMigrationPath, "utf-8");
       const contentSql = fs.readFileSync(contentMigrationPath, "utf-8");
 
       // Tags GIN
-      assert.ok(
-        userSql.includes("idx_content_titles_tags_gin") &&
-          userSql.includes("content.titles USING gin (tags)"),
-        "User migration must create GIN index on content.titles(tags)"
-      );
       assert.ok(
         contentSql.includes("idx_titles_tags_gin") &&
           contentSql.includes("public.titles USING gin (tags)"),
@@ -112,11 +79,6 @@ describe("Task 13.5: Search & Taxonomy Scalability Contracts", () => {
 
       // Genre B-tree partial index
       assert.ok(
-        userSql.includes("idx_content_titles_genre_published") &&
-          userSql.includes("content.titles (genre) WHERE status = 'Published'"),
-        "User migration must create partial B-tree index on published genres"
-      );
-      assert.ok(
         contentSql.includes("idx_titles_genre_published") &&
           contentSql.includes("public.titles (genre) WHERE status = 'Published'"),
         "Content migration must create partial B-tree index on published genres"
@@ -124,25 +86,25 @@ describe("Task 13.5: Search & Taxonomy Scalability Contracts", () => {
     });
 
     it("defines PostgreSQL aggregation and search RPCs with SECURITY DEFINER and search_path", () => {
-      const userSql = fs.readFileSync(userMigrationPath, "utf-8");
+      const contentSql = fs.readFileSync(contentMigrationPath, "utf-8");
 
       // Verify function definitions
-      assert.ok(userSql.includes("FUNCTION content.get_distinct_genres()"));
-      assert.ok(userSql.includes("FUNCTION content.get_popular_tags("));
-      assert.ok(userSql.includes("FUNCTION content.get_taxonomy_counts()"));
-      assert.ok(userSql.includes("FUNCTION content.search_dramas("));
+      assert.ok(contentSql.includes("FUNCTION public.get_distinct_genres()"));
+      assert.ok(contentSql.includes("FUNCTION public.get_popular_tags("));
+      assert.ok(contentSql.includes("FUNCTION public.get_taxonomy_counts()"));
+      assert.ok(contentSql.includes("FUNCTION public.search_dramas("));
 
       // Verify SECURITY DEFINER & explicit search_path
-      assert.ok(userSql.includes("SECURITY DEFINER"));
-      assert.ok(userSql.includes("SET search_path = content, public, pg_temp"));
+      assert.ok(contentSql.includes("SECURITY DEFINER"));
+      assert.ok(contentSql.includes("SET search_path = public, pg_temp"));
 
       // Verify SQL contains direct in-database aggregations
-      assert.ok(userSql.includes("SELECT DISTINCT genre"));
-      assert.ok(userSql.includes("SELECT unnest(tags) AS tag, count(*)"));
+      assert.ok(contentSql.includes("SELECT DISTINCT genre"));
+      assert.ok(contentSql.includes("unnest(tags)"));
 
       // Verify execution permissions granted to anon, authenticated, service_role
-      assert.ok(userSql.includes("GRANT EXECUTE ON FUNCTION content.get_distinct_genres() TO anon, authenticated, service_role;"));
-      assert.ok(userSql.includes("GRANT EXECUTE ON FUNCTION content.search_dramas(TEXT, TEXT, UUID, TEXT[], TEXT, INT, INT) TO anon, authenticated, service_role;"));
+      assert.ok(contentSql.includes("GRANT EXECUTE ON FUNCTION public.get_distinct_genres() TO anon, authenticated, service_role;"));
+      assert.ok(contentSql.includes("GRANT EXECUTE ON FUNCTION public.search_dramas(TEXT, TEXT, UUID, TEXT[], TEXT, INT, INT) TO anon, authenticated, service_role;"));
     });
   });
 

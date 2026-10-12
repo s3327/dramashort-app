@@ -19,10 +19,8 @@ test("Task 15.3: Database migration defines title_stats_daily, episode_stats_dai
   const migrationPath = path.join(
     ROOT,
     "supabase",
-    "user",
-    "supabase",
     "migrations",
-    "20261008180000_analytics_rollups.sql"
+    "20261012100600_analytics_rollups.sql"
   );
   assert.ok(fs.existsSync(migrationPath), "Migration 20261008180000_analytics_rollups.sql must exist");
 

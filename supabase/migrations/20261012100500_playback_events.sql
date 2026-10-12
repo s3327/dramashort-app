@@ -1,3 +1,5 @@
+-- Ported from the dramashort-user chain (20261008170000_playback_events.sql) by ADR-0005.
+-- The single project is built from this chain (ADR-0005); this file runs after the catalog chain.
 -- Migration: 20261008170000_playback_events.sql
 -- Description: In-database playback events table and security policies for hybrid analytics (Task 15.1, ADR-0003)
 

@@ -1,3 +1,5 @@
+-- Ported from the dramashort-user chain (20261005160000_support_tickets.sql) by ADR-0005.
+-- The single project is built from this chain (ADR-0005); this file runs after the catalog chain.
 -- ============================================================================
 -- TASK 11.4: SUPPORT TICKETS & REPORT ISSUE PIPELINE
 -- ============================================================================
@@ -36,3 +38,21 @@ REVOKE ALL ON TABLE public.support_tickets FROM anon, authenticated;
 
 -- Grant all privileges exclusively to the service_role
 GRANT ALL ON TABLE public.support_tickets TO service_role;
+
+-- The catalog chain's copy of Task 16.10 (20261009200000) already created
+-- support_tickets without this foreign key, so CREATE TABLE IF NOT EXISTS above was a no-op.
+ALTER TABLE public.support_tickets DROP CONSTRAINT IF EXISTS support_tickets_user_id_fkey;
+ALTER TABLE public.support_tickets
+  ADD CONSTRAINT support_tickets_user_id_fkey
+  FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE SET NULL;
+
+-- The same catalog-side copy created assigned_to and resolved_by without the foreign
+-- keys the dramashort-user chain gave them (Task 16.10).
+ALTER TABLE public.support_tickets DROP CONSTRAINT IF EXISTS support_tickets_assigned_to_fkey;
+ALTER TABLE public.support_tickets
+  ADD CONSTRAINT support_tickets_assigned_to_fkey
+  FOREIGN KEY (assigned_to) REFERENCES auth.users(id) ON DELETE SET NULL;
+ALTER TABLE public.support_tickets DROP CONSTRAINT IF EXISTS support_tickets_resolved_by_fkey;
+ALTER TABLE public.support_tickets
+  ADD CONSTRAINT support_tickets_resolved_by_fkey
+  FOREIGN KEY (resolved_by) REFERENCES auth.users(id) ON DELETE SET NULL;

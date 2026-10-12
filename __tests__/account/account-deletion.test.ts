@@ -263,7 +263,7 @@ describe("Account Deletion & Data Erasure (Task 11.3)", () => {
   describe("Database Cascading Foreign Key Contracts", () => {
     const userMigrationPath = path.resolve(
       process.cwd(),
-      "supabase/user/supabase/migrations/20260930150000_user_schema.sql"
+      "supabase/migrations/20261012100000_user_schema.sql"
     );
 
     it("enforces ON DELETE CASCADE on profiles referencing auth.users", () => {

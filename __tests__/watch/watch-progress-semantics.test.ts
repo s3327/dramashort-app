@@ -382,7 +382,7 @@ describe("Task 12.3: Watch Progress Semantics & Reliable Persistence", () => {
     it("verifies user database migration file exists and defines position_seconds and duration_seconds", () => {
       const migrationFile = path.resolve(
         process.cwd(),
-        "supabase/user/supabase/migrations/20261006120000_watch_progress_semantics.sql"
+        "supabase/migrations/20261012100400_watch_progress_semantics.sql"
       );
       assert.ok(fs.existsSync(migrationFile), "Migration file must exist");
       const sql = fs.readFileSync(migrationFile, "utf-8");

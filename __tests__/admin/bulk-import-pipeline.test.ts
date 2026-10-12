@@ -15,18 +15,13 @@ import {
 
 describe("Task 16.11: Bulk Import Pipeline", () => {
   describe("Database Migration Integrity (20261009210000_bulk_import_pipeline.sql)", () => {
-    test("migration files exist in Content and User DBs", () => {
+    test("migration file exists in the single chain", () => {
       const contentMig = path.resolve(
         process.cwd(),
         "supabase/migrations/20261009210000_bulk_import_pipeline.sql"
       );
-      const userMig = path.resolve(
-        process.cwd(),
-        "supabase/user/supabase/migrations/20261009210000_bulk_import_pipeline.sql"
-      );
 
       assert.ok(fs.existsSync(contentMig), "Content migration must exist");
-      assert.ok(fs.existsSync(userMig), "User migration must exist");
 
       const sql = fs.readFileSync(contentMig, "utf-8");
       assert.ok(sql.includes("external_source"), "titles must have external_source column");

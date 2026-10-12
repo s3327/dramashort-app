@@ -1,3 +1,5 @@
+-- Ported from the dramashort-user chain (20261010100000_payment_orders.sql) by ADR-0005.
+-- The single project is built from this chain (ADR-0005); this file runs after the catalog chain.
 -- ============================================================================
 -- TASK P0 / STEP 3: PAYMENT ORDERS, WEBHOOK DEDUPLICATION & ATOMIC FULFILLMENT
 -- ============================================================================

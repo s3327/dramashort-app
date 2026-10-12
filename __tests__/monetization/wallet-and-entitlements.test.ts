@@ -180,28 +180,19 @@ function makeEpisodeFixture(overrides: Partial<EpisodePlaybackInfo> = {}): Episo
 
 describe("Task 8.1: Monetization Database Schema, Wallets, Entitlements & Daily Rewards", () => {
   describe("1. Database Schema Migration Invariants & Security Hardening", () => {
-    const userMigrationPath = path.join(
-      process.cwd(),
-      "supabase",
-      "user",
-      "supabase",
-      "migrations",
-      "20261009220000_monetization_wallets_and_entitlements.sql"
-    );
-    const contentMigrationPath = path.join(
+    const migrationPath = path.join(
       process.cwd(),
       "supabase",
       "migrations",
       "20261009220000_monetization_wallets_and_entitlements.sql"
     );
 
-    it("verifies dual migration files exist for ADR-0003 topology parity", () => {
-      assert.equal(fs.existsSync(userMigrationPath), true);
-      assert.equal(fs.existsSync(contentMigrationPath), true);
+    it("verifies the monetization migration exists in the single chain", () => {
+      assert.equal(fs.existsSync(migrationPath), true);
     });
 
     it("defines profiles mirror columns, wallets, coin_transactions, user_unlocked_episodes, and daily_checkins", () => {
-      const sql = fs.readFileSync(userMigrationPath, "utf-8");
+      const sql = fs.readFileSync(migrationPath, "utf-8");
 
       assert.match(sql, /ALTER TABLE public\.profiles\s+ADD COLUMN IF NOT EXISTS coin_balance/);
       assert.match(sql, /ADD COLUMN IF NOT EXISTS is_vip BOOLEAN/);
@@ -212,7 +203,7 @@ describe("Task 8.1: Monetization Database Schema, Wallets, Entitlements & Daily 
     });
 
     it("enforces Row-Level Security and least-privilege grants", () => {
-      const sql = fs.readFileSync(userMigrationPath, "utf-8");
+      const sql = fs.readFileSync(migrationPath, "utf-8");
 
       assert.match(sql, /ALTER TABLE public\.wallets ENABLE ROW LEVEL SECURITY;/);
       assert.match(sql, /ALTER TABLE public\.coin_transactions ENABLE ROW LEVEL SECURITY;/);
@@ -226,7 +217,7 @@ describe("Task 8.1: Monetization Database Schema, Wallets, Entitlements & Daily 
     });
 
     it("defines atomic SECURITY DEFINER stored procedures with search_path protection", () => {
-      const sql = fs.readFileSync(userMigrationPath, "utf-8");
+      const sql = fs.readFileSync(migrationPath, "utf-8");
 
       assert.match(sql, /CREATE OR REPLACE FUNCTION public\.ensure_user_wallet/);
       assert.match(sql, /CREATE OR REPLACE FUNCTION public\.credit_wallet_coins/);

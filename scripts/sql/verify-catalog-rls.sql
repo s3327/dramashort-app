@@ -6,7 +6,7 @@
 -- 3. anon can read public columns of episodes belonging to Published titles
 -- 4. anon CANNOT read episodes belonging to Draft, Scheduled, or Archived titles
 -- 5. service_role / postgres has full access to episode_media and episodes
--- 6. anon / authenticated hold no write privilege on any public table
+-- 6. anon / authenticated hold no write privilege on any public table except the five owner-scoped user tables
 -- 7. a table created by a later migration gets no client grants by default
 --
 -- Run against a LOCAL database with all content migrations applied. Everything
@@ -91,6 +91,9 @@ END $$;
 
 -- Test 5: client roles hold no write privilege on any table
 -- (20261011110000_revoke_client_write_grants.sql)
+-- ADR-0005: the single database also holds the user-side tables. Signed-in users
+-- write their own rows in these five (row security limits them to their own rows;
+-- verify-user-side-rls.sql checks those grants and policies), so they are excluded.
 RESET ROLE;
 DO $$
 DECLARE
@@ -101,6 +104,7 @@ BEGIN
     FROM pg_class c
     JOIN pg_namespace n ON n.oid = c.relnamespace
     WHERE n.nspname = 'public' AND c.relkind = 'r'
+      AND c.relname NOT IN ('profiles', 'favorites', 'watch_history', 'custom_lists', 'custom_list_items')
   LOOP
     IF has_table_privilege('anon', t.oid, 'INSERT, UPDATE, DELETE, TRUNCATE')
        OR has_table_privilege('authenticated', t.oid, 'INSERT, UPDATE, DELETE, TRUNCATE')

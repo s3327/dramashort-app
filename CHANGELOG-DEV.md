@@ -4237,3 +4237,29 @@
 * **Verification**:
   - `npm test`: 1,208 / 1,208 (three `[recordAuditLog] Unexpected error` console lines appear as before this change).
   - `npx supabase start -x studio,logflare,vector`: 20 migrations applied. `verify-catalog-rls.sql` with `ON_ERROR_STOP`: exit 0, 5 `PASS` notices. Fingerprint of this stack vs the content reference: `Fingerprints match.`
+
+---
+
+## [2026-10-12] Task 13.7 / Plan Task 4: User-Side Schema Ported into the Single Chain
+* **Milestone**: Task 13.7, Phase 1 (local), plan Task 4.
+* **Goal**: One migration chain that builds every table the app uses, checked object by object against the two databases it replaces.
+* **Implementation Steps Taken**:
+  1. Failing check first: the single stack (catalog chain only) compared with both references reported 236 missing user-side facts (`profiles.id`, `on_auth_user_created`, …).
+  2. `git mv` of eight user-chain migrations to versions `20261012100000`–`20261012100800` (user schema, table grants, RLS hardening, support tickets, watch progress, playback events, analytics rollups, payment orders), each with a two-line provenance header. In the grants file the two schema-wide client grants were removed (they would re-open catalog writes) and the sequence grant narrowed to `postgres, service_role`.
+  3. Added `20261012100700_profile_columns_for_admin_and_wallets.sql` (the `public.profiles` statements of 20261009170000 and 20261009220000, which skip themselves while `profiles` does not exist; compared statement by statement) and `20261012100900_lock_down_ported_functions.sql` (copy of the function lock-down, so it covers `fulfill_payment_order` and `rollup_daily_playback_stats`).
+  4. `git rm -r supabase/user`: the consolidate-content-schema migration of ADR-0003, the user copies of 15 shared migrations, and the user-only `get_distinct_genres` fix.
+  5. First comparison after the port: 26 differences. Fixed in the port: `support_tickets` foreign keys on `user_id`, `assigned_to`, `resolved_by` (the catalog-side copy of Task 16.10 had created those columns without them). Recorded as reviewed exceptions: 22 facts of the `title_id` link to `content.titles` (columns, unique constraints, indexes, sync trigger and function; the app reads and writes these tables by `title_slug` only) and `handle_new_user()` EXECUTE for anon/authenticated (a trigger function; PostgreSQL checks EXECUTE when a trigger is created, not when it fires).
+  6. `verify-catalog-rls.sql` failed on the merged database (`a client role holds a write privilege on public.favorites`): its "no client writes" check was written for a catalog-only database. It now skips the five tables the user reference itself lets signed-in users write (`profiles` columns, `favorites`, `watch_history`, `custom_lists`, `custom_list_items`), all owner-scoped by row security and covered by `verify-user-side-rls.sql`.
+  7. Tests: repointed reads of ported files; removed the "user mirror must exist" checks and user-copy text checks from 8 test files; rewrote the search RPC test against the catalog copy (`public.*` functions); `rls-contract` now reads one chain, checks both lock-down files, and gains the ADR-0005 guard that no ported migration grants schema-wide table access to client roles (it matches the original user grants file and not the ported one); deleted `__tests__/database/topology-consolidation.test.ts` (its subject migration is gone; Task 5 replaces the credential tests).
+* **Key File Diffs**:
+  - Moved/renamed: 8 migrations. Created: 2 migrations. Deleted: 16 user-chain files, 1 test file.
+  - Modified: `supabase/migrations/20261012100100_*`, `20261012100300_*` (after the move), `scripts/db/merge-allowed-differences.json`, `scripts/sql/verify-catalog-rls.sql`, 13 test files, `ROADMAP.md`, `CHANGELOG-DEV.md`.
+* **Regression Analysis & Cross-System Impact**:
+  - The live projects are unchanged; the new chain is applied only to local stacks so far.
+  - Dropping the `title_id` link removes nothing the app uses; a foreign key from engagement rows to `titles` could be added later as its own migration.
+  - The pgTAP files in `supabase/tests/` were not run (they need a `tests.rls_enabled` helper the repository does not install, as recorded on 2026-10-11).
+* **Verification**:
+  - `npx supabase db reset`: 30 migrations applied on a fresh local database.
+  - Fingerprint comparison with both references: `Fingerprints match.` (24 reviewed exceptions).
+  - `verify-user-side-rls.sql`: exit 0, 25 `PASS`, `ALL TASK 10.2 CHECKS PASSED`. `verify-catalog-rls.sql`: exit 0, 5 `PASS`.
+  - `npm test`: 1,176 / 1,176. `npx tsc --noEmit`: 0 errors.

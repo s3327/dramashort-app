@@ -5,18 +5,14 @@ import path from "node:path";
 
 describe("Database RLS & Schema Access Contract (Task 10.9)", () => {
   const rootDir = process.cwd();
-  // ADR-0005: the catalog chain lives in supabase/migrations; the user chain is still in its old folder until it is ported.
-  const migrationsDirOf = (db: string) =>
-    db === "content"
-      ? path.join(rootDir, "supabase", "migrations")
-      : path.join(rootDir, "supabase", "user", "supabase", "migrations");
+  // ADR-0005: one migration chain for the single project.
+  const migrationsDir = path.join(rootDir, "supabase", "migrations");
 
-  describe("User Database Migration Contracts (Project 2)", () => {
-    const userMigrationsDir = path.join(rootDir, "supabase", "user", "supabase", "migrations");
+  describe("User-side Migration Contracts", () => {
     const userSql = fs
-      .readdirSync(userMigrationsDir)
+      .readdirSync(migrationsDir)
       .filter((file) => file.endsWith(".sql"))
-      .map((file) => fs.readFileSync(path.join(userMigrationsDir, file), "utf8"))
+      .map((file) => fs.readFileSync(path.join(migrationsDir, file), "utf8"))
       .join("\n");
 
     it("verifies profiles table has Row Level Security enabled", () => {
@@ -56,7 +52,7 @@ describe("Database RLS & Schema Access Contract (Task 10.9)", () => {
     });
   });
 
-  describe("Privileged Function EXECUTE Lockdown (both projects)", () => {
+  describe("Privileged Function EXECUTE Lockdown", () => {
     const privilegedFunctions = [
       "ensure_user_wallet",
       "credit_wallet_coins",
@@ -67,10 +63,11 @@ describe("Database RLS & Schema Access Contract (Task 10.9)", () => {
       "rollup_daily_playback_stats",
     ];
 
-    for (const db of ["user", "content"]) {
-      it(`CRITICAL: ${db} DB revokes EXECUTE on wallet and payment procedures from clients`, () => {
-        const migrationPath = path.join(migrationsDirOf(db), "20261010110000_lock_down_function_execute.sql");
-        assert.ok(fs.existsSync(migrationPath), `${db} lock-down migration must exist`);
+    // The original lock-down and its copy re-applied after the ported user-side functions (ADR-0005).
+    for (const file of ["20261010110000_lock_down_function_execute.sql", "20261012100900_lock_down_ported_functions.sql"]) {
+      it(`CRITICAL: ${file} revokes EXECUTE on wallet and payment procedures from clients`, () => {
+        const migrationPath = path.join(migrationsDir, file);
+        assert.ok(fs.existsSync(migrationPath), `${file} must exist`);
         const sql = fs.readFileSync(migrationPath, "utf8");
 
         for (const fn of privilegedFunctions) {
@@ -83,19 +80,16 @@ describe("Database RLS & Schema Access Contract (Task 10.9)", () => {
     }
 
     it("no migration re-grants a privileged procedure to anon or authenticated", () => {
-      for (const db of ["user", "content"]) {
-        const dir = migrationsDirOf(db);
-        const sql = fs
-          .readdirSync(dir)
-          .filter((file) => file.endsWith(".sql"))
-          .map((file) => fs.readFileSync(path.join(dir, file), "utf8"))
-          .join("\n");
-        for (const fn of privilegedFunctions) {
-          assert.doesNotMatch(
-            sql,
-            new RegExp(`GRANT\\s+EXECUTE\\s+ON\\s+FUNCTION\\s+(public\\.)?${fn}\\b[^;]*\\b(anon|authenticated)\\b`, "i")
-          );
-        }
+      const sql = fs
+        .readdirSync(migrationsDir)
+        .filter((file) => file.endsWith(".sql"))
+        .map((file) => fs.readFileSync(path.join(migrationsDir, file), "utf8"))
+        .join("\n");
+      for (const fn of privilegedFunctions) {
+        assert.doesNotMatch(
+          sql,
+          new RegExp(`GRANT\\s+EXECUTE\\s+ON\\s+FUNCTION\\s+(public\\.)?${fn}\\b[^;]*\\b(anon|authenticated)\\b`, "i")
+        );
       }
     });
   });
@@ -124,17 +118,12 @@ describe("Database RLS & Schema Access Contract (Task 10.9)", () => {
     });
   });
 
-  describe("User Database get_distinct_genres() Fix (20261011100000)", () => {
-    const sql = fs.readFileSync(
-      path.join(rootDir, "supabase", "user", "supabase", "migrations", "20261011100000_fix_distinct_genres_in_user_db.sql"),
-      "utf8"
-    );
-
-    it("only touches public.titles behind an existence check and otherwise delegates to the content schema", () => {
-      assert.match(sql, /CREATE\s+OR\s+REPLACE\s+FUNCTION\s+public\.get_distinct_genres\(\)/i);
-      assert.match(sql, /to_regclass\('public\.titles'\)\s+IS\s+NOT\s+NULL/i);
-      assert.match(sql, /RETURN\s+QUERY\s+EXECUTE/i);
-      assert.match(sql, /FROM\s+content\.get_distinct_genres\(\)/i);
+  describe("Ported User-side Migrations (ADR-0005)", () => {
+    it("ADR-0005: no ported migration grants schema-wide table access to client roles", () => {
+      for (const file of fs.readdirSync(migrationsDir).filter((f) => f >= "20261012100000")) {
+        const sql = fs.readFileSync(path.join(migrationsDir, file), "utf8");
+        assert.doesNotMatch(sql, /GRANT\s+[^;]*ON\s+ALL\s+TABLES\s+IN\s+SCHEMA\s+public\s+TO\s+[^;]*(anon|authenticated)/i, file);
+      }
     });
   });
 
