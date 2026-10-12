@@ -4301,3 +4301,29 @@
   - Modified: 17 importing files, 2 test files (fixtures), `package.json`, `ROADMAP.md`, `CHANGELOG-DEV.md`.
 * **Regression Analysis & Cross-System Impact**: Type-only change; no runtime code changed. Application code type-checks against the real merged schema for the first time.
 * **Verification**: `npx tsc --noEmit`: 0 errors (4 before the fixture fix). `npm run lint`: 0 errors, 0 warnings. `npm test`: 1,185 passed, 1 skipped, 0 failed.
+
+---
+
+## [2026-10-12] Task 13.7 / Plan Task 7: Local Rehearsal of the Single-Project Setup
+* **Milestone**: Task 13.7, Phase 1 (local), plan Task 7.
+* **Goal**: Run the built app against one local database built from the single chain, signed in, before anything live changes.
+* **Implementation Steps Taken**:
+  1. `npx supabase db reset` (30 migrations), `npm run db:seed:dev`, `npm run admin:create` for a local-only admin account, and `npm run build`, all with the three variables exported for the local stack (exported variables override `.env.local`).
+  2. The plan's five browser checks against `npm run start` at 1280×800 and 390×844, scripted with Playwright (scripts kept in the git-ignored plan workspace) and read back from the database through the local service-role API.
+  3. All 9 Playwright journeys in the 3 browser profiles against the local stack.
+  No application code changed.
+* **Key File Diffs**: Modified: `ROADMAP.md`, `CHANGELOG-DEV.md`.
+* **Regression Analysis & Cross-System Impact**:
+  - Nothing live was touched; every write went to the local stack.
+  - On success `/auth/confirm` redirects to `https://<x-forwarded-host>/home`. That is right behind HTTPS (Vercel, a droplet with TLS), but a plain-http local production run cannot load that address, so the rehearsal read the redirect instead of following it. The page shown after confirming was therefore not exercised locally.
+  - The swipe-to-next-episode step runs on the two Chromium profiles only; on Mobile Safari the journey records it as skipped.
+* **Verification**:
+  - Setup: 30 migrations applied; seed reported 35 titles and 175 episodes; admin created with `profiles.role = 'admin'`; build compiled, 84/84 static pages.
+  - Check 1, sign up and sign in: the account is created; the signup trigger creates its profile with role `user`; the confirmation email arrives in the local mail viewer with an `/auth/confirm` link; the link answers 307 to `https://127.0.0.1:3000/home` and the account is marked confirmed; sign-in works at 1280×800 and at 390×844 with no "Failed to fetch", Content-Security-Policy or `127.0.0.1:54322` console messages.
+  - Check 2, favorite persists: the favorite is stored in `favorites`; it is shown after signing in from a fresh browser at 390×844; and it is shown after pressing "Log Out" (`/account` then redirects to `/login`) and signing back in in the same browser.
+  - Check 3, contact form: `/contact` creates one `support_tickets` row, with `user_id` set (the viewer was signed in); it appears in `/admin/support`.
+  - Check 4, admin: sign-in at `/admin/login` lands on `/admin/dashboard`; `/admin/dramas` shows Draft titles (4 of 6 on the first page) and Published titles (18 of 26); a synopsis edit is saved to the database, saving returns to the list, and the edit page shows the new value when opened again.
+  - Check 5: the viewer opening `/admin/dramas` is redirected to `/admin/login?error=unauthorized`.
+  - Result: 26 scripted checks, 26 passed (17 in the first run; 9 in a follow-up that added signing out in the same browser and the Published titles).
+  - `npx playwright test`: 27 passed (11.3 min); the swipe journey carries the "swipe gesture not exercised on webkit" annotation on Mobile Safari only (read from the HTML report data).
+  - Server logs: no error- or warn-level request lines. One `[auth/confirm] verifyOtp error: Email link is invalid or has expired`, from an earlier aborted attempt that requested `/auth/confirm` twice 15 s apart; a confirmation link works once.
