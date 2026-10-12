@@ -31,7 +31,7 @@
  */
 
 import { createClient, type User } from "@supabase/supabase-js";
-import type { Database } from "@/types/supabase-user";
+import type { Database } from "@/types/supabase";
 import * as crypto from "crypto";
 import * as dotenv from "dotenv";
 import * as path from "path";

@@ -13,7 +13,7 @@ import {
 } from "@/lib/validation/drama";
 import { resolveChannelByName } from "@/lib/admin/resolve-channel";
 import { generateUniqueDramaSlug, getChannelCode } from "@/lib/slug";
-import type { Database } from "@/types/supabase-content";
+import type { Database } from "@/types/supabase";
 
 type TitleInsert = Database["public"]["Tables"]["titles"]["Insert"];
 

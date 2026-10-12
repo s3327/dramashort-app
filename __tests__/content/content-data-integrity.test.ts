@@ -18,7 +18,7 @@ import {
   escapePostgrestValue,
   mapTitleRowToTitle,
 } from "@/lib/services/content.service";
-import type { Database } from "@/types/supabase-content";
+import type { Database } from "@/types/supabase";
 
 type TitleRow = Database["public"]["Tables"]["titles"]["Row"];
 
@@ -312,6 +312,15 @@ describe("Task 12.7: Content Data Integrity Rules", () => {
   describe("5. episodes_available & Channel FK Mapping (mapTitleRowToTitle)", () => {
     test("maps episodes_available to episodesAvailable in Title domain model", () => {
       const row: TitleRow = {
+        banner_url: null,
+        external_id: null,
+        external_source: null,
+        featured_rank: null,
+        free_episodes_count: 5,
+        genre_id: null,
+        has_been_published: true,
+        hero_tagline: null,
+        publish_at: null,
         id: "d-1",
         title: "Test",
         slug: "test-ds",

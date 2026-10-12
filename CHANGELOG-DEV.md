@@ -4286,3 +4286,18 @@
   - New tests failed first, then passed. `npx tsc --noEmit`: 0 errors. `npm run lint`: 0 errors, 0 warnings. `npm test`: 1,185 passed, 1 skipped (the bundle test, variable not set), 0 failed; console output identical to the previous run apart from the renamed variable.
   - Build with `NEXT_PUBLIC_SUPABASE_URL=https://abcdefghijklmnopqrst.supabase.co`: passed; the bundle test ran and passed; the URL is inlined in 3 client chunks; `127.0.0.1:54322` appears in none.
   - **Not run yet**: sign-in in a browser (plan Task 7).
+
+---
+
+## [2026-10-12] Task 13.7 / Plan Task 6: One Generated Types File
+* **Milestone**: Task 13.7, Phase 1 (local), plan Task 6.
+* **Goal**: One `Database` type for the single project instead of two stale per-project files.
+* **Implementation Steps Taken**:
+  1. `npx supabase gen types typescript --local --schema public > types/supabase.ts` against the local merged database (30 migrations). Kept as generated (the CLI leaves it unformatted; its suggested formatter is not a project dependency).
+  2. Switched the 17 imports of `@/types/supabase-content` / `@/types/supabase-user` to `@/types/supabase`; deleted both old files; `package.json` `types` script (`--linked`) replaces `types:content`, `types:user`, `types:all`.
+  3. `tsc` then reported 4 errors, all typed row fixtures in tests missing columns that exist in the database but were absent from the stale `supabase-content.ts` (titles: `banner_url`, `external_id`, `external_source`, `featured_rank`, `free_episodes_count`, `genre_id`, `has_been_published`, `hero_tagline`, `publish_at`; channels: `updated_at`; episodes: `external_id`, `external_source`, `release_at`). Added them to the fixtures.
+* **Key File Diffs**:
+  - Created: `types/supabase.ts`. Deleted: `types/supabase-content.ts`, `types/supabase-user.ts`.
+  - Modified: 17 importing files, 2 test files (fixtures), `package.json`, `ROADMAP.md`, `CHANGELOG-DEV.md`.
+* **Regression Analysis & Cross-System Impact**: Type-only change; no runtime code changed. Application code type-checks against the real merged schema for the first time.
+* **Verification**: `npx tsc --noEmit`: 0 errors (4 before the fixture fix). `npm run lint`: 0 errors, 0 warnings. `npm test`: 1,185 passed, 1 skipped, 0 failed.

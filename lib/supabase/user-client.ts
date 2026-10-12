@@ -1,5 +1,5 @@
 import { createBrowserClient } from "@supabase/ssr";
-import type { Database } from "@/types/supabase-user";
+import type { Database } from "@/types/supabase";
 import { getSupabaseCredentials } from "@/lib/supabase/credentials";
 
 let testUserClient: any = null;

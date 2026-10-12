@@ -1,6 +1,6 @@
 import { cache } from "react";
 import { contentClient, getContentAdminClient, getTestContentClient } from "@/lib/supabase/content";
-import type { Database } from "@/types/supabase-content";
+import type { Database } from "@/types/supabase";
 import type {
   Title,
   TitleStatus,

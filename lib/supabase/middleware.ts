@@ -1,7 +1,7 @@
 import type { NextRequest, NextResponse } from "next/server";
 import { createServerClient, type CookieOptions } from "@supabase/ssr";
 import type { User } from "@supabase/supabase-js";
-import type { Database } from "@/types/supabase-user";
+import type { Database } from "@/types/supabase";
 
 import { getSupabaseCredentials } from "@/lib/supabase/credentials";
 

@@ -1,7 +1,7 @@
 import { createServerClient } from "@supabase/ssr";
 import { createClient } from "@supabase/supabase-js";
 import { cookies } from "next/headers";
-import type { Database } from "@/types/supabase-user";
+import type { Database } from "@/types/supabase";
 
 import { getSupabaseCredentials, getServiceRoleKey } from "@/lib/supabase/credentials";
 

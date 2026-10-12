@@ -1,5 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
-import type { Database } from "@/types/supabase-content";
+import type { Database } from "@/types/supabase";
 import { getSupabaseCredentials, getServiceRoleKey } from "@/lib/supabase/credentials";
 
 let testContentClient: any = null;

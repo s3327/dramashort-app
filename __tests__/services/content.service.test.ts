@@ -7,7 +7,7 @@ import {
 } from "@/lib/services/content.service";
 import { titles, getTitleBySlugOrFallback } from "@/data/titles.mock";
 import { getRelatedTitles } from "@/lib/getRelatedTitles";
-import type { Database } from "@/types/supabase-content";
+import type { Database } from "@/types/supabase";
 
 type TitleRow = Database["public"]["Tables"]["titles"]["Row"];
 type ChannelRow = Database["public"]["Tables"]["channels"]["Row"];
@@ -16,6 +16,15 @@ type EpisodeRow = Database["public"]["Tables"]["episodes"]["Row"];
 describe("Content Service Unit Tests", () => {
   test("mapTitleRowToTitle maps Supabase database row to Drama domain model", () => {
     const mockRow: TitleRow = {
+      banner_url: null,
+      external_id: null,
+      external_source: null,
+      featured_rank: null,
+      free_episodes_count: 5,
+      genre_id: null,
+      has_been_published: true,
+      hero_tagline: null,
+      publish_at: null,
       id: "drama-uuid-123",
       title: "My Secret Billionaire Husband",
       slug: "my-secret-billionaire-husband",
@@ -54,6 +63,7 @@ describe("Content Service Unit Tests", () => {
 
   test("mapChannelRowToChannel transforms Channel DB row", () => {
     const mockChannelRow: ChannelRow = {
+      updated_at: null,
       id: "chan-uuid-456",
       name: "DramaShort Originals",
       code: "DSO",
@@ -71,6 +81,9 @@ describe("Content Service Unit Tests", () => {
 
   test("mapEpisodeRowToEpisode transforms Episode DB row with fallback title", () => {
     const mockEpisodeRow: EpisodeRow = {
+      external_id: null,
+      external_source: null,
+      release_at: null,
       id: "ep-uuid-789",
       title_id: "drama-uuid-123",
       episode_number: 5,
