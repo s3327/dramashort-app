@@ -1,0 +1,8 @@
+# Supabase CLI state (ADR-0005: the repository root is the only workdir)
+.branches
+.temp
+
+# dotenvx
+.env.keys
+.env.local
+.env.*.local

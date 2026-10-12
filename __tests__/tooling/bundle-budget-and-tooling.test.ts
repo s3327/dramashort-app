@@ -236,6 +236,19 @@ describe("Task 17.3: Tooling Upgrades & Performance Budgets", () => {
       assert.match(result.stdout, /skipped 1/);
     });
 
+    // ADR-0005 decision 5: one workdir at the repository root; the CLI's own state stays out of git.
+    test("the Supabase workdir tracks only config, migrations, templates and tests", () => {
+      const git = (...args: string[]) => spawnSync("git", args, { cwd: ROOT, encoding: "utf8" });
+      const tracked = git("ls-files", "supabase").stdout.split("\n").filter(Boolean);
+      const unexpected = tracked.filter(
+        (f) => !/^supabase\/(config\.toml|\.gitignore|(migrations|templates|tests)\/.+)$/.test(f)
+      );
+      assert.deepEqual(unexpected, []);
+      for (const p of ["supabase/.branches/_current_branch", "supabase/.temp/project-ref", "supabase/.env.keys"]) {
+        assert.equal(git("check-ignore", "-q", "--no-index", p).status, 0, `${p} must be ignored`);
+      }
+    });
+
     test("the Supabase CLI used in CI matches the major version of the dev dependency", () => {
       const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, "package.json"), "utf-8"));
       const depMajor = String(pkg.devDependencies.supabase).replace(/^[^0-9]*/, "").split(".")[0];
