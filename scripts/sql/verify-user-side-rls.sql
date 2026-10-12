@@ -16,7 +16,8 @@
 -- ---------------------------------------------------------------- setup (postgres)
 DELETE FROM auth.users WHERE id IN (:'A', :'B');
 INSERT INTO auth.users (id, email, raw_user_meta_data)
-VALUES (:'A', 'a@test.local', '{"full_name":"User A"}'),
+-- A claims an admin role in its signup metadata, which any client can send to /auth/v1/signup.
+VALUES (:'A', 'a@test.local', '{"full_name":"User A","role":"admin"}'),
        (:'B', 'b@test.local', '{}');
 
 DO $$
@@ -28,7 +29,12 @@ BEGIN
   IF (SELECT display_name FROM public.profiles WHERE id = '22222222-2222-2222-2222-222222222222') <> 'b' THEN
     RAISE EXCEPTION 'FAIL trigger fallback display_name';
   END IF;
-  RAISE NOTICE 'PASS handle_new_user() creates profiles (search_path = '''')';
+  IF EXISTS (SELECT 1 FROM public.profiles
+             WHERE id IN ('11111111-1111-1111-1111-111111111111','22222222-2222-2222-2222-222222222222')
+               AND role IS DISTINCT FROM 'user') THEN
+    RAISE EXCEPTION 'FAIL signup created a profile with a role other than user (metadata role was trusted)';
+  END IF;
+  RAISE NOTICE 'PASS handle_new_user() creates profiles with role user, ignoring a role in signup metadata (search_path = '''')';
 END $$;
 
 INSERT INTO public.favorites (user_id, title_slug) VALUES (:'B', 'b-secret-fav');
