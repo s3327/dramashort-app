@@ -4363,3 +4363,47 @@
   - The restore check SQL ran on the local merged database and returned 0 orphaned rows for both tables.
   - `npx tsc --noEmit`: 0 errors.
   - `npm test`: 1,187 passed, 1 skipped (bundle test, variable not set), 0 failed.
+
+---
+
+## [2026-10-13] Task 13.7 / Phase 1 Final Review and Fix Pass
+* **Milestone**: Task 13.7, end of Phase 1 (local), before any live step.
+* **Goal**: An independent review of the whole branch (`6eaa6bc..0ca110e`), then one pass fixing what it found.
+* **Review**:
+  - One reviewer with a fresh context, read-only, no contact with the live projects. Verdict "With fixes": Critical 0, Important 3, Minor 7.
+  - The reviewer independently re-ran the fingerprint comparison ("Fingerprints match") and `npm test`, and queried grants, policies and functions on the merged local database directly.
+  - Two Minor findings were re-graded to Important by their effect (fixes 4 and 5 below). The other five Minor findings and the reviewer's "declined to judge" list are recorded with rulings in the plan ledger and reported to the owner.
+* **Fixes** (each with a test that failed first):
+  1. **`admin:create` and `db:seed:dev` refused only the old dramashort-user project.**
+     - The production check compared the URL with dramashort-user's ref, so it would not recognise the new project.
+     - After the switch, `--revoke` or `--reset-password` would have run on production without the confirmation flag. `db:clean:dev`, which deletes every episode, title and channel, had no check at all.
+     - Both scripts now treat any URL that is not a local stack (`127.0.0.1`, `localhost`, `[::1]`) as production and require `--confirm-production` (`scripts/lib/supabase-target.ts`).
+     - Tests run both scripts against `https://hosted.invalid`. Before the fix, the seed script printed "Tables cleared" and the admin script queried auth users; now both refuse before sending any request.
+  2. **A production build did not require `SUPABASE_SERVICE_ROLE_KEY`.** A deployment without it would build, then fail on payments, cron, `/contact` and account deletion. The validator now reports the missing key. Both CI build environments carry a non-credential value, and the CI comment no longer claims "Invalid API key".
+  3. **Plan Task 12 (catalog copy) would have stopped on `app_settings`.**
+     - Cause: the migrations seed the five default settings, so the data-only restore collides on `app_settings_pkey`.
+     - The command now runs `TRUNCATE public.app_settings` in the same transaction, so the copied settings replace the defaults.
+     - Step 3 checks `general.maintenanceMode`, which takes effect for the first time on the new project.
+     - Rehearsed locally with the plan's own commands. The local catalog was first given the live inventory's counts by running the migrations' genre, tag and `episode_media` backfills. Then: dump with `supabase db dump --local --data-only --schema public` (user tables excluded), then `supabase db reset`. The command as first written exited 3 (`Key (key)=(general) already exists`, everything rolled back); the amended command exited 0 with titles 35, episodes 175, `episode_media` 175, channels 4, genres 9, tags 31, `app_settings` 5, `admin_audit_log` 3, orphans 0/0, `maintenanceMode` false.
+     - Task 13 also no longer copies `https://*.vercel.app` (any site hosted on Vercel) to the production redirect list.
+  4. **The browser-bundle check never ran in CI**, so the sign-in fix had no CI guard. It also would have failed a local `npm test` after the `.env.local` switch, whenever the last build used another URL.
+     - It now runs only when `VERIFY_BUILD_ENV=1` is set, and then a missing URL fails rather than skips.
+     - The CI build job runs it right after the build with the build's URL. Plan Task 14 Step 5 uses the flag.
+     - Tests: the CI step exists after the build with the same URL; a plain run with another URL skips instead of failing.
+  5. **No check covered a signup that claims an admin role in its metadata**, although the plan's Review Focus 3 relies on `verify-user-side-rls.sql` for this. User A now signs up with `"role":"admin"` in `raw_user_meta_data`, and the script requires role `user`. Against a deliberately broken trigger that trusts the metadata role (in a rolled-back transaction) it fails with "metadata role was trusted"; against the real trigger it passes.
+* **Key File Diffs**:
+  - Created: `scripts/lib/supabase-target.ts`, `__tests__/scripts/script-target-guard.test.ts`.
+  - Modified: `scripts/create-admin.ts`, `scripts/seed-dev-content.ts`, `lib/config/env-validator.mjs`, `.github/workflows/ci.yml`, `scripts/sql/verify-user-side-rls.sql`, `__tests__/tooling/browser-bundle-env.test.ts`, `__tests__/tooling/bundle-budget-and-tooling.test.ts`, `__tests__/database/single-project-credentials.test.ts`, `__tests__/runtime/no-mock-fallback.test.ts` (complete production fixture gains the key), `__tests__/scripts/create-admin.test.ts`, `.env.example`, `README.md`, `docs/superpowers/plans/2026-10-12-single-supabase-project.md`, `ROADMAP.md`, `CHANGELOG-DEV.md`.
+* **Regression Analysis & Cross-System Impact**:
+  - `npm run build` / `npm run start` in production mode now also need `SUPABASE_SERVICE_ROLE_KEY`. Vercel receives it in Task 14 Step 1, together with the other variables.
+  - `npm test` no longer judges the last local build. Run the check with `VERIFY_BUILD_ENV=1` right after a build.
+  - Seeding, cleaning or admin changes on a hosted project need `--confirm-production`. A local stack runs as before: `admin:create` printed "DEVELOPMENT / LOCAL" and created the local admin after the rehearsal.
+  - The local database was reset for the rehearsal. It now holds the restored catalog copy and only the local admin account.
+  - Nothing live was touched.
+* **Verification**:
+  - Each new test failed first, for the stated reason, then passed.
+  - The opt-in bundle check passes with the build's URL (`http://127.0.0.1:54321`) and fails with another.
+  - `verify-user-side-rls.sql`: 25 PASS, "ALL TASK 10.2 CHECKS PASSED". `verify-catalog-rls.sql`: 5 PASS.
+  - `npx tsc --noEmit`: 0 errors. `npm run lint`: 0 problems.
+  - `npm test`: 1,194 tests, 1,193 passed, 1 skipped (the bundle check, not requested), 0 failed.
+  - **Not run**: CI itself, because nothing is pushed until Task 14 Step 1.

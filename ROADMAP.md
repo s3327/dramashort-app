@@ -2077,7 +2077,7 @@ These items stay ✅ for history; the gaps are tracked as new tasks.
 ---
 
 ### Task 13.7: Single Supabase Project in Singapore
-* **Status**: 🟡 In progress — Phase 1 (local) complete on branch `feat/single-supabase-project`, final review pending; no live change yet
+* **Status**: 🟡 In progress — Phase 1 (local) complete and reviewed on branch `feat/single-supabase-project`; no live change yet; Phase 2 waits for the owner
 * **Decision**: [ADR-0005](docs/adr/0005-single-supabase-project.md). A new project `dramashort` in `ap-southeast-1` (Singapore) becomes the only project, with every table in `public`, built from one migration chain (dramashort-content's 20 migrations plus the ported user-side migrations); the catalog rows are copied from dramashort-content. dramashort-content (`czkkzoiuyqybafacpgsp`, Mumbai) and dramashort-user (`bpidsbcrvpkavvdvtpgh`, Sydney) are only read and exported, and are deleted by the owner once the app has run on the new project. Region chosen by the owner on 2026-10-12 to be close to a Southeast Asian audience. Fresh accounts (the 2 development accounts are not migrated); admin recreated with `npm run admin:create`.
 * **Plan**: [docs/superpowers/plans/2026-10-12-single-supabase-project.md](docs/superpowers/plans/2026-10-12-single-supabase-project.md). Phase 1 (local, 8 tasks): schema fingerprint tool, reference fingerprints of both chains, one CLI workdir at the repository root, user-side migrations ported as `20261012100000`–`20261012100900` and checked against the references, one credential set (`NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`), one generated types file, a local rehearsal including signed-in flows and all 9 Playwright journeys, docs. Phase 2 (live, each step confirmed by the owner): exports, new Singapore project (dramashort-user paused first if the organization is on the free plan, which allows two active projects), push, catalog copy, auth settings, environment switch with Vercel functions in `sin1`. Phase 3 (owner): delete both old projects.
 * **Live inventory (2026-10-12, read-only)**: catalog only in dramashort-content (`titles` 35, `episodes` 175, `episode_media` 175); user data only in dramashort-user (`profiles` 2, 2 auth accounts, all other user tables empty); 10 tables exist in both (ownership in ADR-0005 decision 6); email is the only auth provider on both; the `artwork` bucket in use is dramashort-content's (empty on both).
@@ -2094,6 +2094,14 @@ These items stay ✅ for history; the gaps are tracked as new tasks.
   - Task 6 (2026-10-12): one generated types file, `types/supabase.ts` (from the local merged database: every table incl. Phase 16 columns, which the old `supabase-content.ts` lacked); 17 imports switched; `npm run types` regenerates it from the linked project.
   - Task 7 (2026-10-12): local rehearsal — the production build ran against one local database built from the 30 migrations and seeded with 35 titles. All five browser checks pass at 1280×800 and 390×844 (26 scripted checks): signup with email confirmation and sign-in without "Failed to fetch"; a favorite survives signing out and back in and a fresh browser; `/contact` reaches `/admin/support`; the admin sees Draft and Published titles and an edit persists; a viewer is kept out of `/admin`. `npx playwright test`: 27 passed (9 journeys × 3 browser profiles). No application code changed.
   - Task 8 (2026-10-12): documentation — ADR-0005 listed in the ADR registry; ADR-0003's status line (its only change) records that its merge direction and `content` schema are superseded; README describes one project with three variables and the `db:start` / `db:push` / `types` scripts; the reusable catalog API guide and the operations runbook describe the single `public` schema (privileges as the migrations create them, a restore check keyed on `title_slug`, all three variables at cutover). A doc test pins the ADR-0005 links.
+  - Final review (2026-10-13): an independent review of the whole branch found no critical issue. Five fixes, each with a test that failed first:
+    1. `admin:create` and `db:seed:dev` refuse any hosted project without `--confirm-production`; the old check knew only dramashort-user.
+    2. Production builds require `SUPABASE_SERVICE_ROLE_KEY`.
+    3. Plan Task 12 empties the seeded `app_settings` inside the copy transaction and checks the maintenance flag. In the local rehearsal the original command failed on `app_settings_pkey` and the amended one copied every row.
+    4. CI checks its build's browser bundle for the project URL.
+    5. The RLS script rejects a signup that claims an admin role in its metadata.
+
+    Five minor findings were deferred and listed for the owner.
 
 ---
 
