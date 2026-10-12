@@ -8,7 +8,7 @@
 
 ## 1. Overview & System Topology
 
-DramaShort is a vertical short-form drama streaming web application built on Next.js 15, React 19, TypeScript, and Supabase PostgreSQL. Following the architectural decisions in [ADR-0003](../adr/0003-database-topology.md), DramaShort operates on a consolidated Supabase project with dedicated PostgreSQL schemas (`content` for catalog and video media, `public` for authenticated user accounts, watch progress, and playlists).
+DramaShort is a vertical short-form drama streaming web application built on Next.js 15, React 19, TypeScript, and Supabase PostgreSQL. Under [ADR-0005](../adr/0005-single-supabase-project.md), DramaShort runs on one Supabase project (`dramashort`, Singapore, `ap-southeast-1`) with every table in the `public` schema: the catalog and video media sit beside user accounts, watch progress, and playlists, separated by table and column grants and row security.
 
 This runbook defines operational readiness standards covering:
 1. **Staging Environment Setup & Configuration**
@@ -86,14 +86,18 @@ In the event of accidental catalog corruption, catastrophic malicious deletion, 
 3. **Verify Restored Database Integrity**:
    Run verification queries on the cloned instance:
    ```sql
-   -- Check foreign key integrity between public and content schemas
-   SELECT count(*) FROM public.watch_history wh
-   LEFT JOIN content.titles t ON wh.title_id = t.id
-   WHERE wh.title_id IS NOT NULL AND t.id IS NULL;
-   -- Expected count: 0 (zero orphaned relations)
+   -- Engagement rows whose title is missing. Favorites and watch history key on
+   -- title_slug without a foreign key; episodes and episode_media are protected by
+   -- ON DELETE CASCADE foreign keys and need no check.
+   SELECT 'watch_history' AS table_name, count(*) FROM public.watch_history wh
+     WHERE NOT EXISTS (SELECT 1 FROM public.titles t WHERE t.slug = wh.title_slug)
+   UNION ALL
+   SELECT 'favorites', count(*) FROM public.favorites f
+     WHERE NOT EXISTS (SELECT 1 FROM public.titles t WHERE t.slug = f.title_slug);
+   -- Expected: 0 for both, unless titles were deleted on purpose
    ```
 4. **Traffic Cutover**:
-   - Update deployment environment variables `NEXT_PUBLIC_SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` to the restored instance.
+   - Update all three Supabase environment variables (`NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`) to the restored project; a restored project has its own URL and keys. The `NEXT_PUBLIC_*` values are built into the browser code, so the redeployment must rebuild.
    - Trigger immediate zero-downtime redeployment via Vercel / CI.
    - Run `/api/health` to confirm reachability.
 

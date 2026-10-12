@@ -4,17 +4,19 @@ This directory contains the central data access layers and service facades for t
 
 ---
 
-## 1. Dual Supabase Architecture
+## 1. Supabase Architecture (Single Project)
 
-> [!NOTE] **Topology Decision Update (ADR-0003)**
-> Per **ADR-0003: Database Topology Decision** ([`docs/adr/0003-database-topology.md`](../../docs/adr/0003-database-topology.md)), DramaShort will consolidate Content and User data into a single Supabase project partitioned into `content` and `public` schemas (Task 13.2). Dual clients in `lib/supabase/*` will be consolidated into unified singletons.
+> [!NOTE] **Topology Decision Update (ADR-0005)**
+> [ADR-0005](../../docs/adr/0005-single-supabase-project.md) supersedes the merge direction of ADR-0003 ([`docs/adr/0003-database-topology.md`](../../docs/adr/0003-database-topology.md)). The planned `content` and `public` schemas inside the User project (Task 13.2) were never used. The app runs on one project with every table in `public`.
 
-The project currently coordinates two decoupled Supabase projects:
+The app uses one Supabase project. Every client in `lib/supabase/*` gets its credentials from `lib/supabase/credentials.ts`, which reads three variables: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, and the server-only `SUPABASE_SERVICE_ROLE_KEY`.
 
-| Project | Supabase Ref | Primary Scope | Client Access |
+| Client | Exports | Key | Scope |
 |---|---|---|---|
-| **Content DB** | `czkkzoiuyqybafacpgsp` | Reusable Headless CMS for channels, dramas (`titles` table), and episodes | Read-only for public clients (`NEXT_PUBLIC_CONTENT_SUPABASE_ANON_KEY`); write-enabled for privileged server routes (`CONTENT_SUPABASE_SERVICE_ROLE_KEY`) |
-| **User DB** | `bpidsbcrvpkavvdvtpgh` | App-specific user database: Supabase Auth, profiles, wallets, transactions, favorites, custom lists, watch history | Authenticated access with strict Row-Level Security (RLS) policies per `auth.uid()` |
+| **Catalog** (`lib/supabase/content.ts`) | `contentClient`, `createContentClient` | anon | Channels, dramas (`titles` table), and episodes; row security returns Published titles only |
+| **Catalog admin** (`lib/supabase/content.ts`) | `getContentAdminClient` | service role | Privileged server routes (admin writes) |
+| **User, browser** (`lib/supabase/user-client.ts`) | `createUserClient` | anon | Supabase Auth sessions; profiles, favorites, custom lists, watch history under row security per `auth.uid()` |
+| **User, server** (`lib/supabase/user-server.ts`) | `createUserServerClient`, `createUserServiceRoleClient` | anon with session cookies; service role | Server Components and route handlers; privileged account actions such as `auth.admin.deleteUser` |
 
 ---
 

@@ -472,6 +472,9 @@ export function verifyTelegramInitData(
 
 ### 5.2 Dual-Database Architectural Separation Integrity
 
+> [!IMPORTANT] **Superseded by ADR-0005 (2026-10-12)**
+> The Task 13.2 merge described below never happened. Under [ADR-0005](docs/adr/0005-single-supabase-project.md) the app moves to one new Supabase project with every table in `public`, so a foreign key such as `telegram_subscriptions.drama_id` can reference `public.titles(id)`. The diagrams and checklists in this plan still show the earlier two-project layout.
+
 > [!NOTE] **Architectural Decision Update (ADR-0003)**
 > Per **ADR-0003: Database Topology Decision** ([`docs/adr/0003-database-topology.md`](docs/adr/0003-database-topology.md)), DramaShort has accepted **Option A (Consolidation)**. In Task 13.2, Content DB (`czkkzoiuyqybafacpgsp`) is being merged into User DB (`bpidsbcrvpkavvdvtpgh`) under the `content` schema. Once Task 13.2 executes, `telegram_subscriptions` can enforce real foreign keys (`drama_id UUID REFERENCES content.titles(id) ON DELETE CASCADE`), eliminating application-layer orphan pruning. The guidelines below reflect the pre-consolidation operational isolation rules.
 

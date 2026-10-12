@@ -4327,3 +4327,39 @@
   - Result: 26 scripted checks, 26 passed (17 in the first run; 9 in a follow-up that added signing out in the same browser and the Published titles).
   - `npx playwright test`: 27 passed (11.3 min); the swipe journey carries the "swipe gesture not exercised on webkit" annotation on Mobile Safari only (read from the HTML report data).
   - Server logs: no error- or warn-level request lines. One `[auth/confirm] verifyOtp error: Email link is invalid or has expired`, from an earlier aborted attempt that requested `/auth/confirm` twice 15 s apart; a confirmation link works once.
+
+---
+
+## [2026-10-12] Task 13.7 / Plan Task 8: Documentation for the Single Project
+* **Milestone**: Task 13.7, Phase 1 (local), plan Task 8.
+* **Goal**: The documents describe one project, one schema and three variables, and mark ADR-0003's superseded direction where readers meet it.
+* **Implementation Steps Taken**:
+  1. Test first: `__tests__/docs/adr-topology.test.ts` gained "ADR-0005 single project" (the ADR file exists, the registry lists it, ADR-0003 links to it; the ADR names `ap-southeast-1` and the three variables). It failed on the registry assertion.
+  2. `docs/adr/README.md`: ADR-0005 row; ADR-0003 row status "Accepted — direction superseded by ADR-0005"; a superseded note on the ADR-0003 decision-gate section; an ADR-0005 section. `docs/adr/0003-database-topology.md`: Status line only.
+  3. `README.md`: the architecture line (one project, `public` schema), the `supabase/` tree entry, and a "Database (Supabase)" setup section: the three variables, `npm run db:start` (with the `-x studio,logflare,vector` fallback seen on Windows), `npx supabase status -o env`, `db:seed:dev`, `admin:create`, `db:stop`, `db:push`, `types`.
+  4. `docs/architecture/reusable-content-api.md`, rewritten for the `public` schema:
+     - The privilege matrix is now read from the merged schema fingerprint. `anon` has `SELECT` on `titles`, `channels`, `genres`, `tags`, `app_settings` and on 9 `episodes` columns, and nothing on `episode_media` or any user table.
+     - The hand-run grant script is replaced by pointers to the migrations and the two verification scripts.
+     - No `Accept-Profile` header or `db.schema` option.
+     - Placeholder project URLs replace the dramashort-user URL.
+  5. `docs/operations/operational-readiness.md`:
+     - Overview: one project in Singapore.
+     - Restore integrity check: now keyed on `title_slug`. The old check joined `content.titles` on a `title_id` column that no longer exists.
+     - Cutover: updates all three variables and rebuilds.
+  6. Beyond the plan's file list:
+     - `lib/services/README.md` §1 still listed the two projects and the old variables `NEXT_PUBLIC_CONTENT_SUPABASE_ANON_KEY` / `CONTENT_SUPABASE_SERVICE_ROLE_KEY`. It now lists the clients and the three variables.
+     - `FUTURE_PLAN.md` §5.2 gained a superseded note; its diagrams are unchanged.
+  7. Reference fix: the ROADMAP live inventory and plan line 266 cited "ADR-0005 §5" for table ownership. Ownership is decision 6.
+  8. ROADMAP: Phase 13 row ("13.7 in progress"), Task 13.7 status (Phase 1 complete, final review pending), and a progress line. Task 13.2's status was already corrected in the commit that added ADR-0005.
+* **Key File Diffs**: Modified: `docs/adr/README.md`, `docs/adr/0003-database-topology.md` (Status line), `README.md`, `docs/architecture/reusable-content-api.md`, `docs/operations/operational-readiness.md`, `lib/services/README.md`, `FUTURE_PLAN.md`, `docs/superpowers/plans/2026-10-12-single-supabase-project.md` (one reference), `__tests__/docs/adr-topology.test.ts`, `ROADMAP.md`, `CHANGELOG-DEV.md`.
+* **Regression Analysis & Cross-System Impact**:
+  - Documentation only.
+  - The existing doc tests that pin ADR-0003 wording still pass: the ADR-0003 sections, the `FUTURE_PLAN.md` and `lib/services/README.md` citations, and the ROADMAP Task 8.1 / 13.2 text.
+  - Apart from its Status line, ADR-0003's text is unchanged, as the registry's immutability rule requires.
+  - Historical ROADMAP tasks and the agent notes under `.agents/` still describe the two-project layout as it was.
+* **Verification**:
+  - The new doc test failed first (registry assertion), then passed. `adr-topology.test.ts`: 29/29.
+  - All 27 relative links in the edited documents resolve.
+  - The restore check SQL ran on the local merged database and returned 0 orphaned rows for both tables.
+  - `npx tsc --noEmit`: 0 errors.
+  - `npm test`: 1,187 passed, 1 skipped (bundle test, variable not set), 0 failed.

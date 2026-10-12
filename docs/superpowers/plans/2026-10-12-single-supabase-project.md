@@ -263,7 +263,7 @@ function main() {
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) main();
 ```
 
-`scripts/db/merge-ownership.json` (tables and functions that exist in both projects today and take the dramashort-user definition, per ADR-0005 §5):
+`scripts/db/merge-ownership.json` (tables and functions that exist in both projects today and take the dramashort-user definition, per ADR-0005 §6):
 
 ```json
 {

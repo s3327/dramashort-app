@@ -3,7 +3,7 @@
 [← Back to ADR Registry](README.md)
 
 ## Status
-Accepted
+Accepted — merge direction and content schema superseded by [ADR-0005](0005-single-supabase-project.md) on 2026-10-12
 
 ## Date
 2026-10-06
