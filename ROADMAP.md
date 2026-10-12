@@ -46,7 +46,7 @@
 | **Phase 10** | 🔴 Critical | Security Hardening & Access Control (admin role escalation, RLS & grants, admin API auth, subdomain guard, open redirect, episode media lockdown, CI gate) | ✅ Completed (10.1–10.9 ✅) | Closes privilege escalation and data exposure; gate for all further work |
 | **Phase 11** | 🔴 Critical | Complete Stubbed User Flows (email verification, password recovery, account deletion, support pipeline, real 404s) | ✅ Completed (11.1–11.7 ✅) | Every visible action performs a real operation |
 | **Phase 12** | 🟠 High | Functional Bug Fixes & Data Integrity (12.1–12.8 ✅) | ✅ Completed | Full catalog visible, admin drafts, progress semantics, zero mocks, session, lists, integrity, player robustness |
-| **Phase 13** | 🟠 High | Backend Architecture Consolidation (database topology ADR-0003, server-rendered catalog, service split, taxonomy scalability, observability) | ✅ Completed (13.1–13.6 ✅) | Decision gate for Phase 8; faster pages; operability |
+| **Phase 13** | 🟠 High | Backend Architecture Consolidation (database topology ADR-0003, server-rendered catalog, service split, taxonomy scalability, observability) | 🟡 In progress (13.1, 13.3–13.6 ✅; 13.2 prepared, never executed; 13.7 planned) | Decision gate for Phase 8; faster pages; operability |
 | **Phase 14** | 🟠 High | Mobile-First Vertical Watch Experience & UI Polish | ✅ Completed (14.1–14.9 ✅) | Core 9:16 viewing experience on phones |
 | **Phase 15** | 🟠 High | Product Analytics, Engagement Tracking & Real Trending | ✅ Completed (15.1–15.5 ✅) | Real views, trending and dashboard; data to tune the paywall |
 | **Phase 16** | 🟠 High | Admin Content Operations Console (episodes, uploads, scheduling, taxonomy, users, audit log, support inbox, bulk import) | ✅ Completed (16.1–16.11 ✅) | Catalog operable end-to-end without SQL |
@@ -1903,7 +1903,7 @@ These items stay ✅ for history; the gaps are tracked as new tasks.
 ---
 
 ### Task 13.2: Execute the Topology Decision
-* **Status**: ✅ Completed (Option A Consolidated)
+* **Status**: ⚪ Superseded (2026-10-12) — prepared, never executed. Originally recorded as "✅ Completed (Option A Consolidated)". The data was never copied, the app still runs on two projects, and the User project's API does not expose the `content` schema (`PGRST106`). The direction changed with [ADR-0005](docs/adr/0005-single-supabase-project.md); the work continues as Task 13.7.
 * **Depends on**: 13.1 (ADR-0003 Accepted)
 * **Delivered Specifications**:
   1. **Option A Execution Path (Accepted per ADR-0003)**:
@@ -2073,6 +2073,18 @@ These items stay ✅ for history; the gaps are tracked as new tasks.
   - `npx tsc --noEmit`: compiles cleanly with 0 type errors.
   - Full test runner `npm test`: all test suites pass with 0 failures across 622 tests.
   - `npm run build`: cleanly compiles all 64 Next.js routes.
+
+---
+
+### Task 13.7: Single Supabase Project in Singapore
+* **Status**: 📝 Planned (2026-10-12) — decision recorded, nothing executed
+* **Decision**: [ADR-0005](docs/adr/0005-single-supabase-project.md). A new project `dramashort` in `ap-southeast-1` (Singapore) becomes the only project, with every table in `public`, built from one migration chain (dramashort-content's 20 migrations plus the ported user-side migrations); the catalog rows are copied from dramashort-content. dramashort-content (`czkkzoiuyqybafacpgsp`, Mumbai) and dramashort-user (`bpidsbcrvpkavvdvtpgh`, Sydney) are only read and exported, and are deleted by the owner once the app has run on the new project. Region chosen by the owner on 2026-10-12 to be close to a Southeast Asian audience. Fresh accounts (the 2 development accounts are not migrated); admin recreated with `npm run admin:create`.
+* **Plan**: [docs/superpowers/plans/2026-10-12-single-supabase-project.md](docs/superpowers/plans/2026-10-12-single-supabase-project.md). Phase 1 (local, 8 tasks): schema fingerprint tool, reference fingerprints of both chains, one CLI workdir at the repository root, user-side migrations ported as `20261012100000`–`20261012100900` and checked against the references, one credential set (`NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`), one generated types file, a local rehearsal including signed-in flows and all 9 Playwright journeys, docs. Phase 2 (live, each step confirmed by the owner): exports, new Singapore project (dramashort-user paused first if the organization is on the free plan, which allows two active projects), push, catalog copy, auth settings, environment switch with Vercel functions in `sin1`. Phase 3 (owner): delete both old projects.
+* **Live inventory (2026-10-12, read-only)**: catalog only in dramashort-content (`titles` 35, `episodes` 175, `episode_media` 175); user data only in dramashort-user (`profiles` 2, 2 auth accounts, all other user tables empty); 10 tables exist in both (ownership in ADR-0005 §5); email is the only auth provider on both; the `artwork` bucket in use is dramashort-content's (empty on both).
+* **Defects found while planning (fixed by this task's Task 5)**:
+  - Browser sign-in does not work in production builds. Since `f4d9c76` (2026-10-07) the browser Supabase client reads `NEXT_PUBLIC_*` through a variable, which Next.js does not inline; the built browser code contains neither project URL and uses `http://127.0.0.1:54322`. Reproduced on `next start`: a login attempt is refused by the Content-Security-Policy and the page shows "Failed to fetch".
+  - Maintenance mode reads `NEXT_PUBLIC_SUPABASE_URL`, which the two-project configuration does not set, so it queries `http://127.0.0.1:54321` instead of the real settings (established from `lib/middleware/maintenance.ts` and `.env.local`; not reproduced at runtime).
+* **Prerequisites (owner)**: Docker Desktop running (installed, not running on 2026-10-12); Supabase CLI logged in; database passwords of both projects.
 
 ---
 

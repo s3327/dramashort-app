@@ -4128,3 +4128,53 @@
   - The sample video URLs return 403, so no episode plays. Needs a replacement source, then an update to the live episode rows, `scripts/seed-dev-content.ts`, and the examples in `app/admin/import/page.tsx`.
   - While playback fails, the overlay's centre play button covers the error message.
   - The subtitles journey's first locator now matches the hidden player button on phones, so its click step is skipped there; most journeys still pass silently when an element is missing.
+
+---
+
+## [2026-10-12] Single-Project Decision (ADR-0005) and Merge Plan; Two Defects Found
+* **Milestone**: New Task 13.7; correction of Task 13.2.
+* **Goal**: Record the owner's decision to run on dramashort-content (`czkkzoiuyqybafacpgsp`) only, and plan the merge so dramashort-user (`bpidsbcrvpkavvdvtpgh`) can be deleted. No code, database, or project setting was changed.
+* **Implementation Steps Taken**:
+  1. Read-only inventory of both live projects with the service role keys: tables and RPCs from the PostgREST schema of each project, row counts per table, auth accounts and identities, storage buckets and their contents, enabled auth providers (`/auth/v1/settings`).
+  2. Mapped which client the code uses for each of the 10 tables that exist in both projects, compared the two migration chains file by file, and compared the two `config.toml` files.
+  3. Found that Task 13.2 (ADR-0003, merge into dramashort-user under a `content` schema) was prepared but never executed: no recorded data copy, two project URLs in `.env.local`, `content` schema not exposed by the User project's API (`PGRST106`), and the User project's `content` tables behind the catalog schema.
+  4. While checking the client code, found that the built browser bundle contains neither project URL. Reproduced with a production build on `next start`: submitting the login form with a non-existent address sent the request to `http://127.0.0.1:54322/auth/v1/token`, which the Content-Security-Policy refused; the page showed "Failed to fetch". Traced to `f4d9c76` (2026-10-07), where the browser client stopped reading `process.env.NEXT_PUBLIC_USER_SUPABASE_URL` literally.
+  5. Wrote ADR-0005 and the implementation plan; corrected Task 13.2's status; added Task 13.7.
+* **Key File Diffs**:
+  - Created: `docs/adr/0005-single-project-on-dramashort-content.md`, `docs/superpowers/plans/2026-10-12-single-supabase-project.md`.
+  - Modified (docs): `ROADMAP.md` (Phase 13 row, Task 13.2 status, new Task 13.7), `CHANGELOG-DEV.md`.
+* **Findings**:
+  - Inventory: catalog only in dramashort-content (`titles` 35, `episodes` 175, `episode_media` 175, `channels` 4, `genres` 9, `tags` 31, `app_settings` 5). dramashort-user: `profiles` 2 and 2 auth accounts; every other user table empty. Tables in both projects: `admin_audit_log`, `app_settings`, `coin_transactions`, `daily_checkins`, `genres`, `import_jobs`, `support_tickets`, `tags`, `user_unlocked_episodes`, `wallets`; only `app_settings` (5 / 5), `genres` (9 / 0) and `tags` (31 / 0) hold rows. Email is the only enabled auth provider on both projects. Both have an empty public `artwork` bucket; the app uploads to dramashort-content's.
+  - The two chains' shared migration files differ mainly in their guards; dramashort-content's copies skip their `public.profiles` statements because that table does not exist there, and its `support_tickets.user_id` has no foreign key to `auth.users`.
+  - The dramashort-user chain's `20260930163000_grant_permissions.sql` grants `ALL ON ALL TABLES IN SCHEMA public` to `authenticated`; replayed on dramashort-content it would re-open client writes on the catalog. The plan omits those two lines.
+  - Maintenance mode reads `NEXT_PUBLIC_SUPABASE_URL`, which is not set in the two-project configuration, so it uses `http://127.0.0.1:54321` (from the code and `.env.local`; not reproduced at runtime).
+  - Docker Desktop is installed but was not running; `pg_dump` and `psql` are not installed on the development machine.
+* **Regression Analysis & Cross-System Impact**:
+  - None from this change (documents only).
+  - The browser sign-in defect affects every production build since `f4d9c76`: login, signup, sign-out, session refresh, and any other browser-side Supabase call. Server-rendered catalog pages are unaffected. The fix is part of Task 5 of the plan.
+* **Verification**:
+  - Login reproduction: one production build on port 3100 against the live projects, one login attempt with an address that has no account (no data written); console showed the CSP refusal for `http://127.0.0.1:54322`. The server was stopped afterwards.
+  - Bundle check: `grep` over `.next/static` found `127.0.0.1:54322` and `127.0.0.1:54321` in one chunk each and neither project reference in any chunk.
+  - `npm run test:file -- __tests__/docs/adr-topology.test.ts` passes (27 / 27).
+  - **Not run**: anything in the plan; any write to either project; a runtime check of maintenance mode.
+* **Still Open After This Change**:
+  - Executing the plan (Task 13.7). Browser sign-in stays broken in production builds until its Task 5.
+
+---
+
+## [2026-10-12] Single-Project Target Moved to a New Singapore Project (ADR-0005 Revised)
+* **Milestone**: Task 13.7 (planned).
+* **Goal**: Record the owner's choice to host the single database in Singapore instead of dramashort-content (Mumbai), and adjust the plan.
+* **Implementation Steps Taken**:
+  1. Read `npx supabase projects list`: both projects are in one organization; dramashort-content is in `ap-south-1` (Mumbai), dramashort-user in `ap-southeast-2` (Sydney). A Supabase project cannot change region, so Singapore means a new project.
+  2. Checked the free plan's project cap (public pricing guides and Supabase's pricing page summary): two active projects per organization; paused projects do not count.
+  3. Rewrote ADR-0005 as Option C (new project `dramashort` in `ap-southeast-1`, catalog rows copied from dramashort-content, both old projects only read and exported) and renamed it from `0005-single-project-on-dramashort-content.md` to `0005-single-supabase-project.md` (the earlier entry above links the old name). Phase 1 of the plan is unchanged apart from neutral example URLs and `types` using `--linked`; Phase 2 now creates the project, pushes all 30 migrations, and copies the catalog with triggers disabled; Phase 3 deletes both old projects. Vercel functions are pinned to `sin1`.
+* **Key File Diffs**:
+  - Renamed and rewritten: `docs/adr/0005-single-supabase-project.md`.
+  - Modified: `docs/superpowers/plans/2026-10-12-single-supabase-project.md`, `ROADMAP.md` (Task 13.7), `CHANGELOG-DEV.md`.
+* **Regression Analysis & Cross-System Impact**:
+  - None (documents only). Neither existing project was changed.
+  - If the organization is on the free plan, dramashort-user must be paused (after its export) before the new project can be created.
+* **Verification**:
+  - `npx supabase projects list` (read-only) as described above. Docker Desktop is now running (server 29.8.1).
+  - **Not run**: anything in the plan.
