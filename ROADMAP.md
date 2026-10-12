@@ -2108,7 +2108,7 @@ These items stay ✅ for history; the gaps are tracked as new tasks.
     3. The catalog browser client keeps no session and has its own storage key.
     4. The catalog API guide checks are restored, and the README and ADR registry corrected.
     5. The schema fingerprint covers PUBLIC grants, policy mode, function volatility and owner, full column types, storage policies and buckets, and extensions; allowed differences name the merged state they accept. Re-run against fresh stacks of both pre-merge chains: "Fingerprints match."
-  - Task 9 (2026-10-13, first live step, read-only): exports of both projects in `C:dramashort-backups6-10-12` (five non-empty files; the catalog copy holds 35 titles, 175 episodes, 175 media rows, 4 channels, 9 genres, 31 tags, 5 settings). The CLI was unlinked afterwards.
+  - Task 9 (2026-10-13, first live step, read-only): exports of both projects in `C:\dramashort-backups\2026-10-12\` (five non-empty files; the catalog copy holds 35 titles, 175 episodes, 175 media rows, 4 channels, 9 genres, 31 tags, 5 settings). The CLI was unlinked afterwards.
 
 ---
 
