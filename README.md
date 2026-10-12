@@ -41,7 +41,7 @@ DramaShort is a vertical drama streaming web platform engineered for high-retent
   - Lighthouse CI mobile configuration (`.lighthouserc.json`) targeting discovery, detail, and streaming routes.
   - Multi-device Playwright E2E suite and 1,151+ automated tests in `npm test` with 100% pass rate.
 * **Architecture Decision Records**: Formal architectural choices and decision gates are cataloged in [`docs/adr/README.md`](docs/adr/README.md).
-* **Headless Reusability Architecture**: Multi-schema catalog access and PostgreSQL role grants for external apps are documented in [`docs/architecture/reusable-content-api.md`](docs/architecture/reusable-content-api.md).
+* **Headless Reusability Architecture**: Read-only catalog access for external apps, and the PostgreSQL grants and row security that limit it, are documented in [`docs/architecture/reusable-content-api.md`](docs/architecture/reusable-content-api.md).
 * **Operational Readiness & Telemetry**: Staging setup, database backup policy, PITR, rate limiting, and incident runbooks are documented in [`docs/operations/operational-readiness.md`](docs/operations/operational-readiness.md).
 
 ---

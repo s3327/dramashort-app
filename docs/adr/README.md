@@ -46,8 +46,8 @@ This directory maintains the immutable architectural history and technical decis
 - **Key Invariants**:
   - One project, one schema (`public`), one migration chain (`supabase/migrations/`), one generated types file (`types/supabase.ts`).
   - Three environment variables. `NEXT_PUBLIC_*` values are read as literal `process.env` expressions so Next.js builds them into browser code.
-  - Tables that existed in both old projects keep the definition of the side the app reads and writes them through (ADR-0005 decision 6). A schema fingerprint comparison checks the single chain against both old databases.
-  - Vercel functions run in `sin1`, next to the database.
+  - Tables that existed in both old projects keep the definition of the side the app reads and writes them through (ADR-0005 decision 6). During the merge, a schema fingerprint comparison (`scripts/db/`, run locally, not in CI) checked the single chain against both old databases.
+  - Vercel functions are to run in `sin1`, next to the database (set in `vercel.json` when the app switches over, Task 13.7).
 
 ---
 
