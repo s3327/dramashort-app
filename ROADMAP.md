@@ -2077,7 +2077,7 @@ These items stay ✅ for history; the gaps are tracked as new tasks.
 ---
 
 ### Task 13.7: Single Supabase Project in Singapore
-* **Status**: 🟡 In progress — Phase 1 (local) complete and reviewed on branch `feat/single-supabase-project`; no live change yet; Phase 2 waits for the owner
+* **Status**: 🟡 In progress — Phase 1 (local) complete and reviewed on branch `feat/single-supabase-project`; Phase 2 started: exports done (Task 9), nothing live changed yet
 * **Decision**: [ADR-0005](docs/adr/0005-single-supabase-project.md). A new project `dramashort` in `ap-southeast-1` (Singapore) becomes the only project, with every table in `public`, built from one migration chain (dramashort-content's 20 migrations plus the ported user-side migrations); the catalog rows are copied from dramashort-content. dramashort-content (`czkkzoiuyqybafacpgsp`, Mumbai) and dramashort-user (`bpidsbcrvpkavvdvtpgh`, Sydney) are only read and exported, and are deleted by the owner once the app has run on the new project. Region chosen by the owner on 2026-10-12 to be close to a Southeast Asian audience. Fresh accounts (the 2 development accounts are not migrated); admin recreated with `npm run admin:create`.
 * **Plan**: [docs/superpowers/plans/2026-10-12-single-supabase-project.md](docs/superpowers/plans/2026-10-12-single-supabase-project.md). Phase 1 (local, 8 tasks): schema fingerprint tool, reference fingerprints of both chains, one CLI workdir at the repository root, user-side migrations ported as `20261012100000`–`20261012100900` and checked against the references, one credential set (`NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`), one generated types file, a local rehearsal including signed-in flows and all 9 Playwright journeys, docs. Phase 2 (live, each step confirmed by the owner): exports, new Singapore project (dramashort-user paused first if the organization is on the free plan, which allows two active projects), push, catalog copy, auth settings, environment switch with Vercel functions in `sin1`. Phase 3 (owner): delete both old projects.
 * **Live inventory (2026-10-12, read-only)**: catalog only in dramashort-content (`titles` 35, `episodes` 175, `episode_media` 175); user data only in dramashort-user (`profiles` 2, 2 auth accounts, all other user tables empty); 10 tables exist in both (ownership in ADR-0005 decision 6); email is the only auth provider on both; the `artwork` bucket in use is dramashort-content's (empty on both).
@@ -2108,6 +2108,7 @@ These items stay ✅ for history; the gaps are tracked as new tasks.
     3. The catalog browser client keeps no session and has its own storage key.
     4. The catalog API guide checks are restored, and the README and ADR registry corrected.
     5. The schema fingerprint covers PUBLIC grants, policy mode, function volatility and owner, full column types, storage policies and buckets, and extensions; allowed differences name the merged state they accept. Re-run against fresh stacks of both pre-merge chains: "Fingerprints match."
+  - Task 9 (2026-10-13, first live step, read-only): exports of both projects in `C:dramashort-backups6-10-12` (five non-empty files; the catalog copy holds 35 titles, 175 episodes, 175 media rows, 4 channels, 9 genres, 31 tags, 5 settings). The CLI was unlinked afterwards.
 
 ---
 

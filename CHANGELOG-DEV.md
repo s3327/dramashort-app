@@ -4446,3 +4446,28 @@
   - `npx tsc --noEmit`: 0 errors. `npm run lint`: 0 problems.
   - `npm test`: 1,206 tests, 1,205 passed, 1 skipped (the opt-in bundle check), 0 failed.
   - **Not checked in a browser**: the GoTrueClient warning is gone (planned with the rebuild in Task 14 Step 5).
+
+---
+
+## [2026-10-13] Task 13.7 / Plan Task 9: Exports of Both Existing Projects
+* **Milestone**: Task 13.7, Phase 2 (live), plan Task 9 — the first live step, read-only. Owner's go-ahead given 2026-10-13; the organization is on the free plan.
+* **Goal**: Complete exports of dramashort-content and dramashort-user before anything else changes, kept outside the repository.
+* **Implementation Steps Taken**:
+  1. Folder `C:\dramashort-backups\2026-10-12\` (the plan's path, which Task 12 reads).
+  2. `npx supabase link` to each project, then `npx supabase db dump --linked` as the plan lists. No database password was needed: the CLI connected through a temporary login role ("Initialising login role...").
+  3. `npx supabase unlink` afterwards, so no later command can reach an old project by accident. Task 10 links the new one.
+* **Files** (names and sizes only; contents not recorded):
+  - `content-schema.sql` 65,016 bytes
+  - `content-data.sql` 148,338 bytes
+  - `content-public-data.sql` 144,276 bytes (the catalog copy for Task 12)
+  - `user-schema.sql` 101,174 bytes
+  - `user-data.sql` 23,368 bytes (includes auth accounts and password hashes; never copy it into the repository)
+* **Regression Analysis & Cross-System Impact**:
+  - Read-only for both projects.
+  - The CLI's link state is written to `supabase/.temp`, which `supabase/.gitignore` now ignores; `git status` stayed clean.
+* **Verification**:
+  - Five non-empty files.
+  - Rows per table in `content-public-data.sql`, counted without printing data: `titles` 35, `episodes` 175, `episode_media` 175, `channels` 4, `genres` 9, `tags` 31, `app_settings` 5. This equals the planning inventory.
+  - No mention of either old project host, so Task 12 should find no artwork to move.
+  - `general.maintenanceMode` is `false`.
+  - `user-data.sql` holds 2 `auth.users` and 2 `public.profiles` rows, matching the inventory.
