@@ -4471,3 +4471,20 @@
   - No mention of either old project host, so Task 12 should find no artwork to move.
   - `general.maintenanceMode` is `false`.
   - `user-data.sql` holds 2 `auth.users` and 2 `public.profiles` rows, matching the inventory.
+
+---
+
+## [2026-10-13] Task 13.7 / Plan Task 10: Singapore Project Created
+* **Milestone**: Task 13.7, Phase 2 (live), plan Task 10.
+* **Goal**: The new single project exists, in Singapore, and the CLI is linked to it.
+* **Implementation Steps Taken**:
+  1. Owner paused dramashort-user (`bpidsbcrvpkavvdvtpgh`, free plan: two active projects at most); it lists as `INACTIVE`.
+  2. Owner created `dramashort` (`phqabeqdcxnspidcaswa`) in Southeast Asia (Singapore).
+  3. `npx supabase link --project-ref phqabeqdcxnspidcaswa` (no database password needed); `npx supabase projects list`.
+* **Key File Diffs**: Modified: `ROADMAP.md`, `CHANGELOG-DEV.md`. The CLI link state lives in the ignored `supabase/.temp`.
+* **Regression Analysis & Cross-System Impact**:
+  - The new project is empty until Task 11.
+  - dramashort-user is paused; anything still pointing at it stops working until it is restored.
+  - dramashort-content is unchanged and active.
+  - The new project runs Postgres 17.11.0.003; the local stack and both old projects run 17.6. The major version is the same; Task 11 Step 3 compares the schema.
+* **Verification**: `projects list` shows `dramashort | phqabeqdcxnspidcaswa | ap-southeast-1 | ACTIVE_HEALTHY | linked=true | Postgres 17 (17.11.0.003)`, `dramashort-user | INACTIVE`, `dramashort-content | ACTIVE_HEALTHY`.
