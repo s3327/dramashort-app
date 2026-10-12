@@ -4,6 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { getSupabaseCredentials, getServiceRoleKey } from "@/lib/supabase/credentials";
 import { validateEnvironment } from "@/lib/config/env-validator.mjs";
+import { createContentClient } from "@/lib/supabase/content";
 
 const PROD = { NODE_ENV: "production" };
 const PROJECT_URL = "https://abcdefghijklmnopqrst.supabase.co";
@@ -51,6 +52,23 @@ describe("single-project credentials (ADR-0005)", () => {
     assert.equal(valid, false);
     assert.ok(errors.some((e: string) => e.includes("NEXT_PUBLIC_SUPABASE_URL")));
     assert.ok(errors.some((e: string) => e.includes("NEXT_PUBLIC_SUPABASE_ANON_KEY")));
+  });
+
+  // Both browser clients now target one project. The catalog client reads anonymously, as it
+  // did against dramashort-content; sharing the user client's storage key made auth-js warn
+  // about multiple GoTrueClient instances and tie both clients to one session.
+  it("the catalog client keeps no session and has its own auth storage key", () => {
+    const client = createContentClient({ NEXT_PUBLIC_SUPABASE_URL: PROJECT_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY: "anon-123" });
+    const auth = client.auth as unknown as {
+      persistSession: boolean;
+      autoRefreshToken: boolean;
+      detectSessionInUrl: boolean;
+      storageKey: string;
+    };
+    assert.equal(auth.persistSession, false);
+    assert.equal(auth.autoRefreshToken, false);
+    assert.equal(auth.detectSessionInUrl, false);
+    assert.notEqual(auth.storageKey, "sb-abcdefghijklmnopqrst-auth-token");
   });
 
   // Without it a deployment builds, then payments, cron, /contact and account deletion

@@ -14,10 +14,21 @@ export function getTestContentClient() {
   return testContentClient;
 }
 
-/** Fresh anon-key client for catalog reads. */
+/**
+ * Fresh anon-key client for catalog reads. It never holds a user session: the user clients
+ * own sign-in, and in the browser a second client on the default storage key would share
+ * their session (ADR-0005: both now target one project).
+ */
 export function createContentClient(customEnv?: Record<string, string | undefined>): ReturnType<typeof createClient<Database>> {
   const { url, anonKey } = getSupabaseCredentials(customEnv);
-  return createClient<Database>(url, anonKey);
+  return createClient<Database>(url, anonKey, {
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+      detectSessionInUrl: false,
+      storageKey: "dramashort-catalog-anon",
+    },
+  });
 }
 
 let defaultClient: ReturnType<typeof createClient<Database>> | null = null;
