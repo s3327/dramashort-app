@@ -50,11 +50,18 @@ function ownerResolver(ownership, user, content) {
  *   content: Map<string, string>,
  *   user?: Map<string, string>,
  *   ownership?: { user: string[], content: string[] },
- *   allowed?: Record<string, string>,
+ *   allowed?: Record<string, { merged: string | null, reason: string }>,
  * }} input
+ * An allowed difference names the merged state it accepts: `null` when the fact is absent
+ * from the merged database, otherwise its exact detail. Any other state is still reported.
  * @returns {Array<{ type: "missing" | "changed" | "unexpected", key: string, expected?: string, actual?: string }>}
  */
 export function compareFingerprints({ merged, content, user = new Map(), ownership = { user: [], content: [] }, allowed = {} }) {
+  for (const [key, entry] of Object.entries(allowed)) {
+    if (!entry || typeof entry !== "object" || !("merged" in entry)) {
+      throw new Error(`Allowed difference ${key} must name the merged state: { "merged": <detail or null>, "reason": "..." }`);
+    }
+  }
   const owner = ownerResolver(user.size ? ownership : { user: [], content: [] }, user, content);
   const expected = new Map();
   for (const [key, detail] of content) if (owner(key) === "content") expected.set(key, detail);
@@ -68,7 +75,11 @@ export function compareFingerprints({ merged, content, user = new Map(), ownersh
   for (const [key, detail] of merged) {
     if (!expected.has(key)) problems.push({ type: "unexpected", key, actual: detail });
   }
-  return problems.filter((p) => !Object.prototype.hasOwnProperty.call(allowed, p.key));
+  return problems.filter((p) => {
+    if (!Object.prototype.hasOwnProperty.call(allowed, p.key)) return true;
+    const mergedState = p.type === "missing" ? null : p.actual;
+    return allowed[p.key].merged !== mergedState;
+  });
 }
 
 function readArgs(argv) {

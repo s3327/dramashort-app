@@ -1,26 +1,98 @@
 {
-  "column|custom_list_items.title_id": "ADR-0003 content-schema artifact from the removed 20261007120000_consolidate_content_schema.sql (title_id referencing content.titles plus its sync trigger); the app keys favorites, watch history and lists on title_slug; ADR-0005 §5 removes that migration.",
-  "column|favorites.title_id": "ADR-0003 content-schema artifact from the removed 20261007120000_consolidate_content_schema.sql (title_id referencing content.titles plus its sync trigger); the app keys favorites, watch history and lists on title_slug; ADR-0005 §5 removes that migration.",
-  "column|watch_history.title_id": "ADR-0003 content-schema artifact from the removed 20261007120000_consolidate_content_schema.sql (title_id referencing content.titles plus its sync trigger); the app keys favorites, watch history and lists on title_slug; ADR-0005 §5 removes that migration.",
-  "constraint|custom_list_items.fk_custom_list_items_title_id": "ADR-0003 content-schema artifact from the removed 20261007120000_consolidate_content_schema.sql (title_id referencing content.titles plus its sync trigger); the app keys favorites, watch history and lists on title_slug; ADR-0005 §5 removes that migration.",
-  "constraint|custom_list_items.uq_custom_list_items_list_id_title_id": "ADR-0003 content-schema artifact from the removed 20261007120000_consolidate_content_schema.sql (title_id referencing content.titles plus its sync trigger); the app keys favorites, watch history and lists on title_slug; ADR-0005 §5 removes that migration.",
-  "constraint|favorites.fk_favorites_title_id": "ADR-0003 content-schema artifact from the removed 20261007120000_consolidate_content_schema.sql (title_id referencing content.titles plus its sync trigger); the app keys favorites, watch history and lists on title_slug; ADR-0005 §5 removes that migration.",
-  "constraint|favorites.uq_favorites_user_id_title_id": "ADR-0003 content-schema artifact from the removed 20261007120000_consolidate_content_schema.sql (title_id referencing content.titles plus its sync trigger); the app keys favorites, watch history and lists on title_slug; ADR-0005 §5 removes that migration.",
-  "constraint|watch_history.fk_watch_history_title_id": "ADR-0003 content-schema artifact from the removed 20261007120000_consolidate_content_schema.sql (title_id referencing content.titles plus its sync trigger); the app keys favorites, watch history and lists on title_slug; ADR-0005 §5 removes that migration.",
-  "constraint|watch_history.uq_watch_history_user_id_title_id": "ADR-0003 content-schema artifact from the removed 20261007120000_consolidate_content_schema.sql (title_id referencing content.titles plus its sync trigger); the app keys favorites, watch history and lists on title_slug; ADR-0005 §5 removes that migration.",
-  "function_grant|handle_new_user().anon": "Trigger function: EXECUTE is checked when the trigger is created, not when it fires; created after the lock-down default privileges, so clients cannot call it directly. Signup is verified by verify-user-side-rls.sql.",
-  "function_grant|handle_new_user().authenticated": "Trigger function: EXECUTE is checked when the trigger is created, not when it fires; created after the lock-down default privileges, so clients cannot call it directly. Signup is verified by verify-user-side-rls.sql.",
-  "function_grant|sync_user_engagement_title_id().anon": "ADR-0003 content-schema artifact from the removed 20261007120000_consolidate_content_schema.sql (title_id referencing content.titles plus its sync trigger); the app keys favorites, watch history and lists on title_slug; ADR-0005 §5 removes that migration.",
-  "function_grant|sync_user_engagement_title_id().authenticated": "ADR-0003 content-schema artifact from the removed 20261007120000_consolidate_content_schema.sql (title_id referencing content.titles plus its sync trigger); the app keys favorites, watch history and lists on title_slug; ADR-0005 §5 removes that migration.",
-  "function_grant|sync_user_engagement_title_id().service_role": "ADR-0003 content-schema artifact from the removed 20261007120000_consolidate_content_schema.sql (title_id referencing content.titles plus its sync trigger); the app keys favorites, watch history and lists on title_slug; ADR-0005 §5 removes that migration.",
-  "function|sync_user_engagement_title_id()": "ADR-0003 content-schema artifact from the removed 20261007120000_consolidate_content_schema.sql (title_id referencing content.titles plus its sync trigger); the app keys favorites, watch history and lists on title_slug; ADR-0005 §5 removes that migration.",
-  "index|custom_list_items.idx_custom_list_items_title_id": "ADR-0003 content-schema artifact from the removed 20261007120000_consolidate_content_schema.sql (title_id referencing content.titles plus its sync trigger); the app keys favorites, watch history and lists on title_slug; ADR-0005 §5 removes that migration.",
-  "index|custom_list_items.uq_custom_list_items_list_id_title_id": "ADR-0003 content-schema artifact from the removed 20261007120000_consolidate_content_schema.sql (title_id referencing content.titles plus its sync trigger); the app keys favorites, watch history and lists on title_slug; ADR-0005 §5 removes that migration.",
-  "index|favorites.idx_favorites_title_id": "ADR-0003 content-schema artifact from the removed 20261007120000_consolidate_content_schema.sql (title_id referencing content.titles plus its sync trigger); the app keys favorites, watch history and lists on title_slug; ADR-0005 §5 removes that migration.",
-  "index|favorites.uq_favorites_user_id_title_id": "ADR-0003 content-schema artifact from the removed 20261007120000_consolidate_content_schema.sql (title_id referencing content.titles plus its sync trigger); the app keys favorites, watch history and lists on title_slug; ADR-0005 §5 removes that migration.",
-  "index|watch_history.idx_watch_history_title_id": "ADR-0003 content-schema artifact from the removed 20261007120000_consolidate_content_schema.sql (title_id referencing content.titles plus its sync trigger); the app keys favorites, watch history and lists on title_slug; ADR-0005 §5 removes that migration.",
-  "index|watch_history.uq_watch_history_user_id_title_id": "ADR-0003 content-schema artifact from the removed 20261007120000_consolidate_content_schema.sql (title_id referencing content.titles plus its sync trigger); the app keys favorites, watch history and lists on title_slug; ADR-0005 §5 removes that migration.",
-  "trigger|custom_list_items.trg_sync_custom_list_items_title_id": "ADR-0003 content-schema artifact from the removed 20261007120000_consolidate_content_schema.sql (title_id referencing content.titles plus its sync trigger); the app keys favorites, watch history and lists on title_slug; ADR-0005 §5 removes that migration.",
-  "trigger|favorites.trg_sync_favorites_title_id": "ADR-0003 content-schema artifact from the removed 20261007120000_consolidate_content_schema.sql (title_id referencing content.titles plus its sync trigger); the app keys favorites, watch history and lists on title_slug; ADR-0005 §5 removes that migration.",
-  "trigger|watch_history.trg_sync_watch_history_title_id": "ADR-0003 content-schema artifact from the removed 20261007120000_consolidate_content_schema.sql (title_id referencing content.titles plus its sync trigger); the app keys favorites, watch history and lists on title_slug; ADR-0005 §5 removes that migration."
+  "column|custom_list_items.title_id": {
+    "merged": null,
+    "reason": "ADR-0003 content-schema artifact from the removed 20261007120000_consolidate_content_schema.sql (title_id referencing content.titles plus its sync trigger); the app keys favorites, watch history and lists on title_slug; ADR-0005 §5 removes that migration."
+  },
+  "column|favorites.title_id": {
+    "merged": null,
+    "reason": "ADR-0003 content-schema artifact from the removed 20261007120000_consolidate_content_schema.sql (title_id referencing content.titles plus its sync trigger); the app keys favorites, watch history and lists on title_slug; ADR-0005 §5 removes that migration."
+  },
+  "column|watch_history.title_id": {
+    "merged": null,
+    "reason": "ADR-0003 content-schema artifact from the removed 20261007120000_consolidate_content_schema.sql (title_id referencing content.titles plus its sync trigger); the app keys favorites, watch history and lists on title_slug; ADR-0005 §5 removes that migration."
+  },
+  "constraint|custom_list_items.fk_custom_list_items_title_id": {
+    "merged": null,
+    "reason": "ADR-0003 content-schema artifact from the removed 20261007120000_consolidate_content_schema.sql (title_id referencing content.titles plus its sync trigger); the app keys favorites, watch history and lists on title_slug; ADR-0005 §5 removes that migration."
+  },
+  "constraint|custom_list_items.uq_custom_list_items_list_id_title_id": {
+    "merged": null,
+    "reason": "ADR-0003 content-schema artifact from the removed 20261007120000_consolidate_content_schema.sql (title_id referencing content.titles plus its sync trigger); the app keys favorites, watch history and lists on title_slug; ADR-0005 §5 removes that migration."
+  },
+  "constraint|favorites.fk_favorites_title_id": {
+    "merged": null,
+    "reason": "ADR-0003 content-schema artifact from the removed 20261007120000_consolidate_content_schema.sql (title_id referencing content.titles plus its sync trigger); the app keys favorites, watch history and lists on title_slug; ADR-0005 §5 removes that migration."
+  },
+  "constraint|favorites.uq_favorites_user_id_title_id": {
+    "merged": null,
+    "reason": "ADR-0003 content-schema artifact from the removed 20261007120000_consolidate_content_schema.sql (title_id referencing content.titles plus its sync trigger); the app keys favorites, watch history and lists on title_slug; ADR-0005 §5 removes that migration."
+  },
+  "constraint|watch_history.fk_watch_history_title_id": {
+    "merged": null,
+    "reason": "ADR-0003 content-schema artifact from the removed 20261007120000_consolidate_content_schema.sql (title_id referencing content.titles plus its sync trigger); the app keys favorites, watch history and lists on title_slug; ADR-0005 §5 removes that migration."
+  },
+  "constraint|watch_history.uq_watch_history_user_id_title_id": {
+    "merged": null,
+    "reason": "ADR-0003 content-schema artifact from the removed 20261007120000_consolidate_content_schema.sql (title_id referencing content.titles plus its sync trigger); the app keys favorites, watch history and lists on title_slug; ADR-0005 §5 removes that migration."
+  },
+  "function_grant|handle_new_user().anon": {
+    "merged": "none",
+    "reason": "Trigger function: EXECUTE is checked when the trigger is created, not when it fires; created after the lock-down default privileges, so clients cannot call it directly. Signup is verified by verify-user-side-rls.sql."
+  },
+  "function_grant|handle_new_user().authenticated": {
+    "merged": "none",
+    "reason": "Trigger function: EXECUTE is checked when the trigger is created, not when it fires; created after the lock-down default privileges, so clients cannot call it directly. Signup is verified by verify-user-side-rls.sql."
+  },
+  "function_grant|sync_user_engagement_title_id().anon": {
+    "merged": null,
+    "reason": "ADR-0003 content-schema artifact from the removed 20261007120000_consolidate_content_schema.sql (title_id referencing content.titles plus its sync trigger); the app keys favorites, watch history and lists on title_slug; ADR-0005 §5 removes that migration."
+  },
+  "function_grant|sync_user_engagement_title_id().authenticated": {
+    "merged": null,
+    "reason": "ADR-0003 content-schema artifact from the removed 20261007120000_consolidate_content_schema.sql (title_id referencing content.titles plus its sync trigger); the app keys favorites, watch history and lists on title_slug; ADR-0005 §5 removes that migration."
+  },
+  "function_grant|sync_user_engagement_title_id().service_role": {
+    "merged": null,
+    "reason": "ADR-0003 content-schema artifact from the removed 20261007120000_consolidate_content_schema.sql (title_id referencing content.titles plus its sync trigger); the app keys favorites, watch history and lists on title_slug; ADR-0005 §5 removes that migration."
+  },
+  "function|sync_user_engagement_title_id()": {
+    "merged": null,
+    "reason": "ADR-0003 content-schema artifact from the removed 20261007120000_consolidate_content_schema.sql (title_id referencing content.titles plus its sync trigger); the app keys favorites, watch history and lists on title_slug; ADR-0005 §5 removes that migration."
+  },
+  "index|custom_list_items.idx_custom_list_items_title_id": {
+    "merged": null,
+    "reason": "ADR-0003 content-schema artifact from the removed 20261007120000_consolidate_content_schema.sql (title_id referencing content.titles plus its sync trigger); the app keys favorites, watch history and lists on title_slug; ADR-0005 §5 removes that migration."
+  },
+  "index|custom_list_items.uq_custom_list_items_list_id_title_id": {
+    "merged": null,
+    "reason": "ADR-0003 content-schema artifact from the removed 20261007120000_consolidate_content_schema.sql (title_id referencing content.titles plus its sync trigger); the app keys favorites, watch history and lists on title_slug; ADR-0005 §5 removes that migration."
+  },
+  "index|favorites.idx_favorites_title_id": {
+    "merged": null,
+    "reason": "ADR-0003 content-schema artifact from the removed 20261007120000_consolidate_content_schema.sql (title_id referencing content.titles plus its sync trigger); the app keys favorites, watch history and lists on title_slug; ADR-0005 §5 removes that migration."
+  },
+  "index|favorites.uq_favorites_user_id_title_id": {
+    "merged": null,
+    "reason": "ADR-0003 content-schema artifact from the removed 20261007120000_consolidate_content_schema.sql (title_id referencing content.titles plus its sync trigger); the app keys favorites, watch history and lists on title_slug; ADR-0005 §5 removes that migration."
+  },
+  "index|watch_history.idx_watch_history_title_id": {
+    "merged": null,
+    "reason": "ADR-0003 content-schema artifact from the removed 20261007120000_consolidate_content_schema.sql (title_id referencing content.titles plus its sync trigger); the app keys favorites, watch history and lists on title_slug; ADR-0005 §5 removes that migration."
+  },
+  "index|watch_history.uq_watch_history_user_id_title_id": {
+    "merged": null,
+    "reason": "ADR-0003 content-schema artifact from the removed 20261007120000_consolidate_content_schema.sql (title_id referencing content.titles plus its sync trigger); the app keys favorites, watch history and lists on title_slug; ADR-0005 §5 removes that migration."
+  },
+  "trigger|custom_list_items.trg_sync_custom_list_items_title_id": {
+    "merged": null,
+    "reason": "ADR-0003 content-schema artifact from the removed 20261007120000_consolidate_content_schema.sql (title_id referencing content.titles plus its sync trigger); the app keys favorites, watch history and lists on title_slug; ADR-0005 §5 removes that migration."
+  },
+  "trigger|favorites.trg_sync_favorites_title_id": {
+    "merged": null,
+    "reason": "ADR-0003 content-schema artifact from the removed 20261007120000_consolidate_content_schema.sql (title_id referencing content.titles plus its sync trigger); the app keys favorites, watch history and lists on title_slug; ADR-0005 §5 removes that migration."
+  },
+  "trigger|watch_history.trg_sync_watch_history_title_id": {
+    "merged": null,
+    "reason": "ADR-0003 content-schema artifact from the removed 20261007120000_consolidate_content_schema.sql (title_id referencing content.titles plus its sync trigger); the app keys favorites, watch history and lists on title_slug; ADR-0005 §5 removes that migration."
+  }
 }

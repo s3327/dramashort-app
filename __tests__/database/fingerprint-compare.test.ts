@@ -68,12 +68,41 @@ describe("schema fingerprint comparison (ADR-0005)", () => {
     assert.deepEqual(compareFingerprints({ merged: new Map(content), content }), []);
   });
 
-  it("ignores differences listed as allowed", () => {
+  const absent = { merged: null, reason: "r" };
+
+  it("ignores an allowed difference in the merged state it names", () => {
     const merged = new Map(content);
     const problems = compareFingerprints({
       merged, content, user, ownership,
-      allowed: { "column|profiles.id": "r", "trigger|users.on_auth_user_created": "r" },
+      allowed: { "column|profiles.id": absent, "trigger|users.on_auth_user_created": absent },
     });
     assert.deepEqual(problems, []);
+  });
+
+  it("still reports an allowed fact whose merged state differs from the one named", () => {
+    const merged = new Map(content);
+    merged.set("column|profiles.id", "text null=YES default=");
+    const problems = compareFingerprints({
+      merged, content, user, ownership,
+      allowed: { "column|profiles.id": absent, "trigger|users.on_auth_user_created": absent },
+    });
+    assert.deepEqual(problems.map((p) => p.key), ["column|profiles.id"]);
+  });
+
+  it("accepts a changed value only when the allowed entry names that value", () => {
+    const merged = new Map(content);
+    merged.set("table_grant|titles.anon", "SELECT,UPDATE");
+    const allowed = { "column|profiles.id": absent, "trigger|users.on_auth_user_created": absent };
+    const named = { ...allowed, "table_grant|titles.anon": { merged: "SELECT,UPDATE", reason: "r" } };
+    const other = { ...allowed, "table_grant|titles.anon": { merged: "SELECT,INSERT", reason: "r" } };
+    assert.deepEqual(compareFingerprints({ merged, content, user, ownership, allowed: named }), []);
+    assert.equal(compareFingerprints({ merged, content, user, ownership, allowed: other }).length, 1);
+  });
+
+  it("rejects an allowed difference that does not name the merged state", () => {
+    assert.throws(
+      () => compareFingerprints({ merged: new Map(content), content, user, ownership, allowed: { "column|profiles.id": "r" } as never }),
+      /merged/
+    );
   });
 });

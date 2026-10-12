@@ -1347,7 +1347,7 @@ npx supabase link --project-ref <new-ref>
 npx supabase projects list
 ```
 
-Expected: the new project shows `region: ap-southeast-1`, status `ACTIVE_HEALTHY`, `linked: true`.
+Expected: the new project shows `region: ap-southeast-1`, status `ACTIVE_HEALTHY`, `linked: true`, and `postgres_engine: 17` (the version the local stack and both old projects run, 17.6).
 
 ### Task 11: Push the single chain to the new project
 
@@ -1370,6 +1370,18 @@ diff <(grep -vE '^--|^SET |^SELECT pg_catalog' tmp/db-merge/local-public.sql) <(
 ```
 
 Expected: no differences other than the platform function `rls_auto_enable` and its event trigger. The `artwork` bucket exists (created by `20261009120000_artwork_storage.sql`).
+
+The dump covers only `public`. The schema fingerprint also covers storage policies and buckets, extensions, and PUBLIC grants. With `PGPASSWORD` exported as in Task 12 Step 1:
+
+```bash
+docker exec -i -e PGPASSWORD supabase_db_dramashort psql "<session pooler connection string without password>" \
+  -q -A -t -v ON_ERROR_STOP=1 < scripts/db/schema-fingerprint.sql > tmp/db-merge/live-fingerprint.txt
+docker exec -i supabase_db_dramashort psql -U postgres -d postgres \
+  -q -A -t -v ON_ERROR_STOP=1 < scripts/db/schema-fingerprint.sql > tmp/db-merge/local-fingerprint.txt
+diff tmp/db-merge/local-fingerprint.txt tmp/db-merge/live-fingerprint.txt
+```
+
+Expected: every `storage_policy`, `bucket`, `policy`, `table_grant`, `column_grant` and `function_grant` line is identical. The only differences allowed are the platform function `rls_auto_enable` (with its grants) and extension versions or extra extensions that the hosted platform installs.
 
 ### Task 12: Copy the catalog from dramashort-content
 
