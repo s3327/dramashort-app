@@ -4215,3 +4215,25 @@
   - Content reference: 593 facts (149 columns, 47 constraints, 71 indexes, 14 RLS flags, 12 policies, 29 table grants, 28 column grants, 51 functions, 153 function grants, 11 triggers, 28 default privileges); contains `column|titles.id|uuid null=NO default=gen_random_uuid()` and `table_grant|titles.anon|SELECT`.
   - User reference: 663 facts; contains `column|profiles.role|text null=YES default='user'::text` and `trigger|users.on_auth_user_created|CREATE TRIGGER on_auth_user_created AFTER INSERT ON auth.users FOR EACH ROW EXECUTE FUNCTION handle_new_user()`.
   - Each reference compared with itself: `Fingerprints match.`
+
+---
+
+## [2026-10-12] Task 13.7 / Plan Task 3: One Supabase Workdir at the Repository Root
+* **Milestone**: Task 13.7, Phase 1 (local), plan Task 3.
+* **Goal**: Replace the two CLI workdirs (`supabase/content`, `supabase/user`) with one at the repository root, carrying the catalog chain; the user-side migrations follow in Task 4.
+* **Implementation Steps Taken**:
+  1. Replaced the CI test "the stacks do not overlap" with "database verification runs on one local stack and stops on the first failure"; it failed on `the repository root is the only Supabase workdir`.
+  2. `git mv`: the 20 catalog migrations to `supabase/migrations/`; dramashort-user's `config.toml` (it holds the auth settings: password policy, confirmations, redirect URLs, email templates) to `supabase/config.toml` with `project_id = "dramashort"`; `templates/` to `supabase/templates/`; both pgTAP files to `supabase/tests/`; removed the content `config.toml` (it differed only in project_id and weaker auth settings). Renamed `verify-content-db-rls.sql` → `verify-catalog-rls.sql` and `verify-user-db-rls.sql` → `verify-user-side-rls.sql` (header updated to `supabase_db_dramashort`).
+  3. `package.json`: `db:content:push` / `db:user:push` replaced by `db:start`, `db:stop`, `db:push`.
+  4. CI `supabase-rls-verification`: one `supabase start`, both verification scripts against `supabase_db_dramashort`, one `supabase stop --no-backup`.
+  5. Tests repointed at the moved files: 11 by path string, plus `email-verification` (config and template path), `password-recovery` (template, config, workdir = repository root), `hero-quality-accessibility` and `wallet-and-entitlements` (paths built from segments), and `rls-contract` (a `migrationsDirOf` helper; its user branch still points at `supabase/user/supabase/migrations` until Task 4).
+* **Key File Diffs**:
+  - Moved: 20 migrations, `config.toml`, 2 templates, 2 pgTAP files, 2 verification scripts.
+  - Deleted: `supabase/content/supabase/config.toml`.
+  - Modified: `package.json`, `.github/workflows/ci.yml`, 17 test files, `ROADMAP.md`, `CHANGELOG-DEV.md`.
+* **Regression Analysis & Cross-System Impact**:
+  - The CI database job runs the user-side verification against a stack that has no user tables yet; it fails until Task 4 (by design; nothing is pushed in between).
+  - The local CLI now uses `supabase_db_dramashort` and the repository root as workdir; `supabase/content` and `supabase/user` keep only their untracked `.temp` link folders (and the user migrations until Task 4).
+* **Verification**:
+  - `npm test`: 1,208 / 1,208 (three `[recordAuditLog] Unexpected error` console lines appear as before this change).
+  - `npx supabase start -x studio,logflare,vector`: 20 migrations applied. `verify-catalog-rls.sql` with `ON_ERROR_STOP`: exit 0, 5 `PASS` notices. Fingerprint of this stack vs the content reference: `Fingerprints match.`

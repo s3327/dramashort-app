@@ -27,7 +27,7 @@ describe("Task 13.5: Search & Taxonomy Scalability Contracts", () => {
   );
   const contentMigrationPath = path.resolve(
     rootDir,
-    "supabase/content/supabase/migrations/20261008120000_search_and_taxonomy_scalability.sql"
+    "supabase/migrations/20261008120000_search_and_taxonomy_scalability.sql"
   );
 
   afterEach(() => {

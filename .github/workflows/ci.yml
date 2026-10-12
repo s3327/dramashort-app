@@ -73,31 +73,23 @@ jobs:
         with:
           version: 2.118.0
 
-      - name: Start User DB & Run Migrations
-        run: supabase start --workdir supabase/user
+      - name: Start Supabase & Run Migrations
+        run: supabase start
 
       # psql exits non-zero on the first failed check (ON_ERROR_STOP).
-      - name: Verify User DB RLS Policies
+      - name: Verify user-side RLS policies
         run: |
-          docker exec -i supabase_db_user psql -U postgres -d postgres -q -v ON_ERROR_STOP=1 \
-            < scripts/sql/verify-user-db-rls.sql
+          docker exec -i supabase_db_dramashort psql -U postgres -d postgres -q -v ON_ERROR_STOP=1 \
+            < scripts/sql/verify-user-side-rls.sql
 
-      # Both stacks use the same ports, so the first must be stopped before the second starts.
-      - name: Stop User DB
-        if: always()
-        run: supabase stop --workdir supabase/user --no-backup
-
-      - name: Start Content DB & Run Migrations
-        run: supabase start --workdir supabase/content
-
-      - name: Verify Content DB RLS Policies
+      - name: Verify catalog RLS policies
         run: |
-          docker exec -i supabase_db_content psql -U postgres -d postgres -q -v ON_ERROR_STOP=1 \
-            < scripts/sql/verify-content-db-rls.sql
+          docker exec -i supabase_db_dramashort psql -U postgres -d postgres -q -v ON_ERROR_STOP=1 \
+            < scripts/sql/verify-catalog-rls.sql
 
-      - name: Stop Content DB
+      - name: Stop Supabase
         if: always()
-        run: supabase stop --workdir supabase/content --no-backup
+        run: supabase stop --no-backup
 
   playwright-e2e:
     name: Playwright Integration & E2E Gate (Task 17.2)

@@ -2088,6 +2088,7 @@ These items stay ✅ for history; the gaps are tracked as new tasks.
 * **Progress**:
   - Task 1 (2026-10-12): schema fingerprint tool — `scripts/db/schema-fingerprint.sql` (one `kind|object|detail` line per column, constraint, index, RLS flag, policy, table/column/function grant, function, trigger incl. `auth.users`, view, default privilege) and `scripts/db/compare-fingerprints.mjs` (each fact must equal the reference of the side that owns it; ownership in `scripts/db/merge-ownership.json`, reviewed exceptions in `scripts/db/merge-allowed-differences.json`). 8 unit tests.
   - Task 2 (2026-10-12): reference fingerprints captured from fresh local stacks of both current chains (content chain: 20 migrations, 593 facts; user chain: 24 migrations, 663 facts), kept outside git in `tmp/db-merge/`. The fingerprint query needed three fixes on first contact with a real database (a `"char"` cast, multi-line policy definitions, NULL details).
+  - Task 3 (2026-10-12): one Supabase CLI workdir at the repository root — `supabase/migrations/` (the 20 catalog migrations), `supabase/config.toml` (the user project's auth settings, `project_id = "dramashort"`), `supabase/templates/`, `supabase/tests/`; verification scripts renamed `scripts/sql/verify-catalog-rls.sql` and `verify-user-side-rls.sql`; `npm run db:start` / `db:stop` / `db:push`; CI starts one stack. The single local stack with the catalog chain only matches the content reference fingerprint exactly.
 
 ---
 

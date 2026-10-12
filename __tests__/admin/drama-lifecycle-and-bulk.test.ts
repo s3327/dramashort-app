@@ -281,7 +281,7 @@ describe("Task 16.4: Drama Lifecycle Actions & Bulk Operations", () => {
   it("verifies Task 16.4 migration adds has_been_published, trigger, and admin_audit_log", () => {
     const migrationContentPath = path.resolve(
       process.cwd(),
-      "supabase/content/supabase/migrations/20261009140000_drama_lifecycle_and_audit.sql"
+      "supabase/migrations/20261009140000_drama_lifecycle_and_audit.sql"
     );
     const migrationUserPath = path.resolve(
       process.cwd(),

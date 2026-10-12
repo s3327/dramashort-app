@@ -4,8 +4,8 @@
 -- Run against a LOCAL database with all user migrations applied. It creates and
 -- deletes two throwaway auth users (A, B). Never run against production.
 --
---   docker exec -i supabase_db_user psql -U postgres -d postgres -q \
---     < scripts/sql/verify-user-db-rls.sql
+--   docker exec -i supabase_db_dramashort psql -U postgres -d postgres -q \
+--     < scripts/sql/verify-user-side-rls.sql
 --
 -- Every check prints NOTICE 'PASS ...'; the first failure aborts with 'FAIL ...'.
 -- Final line on success: ALL TASK 10.2 CHECKS PASSED

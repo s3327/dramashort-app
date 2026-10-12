@@ -400,7 +400,7 @@ describe("Task 12.7: Content Data Integrity Rules", () => {
   describe("6. Database Migration Contracts (20261006150000_content_data_integrity.sql)", () => {
     const migrationPath = path.join(
       process.cwd(),
-      "supabase/content/supabase/migrations/20261006150000_content_data_integrity.sql"
+      "supabase/migrations/20261006150000_content_data_integrity.sql"
     );
 
     test("migration file exists in content repository", () => {

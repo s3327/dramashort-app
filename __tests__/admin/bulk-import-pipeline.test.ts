@@ -18,7 +18,7 @@ describe("Task 16.11: Bulk Import Pipeline", () => {
     test("migration files exist in Content and User DBs", () => {
       const contentMig = path.resolve(
         process.cwd(),
-        "supabase/content/supabase/migrations/20261009210000_bulk_import_pipeline.sql"
+        "supabase/migrations/20261009210000_bulk_import_pipeline.sql"
       );
       const userMig = path.resolve(
         process.cwd(),

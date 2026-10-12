@@ -143,15 +143,8 @@ describe("Email Verification & Confirmation Link (Task 11.1)", () => {
 
   describe("Supabase Email Template & Auth Configuration", () => {
     const rootDir = process.cwd();
-    const configPath = path.join(rootDir, "supabase", "user", "supabase", "config.toml");
-    const templatePath = path.join(
-      rootDir,
-      "supabase",
-      "user",
-      "supabase",
-      "templates",
-      "confirmation.html"
-    );
+    const configPath = path.join(rootDir, "supabase", "config.toml");
+    const templatePath = path.join(rootDir, "supabase", "templates", "confirmation.html");
 
     it("verifies config.toml enables email confirmations", () => {
       const config = fs.readFileSync(configPath, "utf8");

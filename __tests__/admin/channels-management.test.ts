@@ -259,7 +259,7 @@ describe("Task 16.5: Channels Management", () => {
   test("1. defines channels operations migration with updated_at, indexes, and triggers", () => {
     const migrationPath = path.join(
       process.cwd(),
-      "supabase/content/supabase/migrations/20261009150000_channels_operations.sql"
+      "supabase/migrations/20261009150000_channels_operations.sql"
     );
     assert.ok(fs.existsSync(migrationPath), "Content migration file must exist");
     const sql = fs.readFileSync(migrationPath, "utf8");

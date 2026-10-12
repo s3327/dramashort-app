@@ -209,13 +209,15 @@ describe("Task 17.3: Tooling Upgrades & Performance Budgets", () => {
       assert.equal(ciVersion[1].split(".")[0], depMajor);
     });
 
-    test("database verification scripts stop on the first failure and the stacks do not overlap", () => {
+    test("database verification runs on one local stack and stops on the first failure", () => {
       const db = jobBlock("supabase-rls-verification");
       assert.equal((db.match(/ON_ERROR_STOP=1/g) || []).length, 2, "both psql runs must use ON_ERROR_STOP");
       assert.doesNotMatch(db, /\|\|/, "no fallback may mask a failing verification");
-      const stopUser = db.indexOf("supabase stop --workdir supabase/user");
-      const startContent = db.indexOf("supabase start --workdir supabase/content");
-      assert.ok(stopUser > 0 && stopUser < startContent, "the user stack must stop before the content stack starts");
+      assert.doesNotMatch(db, /--workdir/, "the repository root is the only Supabase workdir");
+      assert.match(db, /supabase start\b/);
+      assert.match(db, /supabase_db_dramashort/);
+      assert.match(db, /verify-user-side-rls\.sql/);
+      assert.match(db, /verify-catalog-rls\.sql/);
     });
 
     test(".gitattributes keeps text files on LF for every contributor", () => {

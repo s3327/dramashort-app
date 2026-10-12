@@ -25,7 +25,7 @@ describe("Task 16.10: Support Inbox & Admin Responsiveness", () => {
       );
       const contentMigPath = path.resolve(
         process.cwd(),
-        "supabase/content/supabase/migrations/20261009200000_support_inbox_and_admin_features.sql"
+        "supabase/migrations/20261009200000_support_inbox_and_admin_features.sql"
       );
 
       assert.ok(fs.existsSync(userMigPath), "User DB migration file must exist");

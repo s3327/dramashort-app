@@ -5,6 +5,11 @@ import path from "node:path";
 
 describe("Database RLS & Schema Access Contract (Task 10.9)", () => {
   const rootDir = process.cwd();
+  // ADR-0005: the catalog chain lives in supabase/migrations; the user chain is still in its old folder until it is ported.
+  const migrationsDirOf = (db: string) =>
+    db === "content"
+      ? path.join(rootDir, "supabase", "migrations")
+      : path.join(rootDir, "supabase", "user", "supabase", "migrations");
 
   describe("User Database Migration Contracts (Project 2)", () => {
     const userMigrationsDir = path.join(rootDir, "supabase", "user", "supabase", "migrations");
@@ -64,14 +69,7 @@ describe("Database RLS & Schema Access Contract (Task 10.9)", () => {
 
     for (const db of ["user", "content"]) {
       it(`CRITICAL: ${db} DB revokes EXECUTE on wallet and payment procedures from clients`, () => {
-        const migrationPath = path.join(
-          rootDir,
-          "supabase",
-          db,
-          "supabase",
-          "migrations",
-          "20261010110000_lock_down_function_execute.sql"
-        );
+        const migrationPath = path.join(migrationsDirOf(db), "20261010110000_lock_down_function_execute.sql");
         assert.ok(fs.existsSync(migrationPath), `${db} lock-down migration must exist`);
         const sql = fs.readFileSync(migrationPath, "utf8");
 
@@ -86,7 +84,7 @@ describe("Database RLS & Schema Access Contract (Task 10.9)", () => {
 
     it("no migration re-grants a privileged procedure to anon or authenticated", () => {
       for (const db of ["user", "content"]) {
-        const dir = path.join(rootDir, "supabase", db, "supabase", "migrations");
+        const dir = migrationsDirOf(db);
         const sql = fs
           .readdirSync(dir)
           .filter((file) => file.endsWith(".sql"))
@@ -104,7 +102,7 @@ describe("Database RLS & Schema Access Contract (Task 10.9)", () => {
 
   describe("Content Database Client Write Grants (20261011110000)", () => {
     const sql = fs.readFileSync(
-      path.join(rootDir, "supabase", "content", "supabase", "migrations", "20261011110000_revoke_client_write_grants.sql"),
+      path.join(rootDir, "supabase", "migrations", "20261011110000_revoke_client_write_grants.sql"),
       "utf8"
     );
 
@@ -141,7 +139,7 @@ describe("Database RLS & Schema Access Contract (Task 10.9)", () => {
   });
 
   describe("Content Database Migration Contracts (Project 1)", () => {
-    const contentMigrationsDir = path.join(rootDir, "supabase", "content", "supabase", "migrations");
+    const contentMigrationsDir = path.join(rootDir, "supabase", "migrations");
     const contentSql = fs
       .readdirSync(contentMigrationsDir)
       .filter((file) => file.endsWith(".sql"))

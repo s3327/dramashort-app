@@ -7,11 +7,11 @@ import { readReturnUrl } from "@/lib/navigation/safe-redirect";
 describe("Password Recovery & Reset Password Flow (Task 11.2)", () => {
   const recoveryTemplatePath = path.resolve(
     process.cwd(),
-    "supabase/user/supabase/templates/recovery.html"
+    "supabase/templates/recovery.html"
   );
   const configPath = path.resolve(
     process.cwd(),
-    "supabase/user/supabase/config.toml"
+    "supabase/config.toml"
   );
 
   describe("Recovery Email Template Validation", () => {
@@ -50,16 +50,16 @@ describe("Password Recovery & Reset Password Flow (Task 11.2)", () => {
       );
     });
 
-    it("every email template content_path resolves from the CLI workdir (supabase/user)", () => {
+    it("every email template content_path resolves from the CLI workdir (repository root)", () => {
       // The Supabase CLI resolves content_path against the --workdir, not against
       // the folder holding config.toml. A path that does not resolve makes every
       // CLI command for this database fail with DbConfigLoadError.
       const config = fs.readFileSync(configPath, "utf-8");
-      const workdir = path.join(process.cwd(), "supabase", "user");
+      const workdir = process.cwd();
       const paths = [...config.matchAll(/^content_path\s*=\s*"([^"]+)"/gm)].map((m) => m[1]);
       assert.ok(paths.length >= 2, "confirmation and recovery templates are configured");
       for (const p of paths) {
-        assert.ok(fs.existsSync(path.resolve(workdir, p)), `${p} resolves to an existing file from supabase/user`);
+        assert.ok(fs.existsSync(path.resolve(workdir, p)), `${p} resolves to an existing file from the repository root`);
       }
     });
   });

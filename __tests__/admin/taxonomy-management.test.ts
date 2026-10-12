@@ -32,7 +32,7 @@ describe("Task 16.6: Genres & Tags Taxonomy Management", () => {
     it("migration files exist on disk for both content and user databases", () => {
       const contentMigration = path.join(
         process.cwd(),
-        "supabase/content/supabase/migrations/20261009160000_taxonomy_management.sql"
+        "supabase/migrations/20261009160000_taxonomy_management.sql"
       );
       const userMigration = path.join(
         process.cwd(),
@@ -47,7 +47,7 @@ describe("Task 16.6: Genres & Tags Taxonomy Management", () => {
       const sql = fs.readFileSync(
         path.join(
           process.cwd(),
-          "supabase/content/supabase/migrations/20261009160000_taxonomy_management.sql"
+          "supabase/migrations/20261009160000_taxonomy_management.sql"
         ),
         "utf8"
       );
@@ -65,7 +65,7 @@ describe("Task 16.6: Genres & Tags Taxonomy Management", () => {
       const sql = fs.readFileSync(
         path.join(
           process.cwd(),
-          "supabase/content/supabase/migrations/20261009160000_taxonomy_management.sql"
+          "supabase/migrations/20261009160000_taxonomy_management.sql"
         ),
         "utf8"
       );
@@ -79,7 +79,7 @@ describe("Task 16.6: Genres & Tags Taxonomy Management", () => {
       const sql = fs.readFileSync(
         path.join(
           process.cwd(),
-          "supabase/content/supabase/migrations/20261009160000_taxonomy_management.sql"
+          "supabase/migrations/20261009160000_taxonomy_management.sql"
         ),
         "utf8"
       );
@@ -94,7 +94,7 @@ describe("Task 16.6: Genres & Tags Taxonomy Management", () => {
       const sql = fs.readFileSync(
         path.join(
           process.cwd(),
-          "supabase/content/supabase/migrations/20261009160000_taxonomy_management.sql"
+          "supabase/migrations/20261009160000_taxonomy_management.sql"
         ),
         "utf8"
       );

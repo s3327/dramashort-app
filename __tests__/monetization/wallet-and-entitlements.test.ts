@@ -191,8 +191,6 @@ describe("Task 8.1: Monetization Database Schema, Wallets, Entitlements & Daily 
     const contentMigrationPath = path.join(
       process.cwd(),
       "supabase",
-      "content",
-      "supabase",
       "migrations",
       "20261009220000_monetization_wallets_and_entitlements.sql"
     );

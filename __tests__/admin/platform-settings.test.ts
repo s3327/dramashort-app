@@ -89,7 +89,7 @@ describe("Task 16.8: Platform Settings Persistence", () => {
   describe("Database Migration Contracts", () => {
     const contentMigrationPath = path.join(
       process.cwd(),
-      "supabase/content/supabase/migrations/20261009180000_platform_settings.sql"
+      "supabase/migrations/20261009180000_platform_settings.sql"
     );
     const userMigrationPath = path.join(
       process.cwd(),

@@ -265,7 +265,7 @@ describe("Task 16.7: User Management Console", () => {
     );
     const contentMigrationPath = path.join(
       process.cwd(),
-      "supabase/content/supabase/migrations/20261009170000_admin_user_management.sql"
+      "supabase/migrations/20261009170000_admin_user_management.sql"
     );
 
     it("verifies migration file exists in both User and Content database migration suites", () => {
