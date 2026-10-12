@@ -92,24 +92,26 @@ END $$;
 -- Test 5: client roles hold no write privilege on any table
 -- (20261011110000_revoke_client_write_grants.sql)
 -- ADR-0005: the single database also holds the user-side tables. Signed-in users
--- write their own rows in these five (row security limits them to their own rows;
--- verify-user-side-rls.sql checks those grants and policies), so they are excluded.
+-- write their own rows in five of them (row security limits them to their own rows;
+-- verify-user-side-rls.sql checks those grants and policies), so only the
+-- authenticated checks skip those five; anon may write to no table at all.
 RESET ROLE;
 DO $$
 DECLARE
   t RECORD;
 BEGIN
   FOR t IN
-    SELECT c.oid, c.relname
+    SELECT c.oid, c.relname,
+           c.relname IN ('profiles', 'favorites', 'watch_history', 'custom_lists', 'custom_list_items') AS owner_scoped
     FROM pg_class c
     JOIN pg_namespace n ON n.oid = c.relnamespace
     WHERE n.nspname = 'public' AND c.relkind = 'r'
-      AND c.relname NOT IN ('profiles', 'favorites', 'watch_history', 'custom_lists', 'custom_list_items')
   LOOP
     IF has_table_privilege('anon', t.oid, 'INSERT, UPDATE, DELETE, TRUNCATE')
-       OR has_table_privilege('authenticated', t.oid, 'INSERT, UPDATE, DELETE, TRUNCATE')
        OR has_any_column_privilege('anon', t.oid, 'INSERT, UPDATE')
-       OR has_any_column_privilege('authenticated', t.oid, 'INSERT, UPDATE') THEN
+       OR (NOT t.owner_scoped
+           AND (has_table_privilege('authenticated', t.oid, 'INSERT, UPDATE, DELETE, TRUNCATE')
+                OR has_any_column_privilege('authenticated', t.oid, 'INSERT, UPDATE'))) THEN
       RAISE EXCEPTION 'TEST FAILED: a client role holds a write privilege on public.%', t.relname;
     END IF;
   END LOOP;
