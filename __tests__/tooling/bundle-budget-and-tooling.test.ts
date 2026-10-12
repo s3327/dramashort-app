@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { createRequire } from "node:module";
+import { spawnSync } from "node:child_process";
 import {
   evaluateBundleBudgets,
   ROUTE_BUDGETS_KB,
@@ -199,6 +200,40 @@ describe("Task 17.3: Tooling Upgrades & Performance Budgets", () => {
       const tests = verify.indexOf("run: npm test");
       assert.ok(build > 0 && tests > 0, "verify job must build and test");
       assert.ok(build < tests, "bundle-budget tests read .next, so the build must come first");
+    });
+
+    // ADR-0005 Review Focus 1: a build must carry the project URL in its browser code.
+    // The check reads the build, so it runs right after the build, with the build's URL.
+    test("CI checks its own build's browser bundle for the Supabase URL", () => {
+      const verify = jobBlock("verify");
+      const build = verify.indexOf("run: npm run build");
+      const check = verify.indexOf("browser-bundle-env.test.ts");
+      assert.ok(build > 0 && check > build, "the bundle check must run after the build");
+      const buildUrl = verify.slice(build).match(/NEXT_PUBLIC_SUPABASE_URL:\s*(\S+)/)?.[1];
+      const checkStep = verify.slice(check).split(/\n\s+- name:/)[0];
+      assert.match(checkStep, /VERIFY_BUILD_ENV:\s*"1"/);
+      assert.equal(checkStep.match(/NEXT_PUBLIC_SUPABASE_URL:\s*(\S+)/)?.[1], buildUrl);
+    });
+
+    test("a plain test run skips the bundle check instead of judging a build made with another URL", () => {
+      const result = spawnSync(
+        process.execPath,
+        ["--import", "tsx", "--test", path.join("__tests__", "tooling", "browser-bundle-env.test.ts")],
+        {
+          cwd: ROOT,
+          // NODE_TEST_CONTEXT would make the nested run report to this runner instead of printing.
+          env: {
+            ...process.env,
+            NODE_TEST_CONTEXT: undefined,
+            NEXT_PUBLIC_SUPABASE_URL: "https://not-the-built-project.supabase.co",
+            VERIFY_BUILD_ENV: "",
+          },
+          encoding: "utf8",
+          timeout: 60_000,
+        }
+      );
+      assert.equal(result.status, 0, result.stdout + result.stderr);
+      assert.match(result.stdout, /skipped 1/);
     });
 
     test("the Supabase CLI used in CI matches the major version of the dev dependency", () => {

@@ -46,6 +46,14 @@ jobs:
           PAYMENT_WEBHOOK_SECRET: ci-webhook-secret-not-a-real-credential
           CRON_SECRET: ci-cron-secret-not-a-real-credential
 
+      # ADR-0005: browser code must carry the project URL; a NEXT_PUBLIC_* value read
+      # through another variable is not inlined and sign-in fails. Same URL as the build.
+      - name: Browser Bundle Carries the Supabase URL
+        run: npm run test:file -- __tests__/tooling/browser-bundle-env.test.ts
+        env:
+          VERIFY_BUILD_ENV: "1"
+          NEXT_PUBLIC_SUPABASE_URL: https://ci-not-a-real-project.supabase.co
+
       # Runs after the build on purpose: the bundle-budget tests read the build
       # output in .next and fail without it. The suite itself runs without any
       # of the build's environment variables, exactly as it does locally.
@@ -99,6 +107,7 @@ jobs:
     env:
       NEXT_PUBLIC_SUPABASE_URL: https://ci-not-a-real-project.supabase.co
       NEXT_PUBLIC_SUPABASE_ANON_KEY: ci-anon-key-not-a-real-credential
+      SUPABASE_SERVICE_ROLE_KEY: ci-service-role-key-not-a-real-credential
       PAYMENT_WEBHOOK_SECRET: ci-webhook-secret-not-a-real-credential
       CRON_SECRET: ci-cron-secret-not-a-real-credential
     steps:
@@ -107,7 +116,6 @@ jobs:
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
-      SUPABASE_SERVICE_ROLE_KEY: ci-service-role-key-not-a-real-credential
         with:
           node-version: 22
           cache: npm
