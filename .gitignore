@@ -38,3 +38,6 @@ test-results/
 /blob-report/
 /playwright/.cache/
 /playwright/.auth/
+
+# merge work files (ADR-0005)
+/tmp/

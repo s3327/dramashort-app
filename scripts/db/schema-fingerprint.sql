@@ -75,9 +75,10 @@ UNION ALL
   WHERE v.table_schema = 'public'
 UNION ALL
   SELECT 'default_acl',
-         pg_get_userbyid(d.defaclrole) || '.' || coalesce(dn.nspname, '*') || '.' || d.defaclobjtype,
+         pg_get_userbyid(d.defaclrole) || '.' || coalesce(dn.nspname, '*') || '.' || d.defaclobjtype::text,
          array_to_string(d.defaclacl, ',')
   FROM pg_default_acl d
   LEFT JOIN pg_namespace dn ON dn.oid = d.defaclnamespace
 )
-SELECT kind || '|' || obj || '|' || detail FROM facts ORDER BY 1;
+-- Collapse whitespace so multi-line definitions (policies, triggers) stay on one line.
+SELECT regexp_replace(kind || '|' || obj || '|' || coalesce(detail, '<null>'), '\s+', ' ', 'g') FROM facts ORDER BY 1;

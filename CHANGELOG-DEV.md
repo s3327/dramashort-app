@@ -4195,3 +4195,23 @@
   - `npm run test:file -- __tests__/database/fingerprint-compare.test.ts`: 8 / 8 (after failing as above).
   - `npx tsc --noEmit`: 0 errors. `npm test`: 1,208 / 1,208.
   - **Not run yet**: the SQL query against a database (first run in Task 2).
+
+---
+
+## [2026-10-12] Task 13.7 / Plan Task 2: Reference Fingerprints of Both Current Chains
+* **Milestone**: Task 13.7, Phase 1 (local), plan Task 2.
+* **Goal**: Record, before anything moves, exactly what each current migration chain produces, as the yardstick for the merged chain.
+* **Implementation Steps Taken**:
+  1. `.gitignore`: added `/tmp/` for merge work files.
+  2. Started the content chain locally (`supabase start --workdir supabase/content`). The first start applied all 20 migrations, then the CLI stopped every container because the `analytics` and `studio` containers failed their health checks. Started again with `-x studio,logflare,vector`; the plan needs neither service.
+  3. Ran `scripts/db/schema-fingerprint.sql`. It failed (`operator is not unique: text || "char"` on `pg_default_acl.defaclobjtype`), then produced policy definitions spread over several lines. Fixed both in the query: cast to text, collapse whitespace in the final SELECT, print NULL details as `<null>`. A first attempt at the whitespace fix lost its backslash in shell quoting; the comparison tool rejected the result as malformed, and the regex was corrected directly.
+  4. The user chain's stack started from an old local Docker volume (`Starting database from backup`: 5 public tables, no migration history, 0 auth users — the local test stack of 2026-10-04). Dumped it with `pg_dump` to `tmp/db-merge/old-local-user-volume.sql` (101 KB), then `supabase db reset --workdir supabase/user` applied all 24 migrations to a fresh database.
+  5. Captured `tmp/db-merge/content-ref.txt` and `tmp/db-merge/user-ref.txt`; stopped both stacks with `--no-backup` (both volumes were created in this session).
+* **Key File Diffs**:
+  - Modified: `.gitignore`, `scripts/db/schema-fingerprint.sql`, `ROADMAP.md` (Task 13.7 progress), `CHANGELOG-DEV.md`.
+  - Not committed: the two reference files and the old-volume dump in `tmp/db-merge/`.
+* **Regression Analysis & Cross-System Impact**: No application or migration change. Nothing touched either live project.
+* **Verification**:
+  - Content reference: 593 facts (149 columns, 47 constraints, 71 indexes, 14 RLS flags, 12 policies, 29 table grants, 28 column grants, 51 functions, 153 function grants, 11 triggers, 28 default privileges); contains `column|titles.id|uuid null=NO default=gen_random_uuid()` and `table_grant|titles.anon|SELECT`.
+  - User reference: 663 facts; contains `column|profiles.role|text null=YES default='user'::text` and `trigger|users.on_auth_user_created|CREATE TRIGGER on_auth_user_created AFTER INSERT ON auth.users FOR EACH ROW EXECUTE FUNCTION handle_new_user()`.
+  - Each reference compared with itself: `Fingerprints match.`
