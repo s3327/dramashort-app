@@ -4178,3 +4178,20 @@
 * **Verification**:
   - `npx supabase projects list` (read-only) as described above. Docker Desktop is now running (server 29.8.1).
   - **Not run**: anything in the plan.
+
+---
+
+## [2026-10-12] Task 13.7 / Plan Task 1: Schema Fingerprint Tool
+* **Milestone**: Task 13.7, Phase 1 (local), plan Task 1.
+* **Goal**: A way to prove that the single database built from one migration chain matches, object by object, the two databases it replaces.
+* **Implementation Steps Taken**:
+  1. Wrote `__tests__/database/fingerprint-compare.test.ts` (8 tests) and ran it: failed with `Cannot find module '@/scripts/db/compare-fingerprints.mjs'`.
+  2. Added `scripts/db/compare-fingerprints.mjs` (`parseFingerprint`, `subjectOf`, `compareFingerprints`, CLI), `scripts/db/merge-ownership.json` (the 5 shared tables and 6 functions that keep dramashort-user's definition), `scripts/db/merge-allowed-differences.json` (empty), and `scripts/db/schema-fingerprint.sql`.
+* **Key File Diffs**:
+  - Created: the four files above and the test file.
+  - Modified (docs): `ROADMAP.md` (Task 13.7 status and progress), `CHANGELOG-DEV.md`.
+* **Regression Analysis & Cross-System Impact**: New files only; nothing imports them outside the new test. `scripts/**` is outside the lint scope as before.
+* **Verification**:
+  - `npm run test:file -- __tests__/database/fingerprint-compare.test.ts`: 8 / 8 (after failing as above).
+  - `npx tsc --noEmit`: 0 errors. `npm test`: 1,208 / 1,208.
+  - **Not run yet**: the SQL query against a database (first run in Task 2).
