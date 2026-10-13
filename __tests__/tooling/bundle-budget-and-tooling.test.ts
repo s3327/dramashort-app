@@ -236,6 +236,12 @@ describe("Task 17.3: Tooling Upgrades & Performance Budgets", () => {
       assert.match(result.stdout, /skipped 1/);
     });
 
+    // ADR-0005 decision 11: server code runs in Singapore, next to the database (ap-southeast-1).
+    test("Vercel runs server functions in sin1", () => {
+      const vercel = JSON.parse(fs.readFileSync(path.join(ROOT, "vercel.json"), "utf-8"));
+      assert.deepEqual(vercel.regions, ["sin1"]);
+    });
+
     // ADR-0005 decision 5: one workdir at the repository root; the CLI's own state stays out of git.
     test("the Supabase workdir tracks only config, migrations, templates and tests", () => {
       const git = (...args: string[]) => spawnSync("git", args, { cwd: ROOT, encoding: "utf8" });
