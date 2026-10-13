@@ -278,6 +278,37 @@ BEGIN
 END $$;
 ROLLBACK;
 
+-- service_role is the server's role (rollups, admin pages, payments). The hosted project
+-- grants it no data access through default privileges (ADR-0005, plan Task 11 Step 3),
+-- so every table and sequence needs an explicit grant.
+DO $$
+DECLARE
+  r RECORD;
+  missing text := '';
+BEGIN
+  FOR r IN
+    SELECT c.oid, c.relname, c.relkind
+    FROM pg_class c
+    JOIN pg_namespace n ON n.oid = c.relnamespace
+    WHERE n.nspname = 'public' AND c.relkind IN ('r', 'S')
+    ORDER BY c.relname
+  LOOP
+    IF r.relkind = 'r' AND NOT (has_table_privilege('service_role', r.oid, 'SELECT')
+                                AND has_table_privilege('service_role', r.oid, 'INSERT')
+                                AND has_table_privilege('service_role', r.oid, 'UPDATE')
+                                AND has_table_privilege('service_role', r.oid, 'DELETE')) THEN
+      missing := missing || ' table ' || r.relname;
+    ELSIF r.relkind = 'S' AND NOT (has_sequence_privilege('service_role', r.oid, 'USAGE')
+                                   AND has_sequence_privilege('service_role', r.oid, 'SELECT')) THEN
+      missing := missing || ' sequence ' || r.relname;
+    END IF;
+  END LOOP;
+  IF missing <> '' THEN
+    RAISE EXCEPTION 'FAIL service_role lacks data access on:%', missing;
+  END IF;
+  RAISE NOTICE 'PASS service_role can read and write every public table and use every public sequence';
+END $$;
+
 -- ---------------------------------------------------------------- cleanup
 DELETE FROM auth.users WHERE id IN (:'A', :'B');
 SELECT 'ALL TASK 10.2 CHECKS PASSED' AS result;

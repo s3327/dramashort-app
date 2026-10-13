@@ -119,15 +119,27 @@ BEGIN
 END $$;
 
 -- Test 6: a table created by a later migration is not exposed by default
+-- ADR-0005: the hosted project gives service_role no data access by default either
+-- (a new table gets TRUNCATE, REFERENCES, TRIGGER and MAINTAIN only, a new sequence
+-- nothing). The local defaults match it, so a migration without its grants fails here.
 CREATE TABLE public.zz_future_table (id int);
+CREATE SEQUENCE public.zz_future_seq;
 DO $$
 BEGIN
   IF has_table_privilege('anon', 'public.zz_future_table', 'SELECT')
      OR has_table_privilege('authenticated', 'public.zz_future_table', 'SELECT') THEN
     RAISE EXCEPTION 'TEST FAILED: new tables are still auto-granted to anon/authenticated';
   END IF;
-  RAISE NOTICE 'TEST PASSED: future tables get no anon/authenticated grants by default.';
+  IF has_table_privilege('service_role', 'public.zz_future_table', 'SELECT')
+     OR has_table_privilege('service_role', 'public.zz_future_table', 'INSERT')
+     OR has_table_privilege('service_role', 'public.zz_future_table', 'UPDATE')
+     OR has_table_privilege('service_role', 'public.zz_future_table', 'DELETE')
+     OR has_sequence_privilege('service_role', 'public.zz_future_seq', 'USAGE') THEN
+    RAISE EXCEPTION 'TEST FAILED: new tables or sequences give service_role data access by default, unlike the hosted project';
+  END IF;
+  RAISE NOTICE 'TEST PASSED: future tables and sequences get no anon/authenticated/service_role data access by default.';
 END $$;
+DROP SEQUENCE public.zz_future_seq;
 DROP TABLE public.zz_future_table;
 
 ROLLBACK;
