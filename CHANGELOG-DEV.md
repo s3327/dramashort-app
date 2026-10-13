@@ -4488,3 +4488,41 @@
   - dramashort-content is unchanged and active.
   - The new project runs Postgres 17.11.0.003; the local stack and both old projects run 17.6. The major version is the same; Task 11 Step 3 compares the schema.
 * **Verification**: `projects list` shows `dramashort | phqabeqdcxnspidcaswa | ap-southeast-1 | ACTIVE_HEALTHY | linked=true | Postgres 17 (17.11.0.003)`, `dramashort-user | INACTIVE`, `dramashort-content | ACTIVE_HEALTHY`.
+
+---
+
+## [2026-10-13] Task 13.7 / Plan Task 11: Schema Pushed to the Singapore Project; Missing service_role Grants Fixed
+* **Milestone**: Task 13.7, Phase 2 (live), plan Task 11. The owner approved both pushes.
+* **Goal**: The new project gets exactly the schema the local rehearsal ran on.
+* **Implementation Steps Taken**:
+  1. Dry run: exactly the 30 planned migrations. `npm run db:push` applied them (no database password needed: the CLI's temporary login role).
+  2. Step 3, live versus local:
+     - Docker Desktop stopped responding during the first schema dump. The live fingerprint was taken through `supabase db query --linked` (Management API, no Docker).
+     - **Finding:** on the hosted project, default privileges give `service_role` no data access. A new table gets only TRUNCATE, REFERENCES, TRIGGER and MAINTAIN; a new sequence gets nothing. The local stack granted everything by default.
+     - So `episode_stats_daily`, `title_stats_daily` and their ID sequences, created without grants in `20261012100600`, were unreadable and unwritable for server code on the live project. The analytics rollup upserts and the trending/admin reads in `lib/services/analytics.service.ts` would have failed with "permission denied".
+  3. Checks first:
+     - `verify-user-side-rls.sql`: `service_role` must have SELECT, INSERT, UPDATE and DELETE on every public table, and USAGE and SELECT on every public sequence. On live it failed: "lacks data access on: table episode_stats_daily sequence episode_stats_daily_id_seq table title_stats_daily sequence title_stats_daily_id_seq".
+     - `verify-catalog-rls.sql` Test 6: a new table and sequence must give `service_role` no data access by default, as on the hosted project. Locally it failed: "new tables or sequences give service_role data access by default".
+  4. Migration `20261013100000_service_role_grants.sql`:
+     - Explicit grants on the two rollup tables, and on their sequences plus `playback_events_id_seq`.
+     - `ALTER DEFAULT PRIVILEGES ... REVOKE` for `service_role` on tables and sequences, so local defaults match the hosted project and a missing grant fails locally first.
+     - Dry run listed only this migration; pushed. Applied locally with `supabase migration up --local`.
+  5. Local stack recovered after the Docker restart:
+     - The containers came back without published ports.
+     - The restart failed because Windows had reserved TCP ports 54139–54738 (WinNAT); the owner restarted WinNAT.
+     - The CLI now runs the local database on Postgres 17.11.0.003, the live project's version; the data volume was kept.
+* **Key File Diffs**:
+  - Created: `supabase/migrations/20261013100000_service_role_grants.sql`.
+  - Modified: `scripts/sql/verify-user-side-rls.sql`, `scripts/sql/verify-catalog-rls.sql`, `ROADMAP.md`, `CHANGELOG-DEV.md`.
+* **Regression Analysis & Cross-System Impact**:
+  - Future migrations must grant `service_role` explicitly, as on the hosted project; CI's Test 6 enforces the default.
+  - The local database is now on Postgres 17.11.
+  - The old projects are untouched.
+* **Verification**:
+  - Live:
+    - `migration list`: 31 of 31, local equals remote.
+    - The `service_role` check runs without error (it raised before the fix).
+    - Fingerprint, live versus local (819 / 818 facts): every public fact identical, including table, column and function grants, policies, storage policies, the `artwork` bucket and public default privileges. Differences are only the platform's: `rls_auto_enable()` and its grants, and default privileges in the platform schemas `realtime` and `supabase_functions`.
+  - Plan's `public` dump diff: `rls_auto_enable`, plus explicit `GRANT ALL ON FUNCTION … TO anon, authenticated, service_role` on 10 trigger functions locally that live leaves at the default PUBLIC EXECUTE. Effective EXECUTE is identical (read from `proacl` on both sides), and trigger functions cannot be called through the API.
+  - Local: `verify-catalog-rls.sql` 5 PASS, `verify-user-side-rls.sql` 26 PASS.
+  - `npm test`: 1,205 passed, 1 skipped, 0 failed.
