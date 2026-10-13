@@ -4526,3 +4526,28 @@
   - Plan's `public` dump diff: `rls_auto_enable`, plus explicit `GRANT ALL ON FUNCTION … TO anon, authenticated, service_role` on 10 trigger functions locally that live leaves at the default PUBLIC EXECUTE. Effective EXECUTE is identical (read from `proacl` on both sides), and trigger functions cannot be called through the API.
   - Local: `verify-catalog-rls.sql` 5 PASS, `verify-user-side-rls.sql` 26 PASS.
   - `npm test`: 1,205 passed, 1 skipped, 0 failed.
+
+---
+
+## [2026-10-13] Task 13.7 / Plan Task 12: Catalog Copied to the Singapore Project
+* **Milestone**: Task 13.7, Phase 2 (live), plan Task 12. The owner approved the live copy.
+* **Goal**: The new project holds dramashort-content's catalog rows exactly, with triggers off during the copy and no orphans.
+* **Implementation Steps Taken**:
+  1. No database password was used. The plan's Step 1 (session pooler connection string and `PGPASSWORD`) was replaced by `supabase db query --linked`, which runs SQL through the Management API as `postgres`. A rolled-back test transaction confirmed that `SET LOCAL session_replication_role = replica` works on that route.
+  2. Copy file: the Task 9 export `content-public-data.sql`, wrapped as `BEGIN; SET LOCAL session_replication_role = replica; TRUNCATE public.app_settings; … COMMIT;`. Kept outside the repository; it holds no secrets.
+  3. Local rehearsal on a freshly reset local database (31 migrations), run with `psql` because `db query --local` sends a single prepared statement: exit 0, all counts as below.
+  4. Live dry run (the same file ending in `ROLLBACK`): inside the transaction titles 35, episodes 175, `episode_media` 175, settings 5; afterwards titles 0.
+  5. Live copy (`COMMIT`): exit 0.
+* **Key File Diffs**: Modified: `ROADMAP.md`, `CHANGELOG-DEV.md`.
+* **Regression Analysis & Cross-System Impact**:
+  - The new project now serves the real catalog.
+  - dramashort-content was only read (export and counts).
+  - The local database also holds the copied catalog now, and only the local admin account.
+* **Verification**:
+  - New project: titles 35 (Published 26), episodes 175, `episode_media` 175, channels 4, genres 9, tags 31, `app_settings` 5, `admin_audit_log` 0. Episodes without a title 0, media without an episode 0, rows mentioning the old project hosts 0. `general.maintenanceMode` is `false`, and `session_replication_role` is back to `origin`.
+  - Row count of every public table, dramashort-content versus the new project: identical for every table both have. The tables only the new project has (user side) are all 0. MD5 of each `app_settings` value: identical for all 5 keys.
+  - With the new project's anon key, 10/10 checks passed:
+    - published titles readable (26 rows), Draft titles hidden (0), episode metadata readable;
+    - `PATCH titles` and `DELETE genres` refused (HTTP 401, `42501`);
+    - `episodes?select=video_url`, `episode_media` and `profiles` refused (`42501`);
+    - `rpc/credit_wallet_coins` and `rpc/fulfill_payment_order` refused (`42501`).
