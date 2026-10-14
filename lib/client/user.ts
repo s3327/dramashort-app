@@ -1,5 +1,5 @@
 import { createUserClient } from "@/lib/supabase/user-client";
-import type { Database } from "@/types/supabase-user";
+import type { Database } from "@/types/supabase";
 import type { ListDef } from "@/contexts/FavoritesContext";
 import { type Result, ok, err } from "@/lib/common/result";
 

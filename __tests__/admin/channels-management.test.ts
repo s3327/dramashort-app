@@ -259,7 +259,7 @@ describe("Task 16.5: Channels Management", () => {
   test("1. defines channels operations migration with updated_at, indexes, and triggers", () => {
     const migrationPath = path.join(
       process.cwd(),
-      "supabase/content/supabase/migrations/20261009150000_channels_operations.sql"
+      "supabase/migrations/20261009150000_channels_operations.sql"
     );
     assert.ok(fs.existsSync(migrationPath), "Content migration file must exist");
     const sql = fs.readFileSync(migrationPath, "utf8");
@@ -270,11 +270,6 @@ describe("Task 16.5: Channels Management", () => {
     assert.match(sql, /CREATE\s+OR\s+REPLACE\s+FUNCTION\s+public\.set_channels_updated_at/i);
     assert.match(sql, /CREATE\s+TRIGGER\s+trg_set_channels_updated_at/i);
 
-    const userMigrationPath = path.join(
-      process.cwd(),
-      "supabase/user/supabase/migrations/20261009150000_channels_operations.sql"
-    );
-    assert.ok(fs.existsSync(userMigrationPath), "User mirror migration must exist");
   });
 
   // 2. Channel Payload Validation

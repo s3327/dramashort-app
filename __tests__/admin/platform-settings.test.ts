@@ -89,16 +89,11 @@ describe("Task 16.8: Platform Settings Persistence", () => {
   describe("Database Migration Contracts", () => {
     const contentMigrationPath = path.join(
       process.cwd(),
-      "supabase/content/supabase/migrations/20261009180000_platform_settings.sql"
-    );
-    const userMigrationPath = path.join(
-      process.cwd(),
-      "supabase/user/supabase/migrations/20261009180000_platform_settings.sql"
+      "supabase/migrations/20261009180000_platform_settings.sql"
     );
 
-    it("verifies migration file exists in both Content and User migrations directories", () => {
+    it("verifies the migration file exists in the single chain", () => {
       assert.ok(fs.existsSync(contentMigrationPath), "Content migration file must exist");
-      assert.ok(fs.existsSync(userMigrationPath), "User migration file must exist");
     });
 
     it("verifies migration defines app_settings table with JSONB and timestamps", () => {

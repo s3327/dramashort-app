@@ -18,23 +18,17 @@ import {
 
 describe("Task 16.10: Support Inbox & Admin Responsiveness", () => {
   describe("Database Migration Integrity (20261009200000_support_inbox_and_admin_features.sql)", () => {
-    test("migration files exist in User and Content DB directories", () => {
-      const userMigPath = path.resolve(
-        process.cwd(),
-        "supabase/user/supabase/migrations/20261009200000_support_inbox_and_admin_features.sql"
-      );
+    test("migration file exists in the single chain", () => {
       const contentMigPath = path.resolve(
         process.cwd(),
-        "supabase/content/supabase/migrations/20261009200000_support_inbox_and_admin_features.sql"
+        "supabase/migrations/20261009200000_support_inbox_and_admin_features.sql"
       );
 
-      assert.ok(fs.existsSync(userMigPath), "User DB migration file must exist");
       assert.ok(fs.existsSync(contentMigPath), "Content DB migration file must exist");
 
-      const userSql = fs.readFileSync(userMigPath, "utf-8");
       const contentSql = fs.readFileSync(contentMigPath, "utf-8");
 
-      for (const sql of [userSql, contentSql]) {
+      for (const sql of [contentSql]) {
         assert.ok(sql.includes("assigned_to"), "Must add assigned_to column");
         assert.ok(sql.includes("assigned_email"), "Must add assigned_email column");
         assert.ok(sql.includes("priority"), "Must add priority column");

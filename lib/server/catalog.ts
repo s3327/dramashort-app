@@ -1,7 +1,7 @@
 import "server-only";
 import { cache } from "react";
 import { contentClient, getTestContentClient } from "@/lib/supabase/content";
-import type { Database } from "@/types/supabase-content";
+import type { Database } from "@/types/supabase";
 import type {
   Drama,
   Title,

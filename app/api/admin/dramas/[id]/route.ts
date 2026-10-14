@@ -8,7 +8,7 @@ import { reportError } from "@/lib/observability/error-reporter";
 import { isUuid, validateDramaPayload } from "@/lib/validation/drama";
 import { resolveChannelByName } from "@/lib/admin/resolve-channel";
 import { deleteDrama as deleteDramaDirect } from "@/lib/server/admin";
-import type { Database } from "@/types/supabase-content";
+import type { Database } from "@/types/supabase";
 
 type TitleUpdate = Database["public"]["Tables"]["titles"]["Update"];
 

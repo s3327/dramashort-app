@@ -50,16 +50,14 @@ describe("Task 12.4: Remove Mock Data From Production Runtime", () => {
     test("throws descriptive error when required variables are placeholders in production", () => {
       const mockEnv = {
         NODE_ENV: "production",
-        NEXT_PUBLIC_CONTENT_SUPABASE_URL: "https://placeholder.supabase.co",
-        NEXT_PUBLIC_CONTENT_SUPABASE_ANON_KEY: "real-key-123",
-        NEXT_PUBLIC_USER_SUPABASE_URL: "https://bpidsbcrvpkavvdvtpgh.supabase.co",
-        NEXT_PUBLIC_USER_SUPABASE_ANON_KEY: "real-key-456",
+        NEXT_PUBLIC_SUPABASE_URL: "https://placeholder.supabase.co",
+        NEXT_PUBLIC_SUPABASE_ANON_KEY: "real-key-123",
       };
 
       assert.throws(
         () => validateEnvironment(mockEnv, { throws: true, isProduction: true }),
         (err: Error) => {
-          assert.match(err.message, /Placeholder URL detected for NEXT_PUBLIC_CONTENT_SUPABASE_URL/);
+          assert.match(err.message, /Placeholder URL detected for NEXT_PUBLIC_SUPABASE_URL/);
           return true;
         }
       );
@@ -68,10 +66,9 @@ describe("Task 12.4: Remove Mock Data From Production Runtime", () => {
     test("passes validation when all required production variables are genuine", () => {
       const mockEnv = {
         NODE_ENV: "production",
-        NEXT_PUBLIC_CONTENT_SUPABASE_URL: "https://czkkzoiuyqybafacpgsp.supabase.co",
-        NEXT_PUBLIC_CONTENT_SUPABASE_ANON_KEY: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.test1",
-        NEXT_PUBLIC_USER_SUPABASE_URL: "https://bpidsbcrvpkavvdvtpgh.supabase.co",
-        NEXT_PUBLIC_USER_SUPABASE_ANON_KEY: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.test2",
+        NEXT_PUBLIC_SUPABASE_URL: "https://abcdefghijklmnopqrst.supabase.co",
+        NEXT_PUBLIC_SUPABASE_ANON_KEY: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.test1",
+        SUPABASE_SERVICE_ROLE_KEY: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.test2",
         PAYMENT_WEBHOOK_SECRET: "whsec_live_mock_secret_abcdef123456",
         CRON_SECRET: "cron_live_mock_secret_abcdef123456",
       };

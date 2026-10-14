@@ -17,8 +17,6 @@ test("Task 14.6: Database migration defines banner_url, hero_tagline, and featur
   const migrationPath = path.join(
     ROOT,
     "supabase",
-    "content",
-    "supabase",
     "migrations",
     "20261008160000_hero_banner_curation.sql"
   );

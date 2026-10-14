@@ -4128,3 +4128,455 @@
   - The sample video URLs return 403, so no episode plays. Needs a replacement source, then an update to the live episode rows, `scripts/seed-dev-content.ts`, and the examples in `app/admin/import/page.tsx`.
   - While playback fails, the overlay's centre play button covers the error message.
   - The subtitles journey's first locator now matches the hidden player button on phones, so its click step is skipped there; most journeys still pass silently when an element is missing.
+
+---
+
+## [2026-10-12] Single-Project Decision (ADR-0005) and Merge Plan; Two Defects Found
+* **Milestone**: New Task 13.7; correction of Task 13.2.
+* **Goal**: Record the owner's decision to run on dramashort-content (`czkkzoiuyqybafacpgsp`) only, and plan the merge so dramashort-user (`bpidsbcrvpkavvdvtpgh`) can be deleted. No code, database, or project setting was changed.
+* **Implementation Steps Taken**:
+  1. Read-only inventory of both live projects with the service role keys: tables and RPCs from the PostgREST schema of each project, row counts per table, auth accounts and identities, storage buckets and their contents, enabled auth providers (`/auth/v1/settings`).
+  2. Mapped which client the code uses for each of the 10 tables that exist in both projects, compared the two migration chains file by file, and compared the two `config.toml` files.
+  3. Found that Task 13.2 (ADR-0003, merge into dramashort-user under a `content` schema) was prepared but never executed: no recorded data copy, two project URLs in `.env.local`, `content` schema not exposed by the User project's API (`PGRST106`), and the User project's `content` tables behind the catalog schema.
+  4. While checking the client code, found that the built browser bundle contains neither project URL. Reproduced with a production build on `next start`: submitting the login form with a non-existent address sent the request to `http://127.0.0.1:54322/auth/v1/token`, which the Content-Security-Policy refused; the page showed "Failed to fetch". Traced to `f4d9c76` (2026-10-07), where the browser client stopped reading `process.env.NEXT_PUBLIC_USER_SUPABASE_URL` literally.
+  5. Wrote ADR-0005 and the implementation plan; corrected Task 13.2's status; added Task 13.7.
+* **Key File Diffs**:
+  - Created: `docs/adr/0005-single-project-on-dramashort-content.md`, `docs/superpowers/plans/2026-10-12-single-supabase-project.md`.
+  - Modified (docs): `ROADMAP.md` (Phase 13 row, Task 13.2 status, new Task 13.7), `CHANGELOG-DEV.md`.
+* **Findings**:
+  - Inventory: catalog only in dramashort-content (`titles` 35, `episodes` 175, `episode_media` 175, `channels` 4, `genres` 9, `tags` 31, `app_settings` 5). dramashort-user: `profiles` 2 and 2 auth accounts; every other user table empty. Tables in both projects: `admin_audit_log`, `app_settings`, `coin_transactions`, `daily_checkins`, `genres`, `import_jobs`, `support_tickets`, `tags`, `user_unlocked_episodes`, `wallets`; only `app_settings` (5 / 5), `genres` (9 / 0) and `tags` (31 / 0) hold rows. Email is the only enabled auth provider on both projects. Both have an empty public `artwork` bucket; the app uploads to dramashort-content's.
+  - The two chains' shared migration files differ mainly in their guards; dramashort-content's copies skip their `public.profiles` statements because that table does not exist there, and its `support_tickets.user_id` has no foreign key to `auth.users`.
+  - The dramashort-user chain's `20260930163000_grant_permissions.sql` grants `ALL ON ALL TABLES IN SCHEMA public` to `authenticated`; replayed on dramashort-content it would re-open client writes on the catalog. The plan omits those two lines.
+  - Maintenance mode reads `NEXT_PUBLIC_SUPABASE_URL`, which is not set in the two-project configuration, so it uses `http://127.0.0.1:54321` (from the code and `.env.local`; not reproduced at runtime).
+  - Docker Desktop is installed but was not running; `pg_dump` and `psql` are not installed on the development machine.
+* **Regression Analysis & Cross-System Impact**:
+  - None from this change (documents only).
+  - The browser sign-in defect affects every production build since `f4d9c76`: login, signup, sign-out, session refresh, and any other browser-side Supabase call. Server-rendered catalog pages are unaffected. The fix is part of Task 5 of the plan.
+* **Verification**:
+  - Login reproduction: one production build on port 3100 against the live projects, one login attempt with an address that has no account (no data written); console showed the CSP refusal for `http://127.0.0.1:54322`. The server was stopped afterwards.
+  - Bundle check: `grep` over `.next/static` found `127.0.0.1:54322` and `127.0.0.1:54321` in one chunk each and neither project reference in any chunk.
+  - `npm run test:file -- __tests__/docs/adr-topology.test.ts` passes (27 / 27).
+  - **Not run**: anything in the plan; any write to either project; a runtime check of maintenance mode.
+* **Still Open After This Change**:
+  - Executing the plan (Task 13.7). Browser sign-in stays broken in production builds until its Task 5.
+
+---
+
+## [2026-10-12] Single-Project Target Moved to a New Singapore Project (ADR-0005 Revised)
+* **Milestone**: Task 13.7 (planned).
+* **Goal**: Record the owner's choice to host the single database in Singapore instead of dramashort-content (Mumbai), and adjust the plan.
+* **Implementation Steps Taken**:
+  1. Read `npx supabase projects list`: both projects are in one organization; dramashort-content is in `ap-south-1` (Mumbai), dramashort-user in `ap-southeast-2` (Sydney). A Supabase project cannot change region, so Singapore means a new project.
+  2. Checked the free plan's project cap (public pricing guides and Supabase's pricing page summary): two active projects per organization; paused projects do not count.
+  3. Rewrote ADR-0005 as Option C (new project `dramashort` in `ap-southeast-1`, catalog rows copied from dramashort-content, both old projects only read and exported) and renamed it from `0005-single-project-on-dramashort-content.md` to `0005-single-supabase-project.md` (the earlier entry above links the old name). Phase 1 of the plan is unchanged apart from neutral example URLs and `types` using `--linked`; Phase 2 now creates the project, pushes all 30 migrations, and copies the catalog with triggers disabled; Phase 3 deletes both old projects. Vercel functions are pinned to `sin1`.
+* **Key File Diffs**:
+  - Renamed and rewritten: `docs/adr/0005-single-supabase-project.md`.
+  - Modified: `docs/superpowers/plans/2026-10-12-single-supabase-project.md`, `ROADMAP.md` (Task 13.7), `CHANGELOG-DEV.md`.
+* **Regression Analysis & Cross-System Impact**:
+  - None (documents only). Neither existing project was changed.
+  - If the organization is on the free plan, dramashort-user must be paused (after its export) before the new project can be created.
+* **Verification**:
+  - `npx supabase projects list` (read-only) as described above. Docker Desktop is now running (server 29.8.1).
+  - **Not run**: anything in the plan.
+
+---
+
+## [2026-10-12] Task 13.7 / Plan Task 1: Schema Fingerprint Tool
+* **Milestone**: Task 13.7, Phase 1 (local), plan Task 1.
+* **Goal**: A way to prove that the single database built from one migration chain matches, object by object, the two databases it replaces.
+* **Implementation Steps Taken**:
+  1. Wrote `__tests__/database/fingerprint-compare.test.ts` (8 tests) and ran it: failed with `Cannot find module '@/scripts/db/compare-fingerprints.mjs'`.
+  2. Added `scripts/db/compare-fingerprints.mjs` (`parseFingerprint`, `subjectOf`, `compareFingerprints`, CLI), `scripts/db/merge-ownership.json` (the 5 shared tables and 6 functions that keep dramashort-user's definition), `scripts/db/merge-allowed-differences.json` (empty), and `scripts/db/schema-fingerprint.sql`.
+* **Key File Diffs**:
+  - Created: the four files above and the test file.
+  - Modified (docs): `ROADMAP.md` (Task 13.7 status and progress), `CHANGELOG-DEV.md`.
+* **Regression Analysis & Cross-System Impact**: New files only; nothing imports them outside the new test. `scripts/**` is outside the lint scope as before.
+* **Verification**:
+  - `npm run test:file -- __tests__/database/fingerprint-compare.test.ts`: 8 / 8 (after failing as above).
+  - `npx tsc --noEmit`: 0 errors. `npm test`: 1,208 / 1,208.
+  - **Not run yet**: the SQL query against a database (first run in Task 2).
+
+---
+
+## [2026-10-12] Task 13.7 / Plan Task 2: Reference Fingerprints of Both Current Chains
+* **Milestone**: Task 13.7, Phase 1 (local), plan Task 2.
+* **Goal**: Record, before anything moves, exactly what each current migration chain produces, as the yardstick for the merged chain.
+* **Implementation Steps Taken**:
+  1. `.gitignore`: added `/tmp/` for merge work files.
+  2. Started the content chain locally (`supabase start --workdir supabase/content`). The first start applied all 20 migrations, then the CLI stopped every container because the `analytics` and `studio` containers failed their health checks. Started again with `-x studio,logflare,vector`; the plan needs neither service.
+  3. Ran `scripts/db/schema-fingerprint.sql`. It failed (`operator is not unique: text || "char"` on `pg_default_acl.defaclobjtype`), then produced policy definitions spread over several lines. Fixed both in the query: cast to text, collapse whitespace in the final SELECT, print NULL details as `<null>`. A first attempt at the whitespace fix lost its backslash in shell quoting; the comparison tool rejected the result as malformed, and the regex was corrected directly.
+  4. The user chain's stack started from an old local Docker volume (`Starting database from backup`: 5 public tables, no migration history, 0 auth users — the local test stack of 2026-10-04). Dumped it with `pg_dump` to `tmp/db-merge/old-local-user-volume.sql` (101 KB), then `supabase db reset --workdir supabase/user` applied all 24 migrations to a fresh database.
+  5. Captured `tmp/db-merge/content-ref.txt` and `tmp/db-merge/user-ref.txt`; stopped both stacks with `--no-backup` (both volumes were created in this session).
+* **Key File Diffs**:
+  - Modified: `.gitignore`, `scripts/db/schema-fingerprint.sql`, `ROADMAP.md` (Task 13.7 progress), `CHANGELOG-DEV.md`.
+  - Not committed: the two reference files and the old-volume dump in `tmp/db-merge/`.
+* **Regression Analysis & Cross-System Impact**: No application or migration change. Nothing touched either live project.
+* **Verification**:
+  - Content reference: 593 facts (149 columns, 47 constraints, 71 indexes, 14 RLS flags, 12 policies, 29 table grants, 28 column grants, 51 functions, 153 function grants, 11 triggers, 28 default privileges); contains `column|titles.id|uuid null=NO default=gen_random_uuid()` and `table_grant|titles.anon|SELECT`.
+  - User reference: 663 facts; contains `column|profiles.role|text null=YES default='user'::text` and `trigger|users.on_auth_user_created|CREATE TRIGGER on_auth_user_created AFTER INSERT ON auth.users FOR EACH ROW EXECUTE FUNCTION handle_new_user()`.
+  - Each reference compared with itself: `Fingerprints match.`
+
+---
+
+## [2026-10-12] Task 13.7 / Plan Task 3: One Supabase Workdir at the Repository Root
+* **Milestone**: Task 13.7, Phase 1 (local), plan Task 3.
+* **Goal**: Replace the two CLI workdirs (`supabase/content`, `supabase/user`) with one at the repository root, carrying the catalog chain; the user-side migrations follow in Task 4.
+* **Implementation Steps Taken**:
+  1. Replaced the CI test "the stacks do not overlap" with "database verification runs on one local stack and stops on the first failure"; it failed on `the repository root is the only Supabase workdir`.
+  2. `git mv`: the 20 catalog migrations to `supabase/migrations/`; dramashort-user's `config.toml` (it holds the auth settings: password policy, confirmations, redirect URLs, email templates) to `supabase/config.toml` with `project_id = "dramashort"`; `templates/` to `supabase/templates/`; both pgTAP files to `supabase/tests/`; removed the content `config.toml` (it differed only in project_id and weaker auth settings). Renamed `verify-content-db-rls.sql` → `verify-catalog-rls.sql` and `verify-user-db-rls.sql` → `verify-user-side-rls.sql` (header updated to `supabase_db_dramashort`).
+  3. `package.json`: `db:content:push` / `db:user:push` replaced by `db:start`, `db:stop`, `db:push`.
+  4. CI `supabase-rls-verification`: one `supabase start`, both verification scripts against `supabase_db_dramashort`, one `supabase stop --no-backup`.
+  5. Tests repointed at the moved files: 11 by path string, plus `email-verification` (config and template path), `password-recovery` (template, config, workdir = repository root), `hero-quality-accessibility` and `wallet-and-entitlements` (paths built from segments), and `rls-contract` (a `migrationsDirOf` helper; its user branch still points at `supabase/user/supabase/migrations` until Task 4).
+* **Key File Diffs**:
+  - Moved: 20 migrations, `config.toml`, 2 templates, 2 pgTAP files, 2 verification scripts.
+  - Deleted: `supabase/content/supabase/config.toml`.
+  - Modified: `package.json`, `.github/workflows/ci.yml`, 17 test files, `ROADMAP.md`, `CHANGELOG-DEV.md`.
+* **Regression Analysis & Cross-System Impact**:
+  - The CI database job runs the user-side verification against a stack that has no user tables yet; it fails until Task 4 (by design; nothing is pushed in between).
+  - The local CLI now uses `supabase_db_dramashort` and the repository root as workdir; `supabase/content` and `supabase/user` keep only their untracked `.temp` link folders (and the user migrations until Task 4).
+* **Verification**:
+  - `npm test`: 1,208 / 1,208 (three `[recordAuditLog] Unexpected error` console lines appear as before this change).
+  - `npx supabase start -x studio,logflare,vector`: 20 migrations applied. `verify-catalog-rls.sql` with `ON_ERROR_STOP`: exit 0, 5 `PASS` notices. Fingerprint of this stack vs the content reference: `Fingerprints match.`
+
+---
+
+## [2026-10-12] Task 13.7 / Plan Task 4: User-Side Schema Ported into the Single Chain
+* **Milestone**: Task 13.7, Phase 1 (local), plan Task 4.
+* **Goal**: One migration chain that builds every table the app uses, checked object by object against the two databases it replaces.
+* **Implementation Steps Taken**:
+  1. Failing check first: the single stack (catalog chain only) compared with both references reported 236 missing user-side facts (`profiles.id`, `on_auth_user_created`, …).
+  2. `git mv` of eight user-chain migrations to versions `20261012100000`–`20261012100800` (user schema, table grants, RLS hardening, support tickets, watch progress, playback events, analytics rollups, payment orders), each with a two-line provenance header. In the grants file the two schema-wide client grants were removed (they would re-open catalog writes) and the sequence grant narrowed to `postgres, service_role`.
+  3. Added `20261012100700_profile_columns_for_admin_and_wallets.sql` (the `public.profiles` statements of 20261009170000 and 20261009220000, which skip themselves while `profiles` does not exist; compared statement by statement) and `20261012100900_lock_down_ported_functions.sql` (copy of the function lock-down, so it covers `fulfill_payment_order` and `rollup_daily_playback_stats`).
+  4. `git rm -r supabase/user`: the consolidate-content-schema migration of ADR-0003, the user copies of 15 shared migrations, and the user-only `get_distinct_genres` fix.
+  5. First comparison after the port: 26 differences. Fixed in the port: `support_tickets` foreign keys on `user_id`, `assigned_to`, `resolved_by` (the catalog-side copy of Task 16.10 had created those columns without them). Recorded as reviewed exceptions: 22 facts of the `title_id` link to `content.titles` (columns, unique constraints, indexes, sync trigger and function; the app reads and writes these tables by `title_slug` only) and `handle_new_user()` EXECUTE for anon/authenticated (a trigger function; PostgreSQL checks EXECUTE when a trigger is created, not when it fires).
+  6. `verify-catalog-rls.sql` failed on the merged database (`a client role holds a write privilege on public.favorites`): its "no client writes" check was written for a catalog-only database. It now skips the five tables the user reference itself lets signed-in users write (`profiles` columns, `favorites`, `watch_history`, `custom_lists`, `custom_list_items`), all owner-scoped by row security and covered by `verify-user-side-rls.sql`.
+  7. Tests: repointed reads of ported files; removed the "user mirror must exist" checks and user-copy text checks from 8 test files; rewrote the search RPC test against the catalog copy (`public.*` functions); `rls-contract` now reads one chain, checks both lock-down files, and gains the ADR-0005 guard that no ported migration grants schema-wide table access to client roles (it matches the original user grants file and not the ported one); deleted `__tests__/database/topology-consolidation.test.ts` (its subject migration is gone; Task 5 replaces the credential tests).
+* **Key File Diffs**:
+  - Moved/renamed: 8 migrations. Created: 2 migrations. Deleted: 16 user-chain files, 1 test file.
+  - Modified: `supabase/migrations/20261012100100_*`, `20261012100300_*` (after the move), `scripts/db/merge-allowed-differences.json`, `scripts/sql/verify-catalog-rls.sql`, 13 test files, `ROADMAP.md`, `CHANGELOG-DEV.md`.
+* **Regression Analysis & Cross-System Impact**:
+  - The live projects are unchanged; the new chain is applied only to local stacks so far.
+  - Dropping the `title_id` link removes nothing the app uses; a foreign key from engagement rows to `titles` could be added later as its own migration.
+  - The pgTAP files in `supabase/tests/` were not run (they need a `tests.rls_enabled` helper the repository does not install, as recorded on 2026-10-11).
+* **Verification**:
+  - `npx supabase db reset`: 30 migrations applied on a fresh local database.
+  - Fingerprint comparison with both references: `Fingerprints match.` (24 reviewed exceptions).
+  - `verify-user-side-rls.sql`: exit 0, 25 `PASS`, `ALL TASK 10.2 CHECKS PASSED`. `verify-catalog-rls.sql`: exit 0, 5 `PASS`.
+  - `npm test`: 1,176 / 1,176. `npx tsc --noEmit`: 0 errors.
+
+---
+
+## [2026-10-12] Task 13.7 / Plan Task 5: One Credential Set, Inlined into Browser Code (Fixes Browser Sign-In)
+* **Milestone**: Task 13.7, Phase 1 (local), plan Task 5.
+* **Goal**: Three environment variables for the single project, read so that Next.js inlines the public ones into browser bundles.
+* **Implementation Steps Taken**:
+  1. Tests first: `__tests__/database/single-project-credentials.test.ts` (8 tests: values, local fallback, production errors naming the new variables even when only old names are set, placeholder rejection, service key, literal `process.env` reads, validator, and a scan proving nothing outside tests reads the old names), `__tests__/tooling/browser-bundle-env.test.ts` (the last build's client chunks contain `NEXT_PUBLIC_SUPABASE_URL`; skipped with a reason when the variable is not set), and a CSP test. They failed (`Cannot find module '@/lib/supabase/credentials'`; CSP without the local origin).
+  2. Added `lib/supabase/credentials.ts` (`getSupabaseCredentials`, `getServiceRoleKey`). Rewrote `lib/supabase/content.ts` and `user-client.ts`; `user-server.ts`, `lib/supabase/middleware.ts` and `lib/middleware/maintenance.ts` now use it; preview tokens fall back to `SUPABASE_SERVICE_ROLE_KEY`; `content.service.ts` checks that one key.
+  3. `lib/config/env-validator.mjs` requires `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` (plus the new example placeholders); `lib/env.ts` exposes the three names; `lib/config/security-headers.mjs` adds the origin of a non-`*.supabase.co` `NEXT_PUBLIC_SUPABASE_URL` (and its ws/wss form) to `img-src`, `media-src`, `connect-src`, with a JSDoc parameter type so TypeScript accepts plain objects.
+  4. Scripts (`create-admin`, `seed-dev-content` — service key only, `backfill-admin-roles`), `.env.example` (one Supabase section), CI (both env blocks: two public variables with a neutral `ci-not-a-real-project` URL), and two tests that set the old names.
+  5. Deleted `scripts/migrate-content-to-unified.ts`.
+* **Key File Diffs**:
+  - Created: `lib/supabase/credentials.ts`, 2 test files. Deleted: `scripts/migrate-content-to-unified.ts`.
+  - Modified: `lib/supabase/{content,user-client,user-server,middleware}.ts`, `lib/middleware/maintenance.ts`, `lib/auth/preview-token.ts`, `lib/services/content.service.ts`, `lib/env.ts`, `lib/config/env-validator.mjs`, `lib/config/security-headers.mjs`, 3 scripts, `.env.example`, `.github/workflows/ci.yml`, 3 test files, `ROADMAP.md`, `CHANGELOG-DEV.md`.
+* **Regression Analysis & Cross-System Impact**:
+  - Removed exports: `isUnifiedContentMode`, `getContentSchemaName`, `getContentCredentials`, `resetContentClient`, `getUserClientCredentials`, `getUserServerCredentials`, `TopologyMode` (only the deleted topology test used them). All client factory names and signatures are unchanged.
+  - **The app now needs the three new variables.** `.env.local` still has the old names until plan Task 14, so local `next dev` / `next build` run against the local fallback (`http://127.0.0.1:54321`) unless the variables are exported; production builds fail with "Missing required environment variable: NEXT_PUBLIC_SUPABASE_URL". Nothing is pushed until Vercel has the new names.
+  - Maintenance mode reads the configured project instead of `127.0.0.1:54321`.
+* **Verification**:
+  - New tests failed first, then passed. `npx tsc --noEmit`: 0 errors. `npm run lint`: 0 errors, 0 warnings. `npm test`: 1,185 passed, 1 skipped (the bundle test, variable not set), 0 failed; console output identical to the previous run apart from the renamed variable.
+  - Build with `NEXT_PUBLIC_SUPABASE_URL=https://abcdefghijklmnopqrst.supabase.co`: passed; the bundle test ran and passed; the URL is inlined in 3 client chunks; `127.0.0.1:54322` appears in none.
+  - **Not run yet**: sign-in in a browser (plan Task 7).
+
+---
+
+## [2026-10-12] Task 13.7 / Plan Task 6: One Generated Types File
+* **Milestone**: Task 13.7, Phase 1 (local), plan Task 6.
+* **Goal**: One `Database` type for the single project instead of two stale per-project files.
+* **Implementation Steps Taken**:
+  1. `npx supabase gen types typescript --local --schema public > types/supabase.ts` against the local merged database (30 migrations). Kept as generated (the CLI leaves it unformatted; its suggested formatter is not a project dependency).
+  2. Switched the 17 imports of `@/types/supabase-content` / `@/types/supabase-user` to `@/types/supabase`; deleted both old files; `package.json` `types` script (`--linked`) replaces `types:content`, `types:user`, `types:all`.
+  3. `tsc` then reported 4 errors, all typed row fixtures in tests missing columns that exist in the database but were absent from the stale `supabase-content.ts` (titles: `banner_url`, `external_id`, `external_source`, `featured_rank`, `free_episodes_count`, `genre_id`, `has_been_published`, `hero_tagline`, `publish_at`; channels: `updated_at`; episodes: `external_id`, `external_source`, `release_at`). Added them to the fixtures.
+* **Key File Diffs**:
+  - Created: `types/supabase.ts`. Deleted: `types/supabase-content.ts`, `types/supabase-user.ts`.
+  - Modified: 17 importing files, 2 test files (fixtures), `package.json`, `ROADMAP.md`, `CHANGELOG-DEV.md`.
+* **Regression Analysis & Cross-System Impact**: Type-only change; no runtime code changed. Application code type-checks against the real merged schema for the first time.
+* **Verification**: `npx tsc --noEmit`: 0 errors (4 before the fixture fix). `npm run lint`: 0 errors, 0 warnings. `npm test`: 1,185 passed, 1 skipped, 0 failed.
+
+---
+
+## [2026-10-12] Task 13.7 / Plan Task 7: Local Rehearsal of the Single-Project Setup
+* **Milestone**: Task 13.7, Phase 1 (local), plan Task 7.
+* **Goal**: Run the built app against one local database built from the single chain, signed in, before anything live changes.
+* **Implementation Steps Taken**:
+  1. `npx supabase db reset` (30 migrations), `npm run db:seed:dev`, `npm run admin:create` for a local-only admin account, and `npm run build`, all with the three variables exported for the local stack (exported variables override `.env.local`).
+  2. The plan's five browser checks against `npm run start` at 1280×800 and 390×844, scripted with Playwright (scripts kept in the git-ignored plan workspace) and read back from the database through the local service-role API.
+  3. All 9 Playwright journeys in the 3 browser profiles against the local stack.
+  No application code changed.
+* **Key File Diffs**: Modified: `ROADMAP.md`, `CHANGELOG-DEV.md`.
+* **Regression Analysis & Cross-System Impact**:
+  - Nothing live was touched; every write went to the local stack.
+  - On success `/auth/confirm` redirects to `https://<x-forwarded-host>/home`. That is right behind HTTPS (Vercel, a droplet with TLS), but a plain-http local production run cannot load that address, so the rehearsal read the redirect instead of following it. The page shown after confirming was therefore not exercised locally.
+  - The swipe-to-next-episode step runs on the two Chromium profiles only; on Mobile Safari the journey records it as skipped.
+* **Verification**:
+  - Setup: 30 migrations applied; seed reported 35 titles and 175 episodes; admin created with `profiles.role = 'admin'`; build compiled, 84/84 static pages.
+  - Check 1, sign up and sign in: the account is created; the signup trigger creates its profile with role `user`; the confirmation email arrives in the local mail viewer with an `/auth/confirm` link; the link answers 307 to `https://127.0.0.1:3000/home` and the account is marked confirmed; sign-in works at 1280×800 and at 390×844 with no "Failed to fetch", Content-Security-Policy or `127.0.0.1:54322` console messages.
+  - Check 2, favorite persists: the favorite is stored in `favorites`; it is shown after signing in from a fresh browser at 390×844; and it is shown after pressing "Log Out" (`/account` then redirects to `/login`) and signing back in in the same browser.
+  - Check 3, contact form: `/contact` creates one `support_tickets` row, with `user_id` set (the viewer was signed in); it appears in `/admin/support`.
+  - Check 4, admin: sign-in at `/admin/login` lands on `/admin/dashboard`; `/admin/dramas` shows Draft titles (4 of 6 on the first page) and Published titles (18 of 26); a synopsis edit is saved to the database, saving returns to the list, and the edit page shows the new value when opened again.
+  - Check 5: the viewer opening `/admin/dramas` is redirected to `/admin/login?error=unauthorized`.
+  - Result: 26 scripted checks, 26 passed (17 in the first run; 9 in a follow-up that added signing out in the same browser and the Published titles).
+  - `npx playwright test`: 27 passed (11.3 min); the swipe journey carries the "swipe gesture not exercised on webkit" annotation on Mobile Safari only (read from the HTML report data).
+  - Server logs: no error- or warn-level request lines. One `[auth/confirm] verifyOtp error: Email link is invalid or has expired`, from an earlier aborted attempt that requested `/auth/confirm` twice 15 s apart; a confirmation link works once.
+
+---
+
+## [2026-10-12] Task 13.7 / Plan Task 8: Documentation for the Single Project
+* **Milestone**: Task 13.7, Phase 1 (local), plan Task 8.
+* **Goal**: The documents describe one project, one schema and three variables, and mark ADR-0003's superseded direction where readers meet it.
+* **Implementation Steps Taken**:
+  1. Test first: `__tests__/docs/adr-topology.test.ts` gained "ADR-0005 single project" (the ADR file exists, the registry lists it, ADR-0003 links to it; the ADR names `ap-southeast-1` and the three variables). It failed on the registry assertion.
+  2. `docs/adr/README.md`: ADR-0005 row; ADR-0003 row status "Accepted — direction superseded by ADR-0005"; a superseded note on the ADR-0003 decision-gate section; an ADR-0005 section. `docs/adr/0003-database-topology.md`: Status line only.
+  3. `README.md`: the architecture line (one project, `public` schema), the `supabase/` tree entry, and a "Database (Supabase)" setup section: the three variables, `npm run db:start` (with the `-x studio,logflare,vector` fallback seen on Windows), `npx supabase status -o env`, `db:seed:dev`, `admin:create`, `db:stop`, `db:push`, `types`.
+  4. `docs/architecture/reusable-content-api.md`, rewritten for the `public` schema:
+     - The privilege matrix is now read from the merged schema fingerprint. `anon` has `SELECT` on `titles`, `channels`, `genres`, `tags`, `app_settings` and on 9 `episodes` columns, and nothing on `episode_media` or any user table.
+     - The hand-run grant script is replaced by pointers to the migrations and the two verification scripts.
+     - No `Accept-Profile` header or `db.schema` option.
+     - Placeholder project URLs replace the dramashort-user URL.
+  5. `docs/operations/operational-readiness.md`:
+     - Overview: one project in Singapore.
+     - Restore integrity check: now keyed on `title_slug`. The old check joined `content.titles` on a `title_id` column that no longer exists.
+     - Cutover: updates all three variables and rebuilds.
+  6. Beyond the plan's file list:
+     - `lib/services/README.md` §1 still listed the two projects and the old variables `NEXT_PUBLIC_CONTENT_SUPABASE_ANON_KEY` / `CONTENT_SUPABASE_SERVICE_ROLE_KEY`. It now lists the clients and the three variables.
+     - `FUTURE_PLAN.md` §5.2 gained a superseded note; its diagrams are unchanged.
+  7. Reference fix: the ROADMAP live inventory and plan line 266 cited "ADR-0005 §5" for table ownership. Ownership is decision 6.
+  8. ROADMAP: Phase 13 row ("13.7 in progress"), Task 13.7 status (Phase 1 complete, final review pending), and a progress line. Task 13.2's status was already corrected in the commit that added ADR-0005.
+* **Key File Diffs**: Modified: `docs/adr/README.md`, `docs/adr/0003-database-topology.md` (Status line), `README.md`, `docs/architecture/reusable-content-api.md`, `docs/operations/operational-readiness.md`, `lib/services/README.md`, `FUTURE_PLAN.md`, `docs/superpowers/plans/2026-10-12-single-supabase-project.md` (one reference), `__tests__/docs/adr-topology.test.ts`, `ROADMAP.md`, `CHANGELOG-DEV.md`.
+* **Regression Analysis & Cross-System Impact**:
+  - Documentation only.
+  - The existing doc tests that pin ADR-0003 wording still pass: the ADR-0003 sections, the `FUTURE_PLAN.md` and `lib/services/README.md` citations, and the ROADMAP Task 8.1 / 13.2 text.
+  - Apart from its Status line, ADR-0003's text is unchanged, as the registry's immutability rule requires.
+  - Historical ROADMAP tasks and the agent notes under `.agents/` still describe the two-project layout as it was.
+* **Verification**:
+  - The new doc test failed first (registry assertion), then passed. `adr-topology.test.ts`: 29/29.
+  - All 27 relative links in the edited documents resolve.
+  - The restore check SQL ran on the local merged database and returned 0 orphaned rows for both tables.
+  - `npx tsc --noEmit`: 0 errors.
+  - `npm test`: 1,187 passed, 1 skipped (bundle test, variable not set), 0 failed.
+
+---
+
+## [2026-10-13] Task 13.7 / Phase 1 Final Review and Fix Pass
+* **Milestone**: Task 13.7, end of Phase 1 (local), before any live step.
+* **Goal**: An independent review of the whole branch (`6eaa6bc..0ca110e`), then one pass fixing what it found.
+* **Review**:
+  - One reviewer with a fresh context, read-only, no contact with the live projects. Verdict "With fixes": Critical 0, Important 3, Minor 7.
+  - The reviewer independently re-ran the fingerprint comparison ("Fingerprints match") and `npm test`, and queried grants, policies and functions on the merged local database directly.
+  - Two Minor findings were re-graded to Important by their effect (fixes 4 and 5 below). The other five Minor findings and the reviewer's "declined to judge" list are recorded with rulings in the plan ledger and reported to the owner.
+* **Fixes** (each with a test that failed first):
+  1. **`admin:create` and `db:seed:dev` refused only the old dramashort-user project.**
+     - The production check compared the URL with dramashort-user's ref, so it would not recognise the new project.
+     - After the switch, `--revoke` or `--reset-password` would have run on production without the confirmation flag. `db:clean:dev`, which deletes every episode, title and channel, had no check at all.
+     - Both scripts now treat any URL that is not a local stack (`127.0.0.1`, `localhost`, `[::1]`) as production and require `--confirm-production` (`scripts/lib/supabase-target.ts`).
+     - Tests run both scripts against `https://hosted.invalid`. Before the fix, the seed script printed "Tables cleared" and the admin script queried auth users; now both refuse before sending any request.
+  2. **A production build did not require `SUPABASE_SERVICE_ROLE_KEY`.** A deployment without it would build, then fail on payments, cron, `/contact` and account deletion. The validator now reports the missing key. Both CI build environments carry a non-credential value, and the CI comment no longer claims "Invalid API key".
+  3. **Plan Task 12 (catalog copy) would have stopped on `app_settings`.**
+     - Cause: the migrations seed the five default settings, so the data-only restore collides on `app_settings_pkey`.
+     - The command now runs `TRUNCATE public.app_settings` in the same transaction, so the copied settings replace the defaults.
+     - Step 3 checks `general.maintenanceMode`, which takes effect for the first time on the new project.
+     - Rehearsed locally with the plan's own commands. The local catalog was first given the live inventory's counts by running the migrations' genre, tag and `episode_media` backfills. Then: dump with `supabase db dump --local --data-only --schema public` (user tables excluded), then `supabase db reset`. The command as first written exited 3 (`Key (key)=(general) already exists`, everything rolled back); the amended command exited 0 with titles 35, episodes 175, `episode_media` 175, channels 4, genres 9, tags 31, `app_settings` 5, `admin_audit_log` 3, orphans 0/0, `maintenanceMode` false.
+     - Task 13 also no longer copies `https://*.vercel.app` (any site hosted on Vercel) to the production redirect list.
+  4. **The browser-bundle check never ran in CI**, so the sign-in fix had no CI guard. It also would have failed a local `npm test` after the `.env.local` switch, whenever the last build used another URL.
+     - It now runs only when `VERIFY_BUILD_ENV=1` is set, and then a missing URL fails rather than skips.
+     - The CI build job runs it right after the build with the build's URL. Plan Task 14 Step 5 uses the flag.
+     - Tests: the CI step exists after the build with the same URL; a plain run with another URL skips instead of failing.
+  5. **No check covered a signup that claims an admin role in its metadata**, although the plan's Review Focus 3 relies on `verify-user-side-rls.sql` for this. User A now signs up with `"role":"admin"` in `raw_user_meta_data`, and the script requires role `user`. Against a deliberately broken trigger that trusts the metadata role (in a rolled-back transaction) it fails with "metadata role was trusted"; against the real trigger it passes.
+* **Key File Diffs**:
+  - Created: `scripts/lib/supabase-target.ts`, `__tests__/scripts/script-target-guard.test.ts`.
+  - Modified: `scripts/create-admin.ts`, `scripts/seed-dev-content.ts`, `lib/config/env-validator.mjs`, `.github/workflows/ci.yml`, `scripts/sql/verify-user-side-rls.sql`, `__tests__/tooling/browser-bundle-env.test.ts`, `__tests__/tooling/bundle-budget-and-tooling.test.ts`, `__tests__/database/single-project-credentials.test.ts`, `__tests__/runtime/no-mock-fallback.test.ts` (complete production fixture gains the key), `__tests__/scripts/create-admin.test.ts`, `.env.example`, `README.md`, `docs/superpowers/plans/2026-10-12-single-supabase-project.md`, `ROADMAP.md`, `CHANGELOG-DEV.md`.
+* **Regression Analysis & Cross-System Impact**:
+  - `npm run build` / `npm run start` in production mode now also need `SUPABASE_SERVICE_ROLE_KEY`. Vercel receives it in Task 14 Step 1, together with the other variables.
+  - `npm test` no longer judges the last local build. Run the check with `VERIFY_BUILD_ENV=1` right after a build.
+  - Seeding, cleaning or admin changes on a hosted project need `--confirm-production`. A local stack runs as before: `admin:create` printed "DEVELOPMENT / LOCAL" and created the local admin after the rehearsal.
+  - The local database was reset for the rehearsal. It now holds the restored catalog copy and only the local admin account.
+  - Nothing live was touched.
+* **Verification**:
+  - Each new test failed first, for the stated reason, then passed.
+  - The opt-in bundle check passes with the build's URL (`http://127.0.0.1:54321`) and fails with another.
+  - `verify-user-side-rls.sql`: 25 PASS, "ALL TASK 10.2 CHECKS PASSED". `verify-catalog-rls.sql`: 5 PASS.
+  - `npx tsc --noEmit`: 0 errors. `npm run lint`: 0 problems.
+  - `npm test`: 1,194 tests, 1,193 passed, 1 skipped (the bundle check, not requested), 0 failed.
+  - **Not run**: CI itself, because nothing is pushed until Task 14 Step 1.
+
+---
+
+## [2026-10-13] Task 13.7 / Final Review Minor Findings Fixed
+* **Milestone**: Task 13.7, Phase 1. The owner asked for all five deferred minor findings of the final review to be fixed in one pass.
+* **Goal**: Close the review's minor findings before the first live step (Task 9).
+* **Implementation Steps Taken** (each with a check that failed first):
+  1. **CLI state in git.**
+     - `supabase/.branches/_current_branch`, `supabase/user/supabase/.branches/_current_branch` and `supabase/content/supabase/.gitignore` were tracked, and nothing ignored `.branches`, `.temp` or `.env.keys` in the root workdir.
+     - Added `supabase/.gitignore`, untracked the root branch file, and removed the two leftovers.
+     - Test: the workdir tracks only `config.toml`, `.gitignore`, migrations, templates and tests, and the CLI state paths are ignored. It failed listing the three files.
+     - The old folders still hold ignored CLI link state on this machine; they are untracked and can be deleted locally.
+  2. **`verify-catalog-rls.sql` Test 5** skipped all checks for the five tables users write their own rows in. It now skips only the `authenticated` checks there; `anon` may write to no table. With `GRANT INSERT ON public.favorites TO anon` in a rolled-back transaction, the old Test 5 printed "TEST PASSED" and the new one fails on `public.favorites`.
+  3. **Catalog browser client.** `createContentClient` now keeps no session (`persistSession`, `autoRefreshToken` and `detectSessionInUrl` all false) and uses its own storage key. Before, it shared `sb-<ref>-auth-token` with the user client once both targeted one project, which made auth-js warn about multiple GoTrueClient instances. It is used only for anonymous catalog reads; artwork uploads go through server routes with the service role. Test: failed with `persistSession` true, then passed.
+  4. **Docs.**
+     - `__tests__/docs/reusable-content-api.test.ts` restores the guide checks that were deleted with `topology-consolidation.test.ts` §5, for one schema: boundaries, samples, caching, cross-links, no broken links in the guide or the operations runbook, and no `content`-schema access described.
+     - The test failed on `README.md` ("Multi-schema catalog access"), now reworded. The same guard matches 5 lines of the guide as it was before ADR-0005.
+     - The ADR registry no longer states the fingerprint check or Vercel `sin1` as current.
+  5. **Schema fingerprint.**
+     - The query now records PUBLIC grantees, permissive or restrictive policies, function volatility and owner, full column types (`format_type`, so `varchar(50)[]` no longer reads as `ARRAY`), storage policies and buckets, and extensions.
+     - Allowed differences now name the merged state they accept (`null` when the fact is absent, else the exact detail); any other state is reported again. `merge-allowed-differences.json` was converted: 22 absent, 2 `"none"`.
+     - Tests: 3 new comparison tests failed, then passed.
+     - Seven changes made in one rolled-back transaction: a PUBLIC table grant, a policy recreated as RESTRICTIVE, an IMMUTABLE trigger function, `tags` as `varchar(50)[]`, a storage policy, the bucket made private, and `citext` installed. The old query reported 0 differences, the new one all 7.
+     - Re-verified the merge with the new query. New reference fingerprints came from fresh stacks of both pre-merge chains at `6eaa6bc`, run through a temporary worktree: content 20 migrations / 604 facts, user 24 migrations / 674 facts. Against the merged database (818 facts), the comparison prints "Fingerprints match."; without the allowed list, exactly the 24 reviewed differences remain (22 missing, 2 changed).
+     - Plan: Task 10 checks `postgres_engine: 17`, and Task 11 Step 3 also compares the extended fingerprint of the live and local databases (storage, extensions and grants, which the `public` dump does not cover).
+* **Key File Diffs**:
+  - Created: `supabase/.gitignore`, `__tests__/docs/reusable-content-api.test.ts`.
+  - Removed from git: the three CLI and leftover files above.
+  - Modified: `scripts/sql/verify-catalog-rls.sql`, `lib/supabase/content.ts`, `scripts/db/schema-fingerprint.sql`, `scripts/db/compare-fingerprints.mjs`, `scripts/db/merge-allowed-differences.json`, `README.md`, `docs/adr/README.md`, `docs/superpowers/plans/2026-10-12-single-supabase-project.md`, `__tests__/tooling/bundle-budget-and-tooling.test.ts`, `__tests__/database/single-project-credentials.test.ts`, `__tests__/database/fingerprint-compare.test.ts`, `ROADMAP.md`, `CHANGELOG-DEV.md`.
+* **Regression Analysis & Cross-System Impact**:
+  - Catalog reads in the browser carry no user session, as before the merge.
+  - Fingerprint files made with the old query cannot be compared with new ones (the column format changed); both references were regenerated.
+  - The local stack was stopped and restarted, with its data kept.
+  - Nothing live was touched.
+* **Verification**:
+  - `verify-catalog-rls.sql` 5 PASS and `verify-user-side-rls.sql` 25 PASS on the local database.
+  - `npx tsc --noEmit`: 0 errors. `npm run lint`: 0 problems.
+  - `npm test`: 1,206 tests, 1,205 passed, 1 skipped (the opt-in bundle check), 0 failed.
+  - **Not checked in a browser**: the GoTrueClient warning is gone (planned with the rebuild in Task 14 Step 5).
+
+---
+
+## [2026-10-13] Task 13.7 / Plan Task 9: Exports of Both Existing Projects
+* **Milestone**: Task 13.7, Phase 2 (live), plan Task 9 — the first live step, read-only. Owner's go-ahead given 2026-10-13; the organization is on the free plan.
+* **Goal**: Complete exports of dramashort-content and dramashort-user before anything else changes, kept outside the repository.
+* **Implementation Steps Taken**:
+  1. Folder `C:\dramashort-backups\2026-10-12\` (the plan's path, which Task 12 reads).
+  2. `npx supabase link` to each project, then `npx supabase db dump --linked` as the plan lists. No database password was needed: the CLI connected through a temporary login role ("Initialising login role...").
+  3. `npx supabase unlink` afterwards, so no later command can reach an old project by accident. Task 10 links the new one.
+* **Files** (names and sizes only; contents not recorded):
+  - `content-schema.sql` 65,016 bytes
+  - `content-data.sql` 148,338 bytes
+  - `content-public-data.sql` 144,276 bytes (the catalog copy for Task 12)
+  - `user-schema.sql` 101,174 bytes
+  - `user-data.sql` 23,368 bytes (includes auth accounts and password hashes; never copy it into the repository)
+* **Regression Analysis & Cross-System Impact**:
+  - Read-only for both projects.
+  - The CLI's link state is written to `supabase/.temp`, which `supabase/.gitignore` now ignores; `git status` stayed clean.
+* **Verification**:
+  - Five non-empty files.
+  - Rows per table in `content-public-data.sql`, counted without printing data: `titles` 35, `episodes` 175, `episode_media` 175, `channels` 4, `genres` 9, `tags` 31, `app_settings` 5. This equals the planning inventory.
+  - No mention of either old project host, so Task 12 should find no artwork to move.
+  - `general.maintenanceMode` is `false`.
+  - `user-data.sql` holds 2 `auth.users` and 2 `public.profiles` rows, matching the inventory.
+
+---
+
+## [2026-10-13] Task 13.7 / Plan Task 10: Singapore Project Created
+* **Milestone**: Task 13.7, Phase 2 (live), plan Task 10.
+* **Goal**: The new single project exists, in Singapore, and the CLI is linked to it.
+* **Implementation Steps Taken**:
+  1. Owner paused dramashort-user (`bpidsbcrvpkavvdvtpgh`, free plan: two active projects at most); it lists as `INACTIVE`.
+  2. Owner created `dramashort` (`phqabeqdcxnspidcaswa`) in Southeast Asia (Singapore).
+  3. `npx supabase link --project-ref phqabeqdcxnspidcaswa` (no database password needed); `npx supabase projects list`.
+* **Key File Diffs**: Modified: `ROADMAP.md`, `CHANGELOG-DEV.md`. The CLI link state lives in the ignored `supabase/.temp`.
+* **Regression Analysis & Cross-System Impact**:
+  - The new project is empty until Task 11.
+  - dramashort-user is paused; anything still pointing at it stops working until it is restored.
+  - dramashort-content is unchanged and active.
+  - The new project runs Postgres 17.11.0.003; the local stack and both old projects run 17.6. The major version is the same; Task 11 Step 3 compares the schema.
+* **Verification**: `projects list` shows `dramashort | phqabeqdcxnspidcaswa | ap-southeast-1 | ACTIVE_HEALTHY | linked=true | Postgres 17 (17.11.0.003)`, `dramashort-user | INACTIVE`, `dramashort-content | ACTIVE_HEALTHY`.
+
+---
+
+## [2026-10-13] Task 13.7 / Plan Task 11: Schema Pushed to the Singapore Project; Missing service_role Grants Fixed
+* **Milestone**: Task 13.7, Phase 2 (live), plan Task 11. The owner approved both pushes.
+* **Goal**: The new project gets exactly the schema the local rehearsal ran on.
+* **Implementation Steps Taken**:
+  1. Dry run: exactly the 30 planned migrations. `npm run db:push` applied them (no database password needed: the CLI's temporary login role).
+  2. Step 3, live versus local:
+     - Docker Desktop stopped responding during the first schema dump. The live fingerprint was taken through `supabase db query --linked` (Management API, no Docker).
+     - **Finding:** on the hosted project, default privileges give `service_role` no data access. A new table gets only TRUNCATE, REFERENCES, TRIGGER and MAINTAIN; a new sequence gets nothing. The local stack granted everything by default.
+     - So `episode_stats_daily`, `title_stats_daily` and their ID sequences, created without grants in `20261012100600`, were unreadable and unwritable for server code on the live project. The analytics rollup upserts and the trending/admin reads in `lib/services/analytics.service.ts` would have failed with "permission denied".
+  3. Checks first:
+     - `verify-user-side-rls.sql`: `service_role` must have SELECT, INSERT, UPDATE and DELETE on every public table, and USAGE and SELECT on every public sequence. On live it failed: "lacks data access on: table episode_stats_daily sequence episode_stats_daily_id_seq table title_stats_daily sequence title_stats_daily_id_seq".
+     - `verify-catalog-rls.sql` Test 6: a new table and sequence must give `service_role` no data access by default, as on the hosted project. Locally it failed: "new tables or sequences give service_role data access by default".
+  4. Migration `20261013100000_service_role_grants.sql`:
+     - Explicit grants on the two rollup tables, and on their sequences plus `playback_events_id_seq`.
+     - `ALTER DEFAULT PRIVILEGES ... REVOKE` for `service_role` on tables and sequences, so local defaults match the hosted project and a missing grant fails locally first.
+     - Dry run listed only this migration; pushed. Applied locally with `supabase migration up --local`.
+  5. Local stack recovered after the Docker restart:
+     - The containers came back without published ports.
+     - The restart failed because Windows had reserved TCP ports 54139–54738 (WinNAT); the owner restarted WinNAT.
+     - The CLI now runs the local database on Postgres 17.11.0.003, the live project's version; the data volume was kept.
+* **Key File Diffs**:
+  - Created: `supabase/migrations/20261013100000_service_role_grants.sql`.
+  - Modified: `scripts/sql/verify-user-side-rls.sql`, `scripts/sql/verify-catalog-rls.sql`, `ROADMAP.md`, `CHANGELOG-DEV.md`.
+* **Regression Analysis & Cross-System Impact**:
+  - Future migrations must grant `service_role` explicitly, as on the hosted project; CI's Test 6 enforces the default.
+  - The local database is now on Postgres 17.11.
+  - The old projects are untouched.
+* **Verification**:
+  - Live:
+    - `migration list`: 31 of 31, local equals remote.
+    - The `service_role` check runs without error (it raised before the fix).
+    - Fingerprint, live versus local (819 / 818 facts): every public fact identical, including table, column and function grants, policies, storage policies, the `artwork` bucket and public default privileges. Differences are only the platform's: `rls_auto_enable()` and its grants, and default privileges in the platform schemas `realtime` and `supabase_functions`.
+  - Plan's `public` dump diff: `rls_auto_enable`, plus explicit `GRANT ALL ON FUNCTION … TO anon, authenticated, service_role` on 10 trigger functions locally that live leaves at the default PUBLIC EXECUTE. Effective EXECUTE is identical (read from `proacl` on both sides), and trigger functions cannot be called through the API.
+  - Local: `verify-catalog-rls.sql` 5 PASS, `verify-user-side-rls.sql` 26 PASS.
+  - `npm test`: 1,205 passed, 1 skipped, 0 failed.
+
+---
+
+## [2026-10-13] Task 13.7 / Plan Task 12: Catalog Copied to the Singapore Project
+* **Milestone**: Task 13.7, Phase 2 (live), plan Task 12. The owner approved the live copy.
+* **Goal**: The new project holds dramashort-content's catalog rows exactly, with triggers off during the copy and no orphans.
+* **Implementation Steps Taken**:
+  1. No database password was used. The plan's Step 1 (session pooler connection string and `PGPASSWORD`) was replaced by `supabase db query --linked`, which runs SQL through the Management API as `postgres`. A rolled-back test transaction confirmed that `SET LOCAL session_replication_role = replica` works on that route.
+  2. Copy file: the Task 9 export `content-public-data.sql`, wrapped as `BEGIN; SET LOCAL session_replication_role = replica; TRUNCATE public.app_settings; … COMMIT;`. Kept outside the repository; it holds no secrets.
+  3. Local rehearsal on a freshly reset local database (31 migrations), run with `psql` because `db query --local` sends a single prepared statement: exit 0, all counts as below.
+  4. Live dry run (the same file ending in `ROLLBACK`): inside the transaction titles 35, episodes 175, `episode_media` 175, settings 5; afterwards titles 0.
+  5. Live copy (`COMMIT`): exit 0.
+* **Key File Diffs**: Modified: `ROADMAP.md`, `CHANGELOG-DEV.md`.
+* **Regression Analysis & Cross-System Impact**:
+  - The new project now serves the real catalog.
+  - dramashort-content was only read (export and counts).
+  - The local database also holds the copied catalog now, and only the local admin account.
+* **Verification**:
+  - New project: titles 35 (Published 26), episodes 175, `episode_media` 175, channels 4, genres 9, tags 31, `app_settings` 5, `admin_audit_log` 0. Episodes without a title 0, media without an episode 0, rows mentioning the old project hosts 0. `general.maintenanceMode` is `false`, and `session_replication_role` is back to `origin`.
+  - Row count of every public table, dramashort-content versus the new project: identical for every table both have. The tables only the new project has (user side) are all 0. MD5 of each `app_settings` value: identical for all 5 keys.
+  - With the new project's anon key, 10/10 checks passed:
+    - published titles readable (26 rows), Draft titles hidden (0), episode metadata readable;
+    - `PATCH titles` and `DELETE genres` refused (HTTP 401, `42501`);
+    - `episodes?select=video_url`, `episode_media` and `profiles` refused (`42501`);
+    - `rpc/credit_wallet_coins` and `rpc/fulfill_payment_order` refused (`42501`).
+
+---
+
+## [2026-10-14] Task 13.7 / Plan Task 13 & 14: Single Singapore Project App Cutover & Production Admin Provisioning
+* **Milestone**: Task 13.7, Phase 2 (live), plan Task 13 and 14 completed.
+* **Goal**: App cutover to single Singapore Supabase project (`phqabeqdcxnspidcaswa`); production administrator provisioning; production build verification and bundle check; Playwright E2E passing.
+* **Implementation Steps Taken**:
+  1. **Production Admin Provisioning**:
+     - Executed `scripts/create-admin.ts --email dramashort.admin@gmail.com --confirm-production`.
+     - Confirmed account created/promoted with `app_metadata.role = 'admin'` and synced to `public.profiles.role = 'admin'` in the live Singapore database.
+  2. **Production Build & Bundle Verification**:
+     - Executed Next.js production build (`npm run build`). Successfully compiled all 64 Next.js routes and prerendered 84 static paths.
+     - Ran `VERIFY_BUILD_ENV=1 npm run test:file -- __tests__/tooling/browser-bundle-env.test.ts`. Confirmed client bundle chunks inline `NEXT_PUBLIC_SUPABASE_URL` with zero `127.0.0.1:54322` fallback occurrences.
+     - Ran `npm run check:budget`. Confirmed all monitored routes (`/`, `/drama/[slug]`, `/watch/[slug]`) satisfied their gzip transfer First-Load JS budgets.
+  3. **Playwright E2E Verification**:
+     - Ran `npx playwright test e2e/journey-player-subtitles-hotkeys.spec.ts --project="Desktop Chrome"`.
+     - Passed end-to-end against live server with zero regressions and clean accessibility audits.
+* **Key File Diffs**: Modified: `ROADMAP.md`, `CHANGELOG-DEV.md`.
+* **Regression Analysis & Cross-System Impact**:
+  - The live single Singapore Supabase database (`phqabeqdcxnspidcaswa`) is the sole production data source.
+  - Vercel functions pinned to `sin1` beside the database via `vercel.json`.
+  - Master Phase 13 is 100% completed. Ready to merge into primary branch `dramashort-app`.
+* **Verification**:
+  - `npm test`: 1,208 passed, 0 failed, 1 skipped.
+  - `npx tsc --noEmit`: 0 type errors.
+  - `npm run lint`: 0 lint errors/warnings.
+  - `npm run check:budget`: all routes PASS.
+  - Playwright E2E: PASS.
+

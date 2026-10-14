@@ -261,15 +261,15 @@ describe("Task 16.7: User Management Console", () => {
   describe("Database Migration Contracts", () => {
     const userMigrationPath = path.join(
       process.cwd(),
-      "supabase/user/supabase/migrations/20261009170000_admin_user_management.sql"
+      "supabase/migrations/20261012100700_profile_columns_for_admin_and_wallets.sql"
     );
     const contentMigrationPath = path.join(
       process.cwd(),
-      "supabase/content/supabase/migrations/20261009170000_admin_user_management.sql"
+      "supabase/migrations/20261009170000_admin_user_management.sql"
     );
 
-    it("verifies migration file exists in both User and Content database migration suites", () => {
-      assert.ok(fs.existsSync(userMigrationPath), "User DB migration file must exist");
+    it("verifies the catalog migration and its ported profile statements both exist in the single chain", () => {
+      assert.ok(fs.existsSync(userMigrationPath), "Ported profile statements (20261012100700) must exist");
       assert.ok(fs.existsSync(contentMigrationPath), "Content DB migration file must exist");
     });
 

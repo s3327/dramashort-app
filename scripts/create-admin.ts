@@ -11,7 +11,8 @@
  * 4. Single source of truth: writes app_metadata.role ('admin' or 'editor') and mirrors
  *    it to profiles.role via the service role. Drops any client-forged user_metadata.role.
  * 5. Full pagination: scans all pages of listUsers() to guarantee existing users are found.
- * 6. Production Safety Gate: requires --confirm-production when targeting the production User DB.
+ * 6. Production Safety Gate: requires --confirm-production for any hosted Supabase project
+ *    (anything but a local stack; see scripts/lib/supabase-target.ts).
  *
  * Usage:
  *   # Create new admin with auto-generated secure password:
@@ -31,8 +32,9 @@
  */
 
 import { createClient, type User } from "@supabase/supabase-js";
-import type { Database } from "@/types/supabase-user";
+import type { Database } from "@/types/supabase";
 import * as crypto from "crypto";
+import { isLocalSupabaseUrl } from "./lib/supabase-target";
 import * as dotenv from "dotenv";
 import * as path from "path";
 
@@ -40,8 +42,6 @@ import * as path from "path";
 dotenv.config({ path: path.resolve(process.cwd(), ".env.local") });
 
 export type SupabaseUserClient = ReturnType<typeof createClient<Database>>;
-
-export const PRODUCTION_USER_PROJECT_REF = "bpidsbcrvpkavvdvtpgh";
 
 export type AdminRole = "admin" | "editor";
 
@@ -60,9 +60,10 @@ export function isValidEmail(email: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
 }
 
+// A hosted project counts as production: the single project's ref is not known in advance (ADR-0005).
 export function isProductionProject(url: string | undefined): boolean {
   if (!url) return false;
-  return url.toLowerCase().includes(PRODUCTION_USER_PROJECT_REF.toLowerCase());
+  return !isLocalSupabaseUrl(url);
 }
 
 export function generateSecurePassword(length = 20): string {
@@ -213,8 +214,7 @@ export async function executeAdminProvisioning(
   const { email, role, password, resetPassword, revoke, confirmProduction } = options;
 
   if (isProduction && !confirmProduction) {
-    console.error("\n❌ SAFETY REFUSAL: Target database is the PRODUCTION User DB.");
-    console.error("Project ref: " + PRODUCTION_USER_PROJECT_REF);
+    console.error("\n❌ SAFETY REFUSAL: The target is a hosted Supabase project, treated as production.");
     console.error("To proceed, you must pass the --confirm-production flag explicitly.\n");
     process.exit(1);
   }
@@ -360,8 +360,8 @@ export async function executeAdminProvisioning(
 }
 
 async function main() {
-  const userUrl = process.env.NEXT_PUBLIC_USER_SUPABASE_URL;
-  const serviceKey = process.env.USER_SUPABASE_SERVICE_ROLE_KEY;
+  const userUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
   if (!userUrl || !serviceKey) {
     console.error("❌ Missing User Supabase environment variables in .env.local");

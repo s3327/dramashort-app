@@ -1,7 +1,7 @@
 import "server-only";
 import { revalidatePath, revalidateTag } from "next/cache";
 import { getContentAdminClient } from "@/lib/supabase/content";
-import type { Database } from "@/types/supabase-content";
+import type { Database } from "@/types/supabase";
 import type {
   AdminGenre,
   CreateGenreInput,

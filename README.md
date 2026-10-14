@@ -7,7 +7,7 @@ DramaShort is a vertical drama streaming web platform engineered for high-retent
 ## Architecture & Features
 
 * **Framework & Core**: Next.js 15 (App Router), React 19, TypeScript, Tailwind CSS, Lucide icons.
-* **Database & Source of Truth**: Primary production data source is Supabase PostgreSQL (partitioned into Content DB and User DB, guided by [ADR-0003](docs/adr/0003-database-topology.md)), accessed via Server Components (RSC), Incremental Static Regeneration (ISR), and secured PostgREST API routes. Mock fixtures in [`data/titles.mock.ts`](data/titles.mock.ts) are strictly reserved for unit testing, database seeding, and offline development environments.
+* **Database & Source of Truth**: Primary production data source is Supabase PostgreSQL (one project, every table in the `public` schema, per [ADR-0005](docs/adr/0005-single-supabase-project.md)), accessed via Server Components (RSC), Incremental Static Regeneration (ISR), and secured PostgREST API routes. Mock fixtures in [`data/titles.mock.ts`](data/titles.mock.ts) are strictly reserved for unit testing, database seeding, and offline development environments.
 * **Strict No-Mock Production Standard**: In production environments (`NODE_ENV === "production"`), the application strictly enforces the no-mock rule (Task 12.4). Live database or network failures never silently fall back to mock data, preventing data contamination and surfacing real error boundaries.
 * **Multi-Theme Engine**: Custom design tokens with 3 runtime surfaces (`light`, `soft` [default], `dark`) managed via `ThemeProvider` and CSS variables, eliminating theme flash during page loads.
 * **Freemium Monetization Engine**:
@@ -41,7 +41,7 @@ DramaShort is a vertical drama streaming web platform engineered for high-retent
   - Lighthouse CI mobile configuration (`.lighthouserc.json`) targeting discovery, detail, and streaming routes.
   - Multi-device Playwright E2E suite and 1,151+ automated tests in `npm test` with 100% pass rate.
 * **Architecture Decision Records**: Formal architectural choices and decision gates are cataloged in [`docs/adr/README.md`](docs/adr/README.md).
-* **Headless Reusability Architecture**: Multi-schema catalog access and PostgreSQL role grants for external apps are documented in [`docs/architecture/reusable-content-api.md`](docs/architecture/reusable-content-api.md).
+* **Headless Reusability Architecture**: Read-only catalog access for external apps, and the PostgreSQL grants and row security that limit it, are documented in [`docs/architecture/reusable-content-api.md`](docs/architecture/reusable-content-api.md).
 * **Operational Readiness & Telemetry**: Staging setup, database backup policy, PITR, rate limiting, and incident runbooks are documented in [`docs/operations/operational-readiness.md`](docs/operations/operational-readiness.md).
 
 ---
@@ -146,7 +146,7 @@ dramashort/
 ├── middleware.ts                 # admin subdomain URL rewrite rules & session guard
 ├── public/                       # logos, icons, subtitles, service worker (sw.js)
 ├── scripts/                      # bundle budget checker (check-bundle-budget.mjs)
-└── supabase/                     # dual PostgreSQL migrations (content & user)
+└── supabase/                     # Supabase CLI workdir: one migration chain, config.toml, email templates
 ```
 
 ---
@@ -178,24 +178,58 @@ dramashort/
 # 1. Install dependencies
 npm install
 
-# 2. Run local development server
+# 2. Configure environment (see "Database (Supabase)" below)
+cp .env.example .env.local
+
+# 3. Run local development server
 npm run dev
 
-# 3. Check types & linting
+# 4. Check types & linting
 npx tsc --noEmit
 npm run lint
 
-# 4. Check First-Load JavaScript bundle budgets
+# 5. Check First-Load JavaScript bundle budgets
 npm run check:budget
 
-# 5. Run automated test suite
+# 6. Run automated test suite
 npm test
 
-# 6. Run Playwright E2E tests
+# 7. Run Playwright E2E tests
 npm run test:e2e
 
-# 7. Build for production
+# 8. Build for production
 npm run build
 ```
 
 Open `http://localhost:3000` to view the public site, or `http://localhost:3000/admin` for the admin portal.
+
+### Database (Supabase)
+
+The app uses one Supabase project with every table in the `public` schema ([ADR-0005](docs/adr/0005-single-supabase-project.md)). It needs three variables in `.env.local`:
+
+| Variable | Used by |
+|---|---|
+| `NEXT_PUBLIC_SUPABASE_URL` | browser and server |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | browser and server |
+| `SUPABASE_SERVICE_ROLE_KEY` | server only (admin writes, payments, cron, seed and admin scripts); required for production builds; never expose it to the browser |
+
+`NEXT_PUBLIC_*` values are built into the browser code, so rebuild after changing them. `npm run build` and `npm run start` also need `PAYMENT_WEBHOOK_SECRET` and `CRON_SECRET`; for local builds put them in `.env.production.local` (see `.env.example`).
+
+The schema is one migration chain in `supabase/migrations/`; `supabase/config.toml` holds the auth settings and `supabase/templates/` the email templates.
+
+```bash
+# Local stack in Docker (needs Docker Desktop); applies every migration
+npm run db:start
+#   If the analytics or Studio containers fail their health checks (seen on Windows):
+#   npx supabase start -x studio,logflare,vector
+npx supabase status -o env       # API_URL, ANON_KEY, SERVICE_ROLE_KEY for the three variables
+npm run db:seed:dev              # sample catalog: 35 titles, 175 episodes
+npm run admin:create -- --email you@example.com   # admin account; prints a generated password once
+npm run db:stop                  # stop the local stack and delete its data
+
+# Linked project (after `npx supabase link --project-ref <ref>`)
+npm run db:push                  # apply new migrations
+npm run types                    # regenerate types/supabase.ts
+```
+
+`db:seed:dev`, `db:clean:dev` and `admin:create` change the project in `.env.local` (shell variables take precedence). They refuse any hosted project unless `--confirm-production` is passed, so against a hosted project run, for example, `npm run admin:create -- --email you@example.com --confirm-production`.

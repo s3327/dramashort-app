@@ -473,4 +473,19 @@ describe("ADR-0003 Database Topology & Index Registry Contracts (Task 13.1)", ()
       );
     });
   });
+
+  describe("ADR-0005 single project", () => {
+    const adr5 = path.join(process.cwd(), "docs/adr/0005-single-supabase-project.md");
+    it("exists, is listed in the registry, and ADR-0003 points to it", () => {
+      assert.ok(fs.existsSync(adr5));
+      assert.ok(fs.readFileSync(path.join(process.cwd(), "docs/adr/README.md"), "utf8").includes("ADR-0005"));
+      assert.match(fs.readFileSync(path.join(process.cwd(), "docs/adr/0003-database-topology.md"), "utf8"), /superseded by \[ADR-0005\]/);
+    });
+    it("names the single project and the three environment variables", () => {
+      const text = fs.readFileSync(adr5, "utf8");
+      for (const s of ["ap-southeast-1", "NEXT_PUBLIC_SUPABASE_URL", "NEXT_PUBLIC_SUPABASE_ANON_KEY", "SUPABASE_SERVICE_ROLE_KEY"]) {
+        assert.ok(text.includes(s), s);
+      }
+    });
+  });
 });

@@ -35,17 +35,24 @@ jobs:
 
       # The values below only satisfy lib/config/env-validator.mjs, which refuses
       # to build in production with missing or placeholder configuration. None of
-      # them is a real credential: requests to Supabase made during the build are
-      # rejected with "Invalid API key" and the pages fall back to empty data.
+      # them is a real credential: the project does not exist, so requests to Supabase
+      # made during the build fail and the pages fall back to empty data.
       - name: Next.js Production Build
         run: npm run build
         env:
-          NEXT_PUBLIC_CONTENT_SUPABASE_URL: https://czkkzoiuyqybafacpgsp.supabase.co
-          NEXT_PUBLIC_CONTENT_SUPABASE_ANON_KEY: ci-anon-key-not-a-real-credential
-          NEXT_PUBLIC_USER_SUPABASE_URL: https://bpidsbcrvpkavvdvtpgh.supabase.co
-          NEXT_PUBLIC_USER_SUPABASE_ANON_KEY: ci-anon-key-not-a-real-credential
+          NEXT_PUBLIC_SUPABASE_URL: https://ci-not-a-real-project.supabase.co
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ci-anon-key-not-a-real-credential
+          SUPABASE_SERVICE_ROLE_KEY: ci-service-role-key-not-a-real-credential
           PAYMENT_WEBHOOK_SECRET: ci-webhook-secret-not-a-real-credential
           CRON_SECRET: ci-cron-secret-not-a-real-credential
+
+      # ADR-0005: browser code must carry the project URL; a NEXT_PUBLIC_* value read
+      # through another variable is not inlined and sign-in fails. Same URL as the build.
+      - name: Browser Bundle Carries the Supabase URL
+        run: npm run test:file -- __tests__/tooling/browser-bundle-env.test.ts
+        env:
+          VERIFY_BUILD_ENV: "1"
+          NEXT_PUBLIC_SUPABASE_URL: https://ci-not-a-real-project.supabase.co
 
       # Runs after the build on purpose: the bundle-budget tests read the build
       # output in .next and fail without it. The suite itself runs without any
@@ -73,31 +80,23 @@ jobs:
         with:
           version: 2.118.0
 
-      - name: Start User DB & Run Migrations
-        run: supabase start --workdir supabase/user
+      - name: Start Supabase & Run Migrations
+        run: supabase start
 
       # psql exits non-zero on the first failed check (ON_ERROR_STOP).
-      - name: Verify User DB RLS Policies
+      - name: Verify user-side RLS policies
         run: |
-          docker exec -i supabase_db_user psql -U postgres -d postgres -q -v ON_ERROR_STOP=1 \
-            < scripts/sql/verify-user-db-rls.sql
+          docker exec -i supabase_db_dramashort psql -U postgres -d postgres -q -v ON_ERROR_STOP=1 \
+            < scripts/sql/verify-user-side-rls.sql
 
-      # Both stacks use the same ports, so the first must be stopped before the second starts.
-      - name: Stop User DB
-        if: always()
-        run: supabase stop --workdir supabase/user --no-backup
-
-      - name: Start Content DB & Run Migrations
-        run: supabase start --workdir supabase/content
-
-      - name: Verify Content DB RLS Policies
+      - name: Verify catalog RLS policies
         run: |
-          docker exec -i supabase_db_content psql -U postgres -d postgres -q -v ON_ERROR_STOP=1 \
-            < scripts/sql/verify-content-db-rls.sql
+          docker exec -i supabase_db_dramashort psql -U postgres -d postgres -q -v ON_ERROR_STOP=1 \
+            < scripts/sql/verify-catalog-rls.sql
 
-      - name: Stop Content DB
+      - name: Stop Supabase
         if: always()
-        run: supabase stop --workdir supabase/content --no-backup
+        run: supabase stop --no-backup
 
   playwright-e2e:
     name: Playwright Integration & E2E Gate (Task 17.2)
@@ -106,10 +105,9 @@ jobs:
     # Needed by the build and again by `next start`, which re-validates the
     # environment when it loads next.config.mjs. Not real credentials (see above).
     env:
-      NEXT_PUBLIC_CONTENT_SUPABASE_URL: https://czkkzoiuyqybafacpgsp.supabase.co
-      NEXT_PUBLIC_CONTENT_SUPABASE_ANON_KEY: ci-anon-key-not-a-real-credential
-      NEXT_PUBLIC_USER_SUPABASE_URL: https://bpidsbcrvpkavvdvtpgh.supabase.co
-      NEXT_PUBLIC_USER_SUPABASE_ANON_KEY: ci-anon-key-not-a-real-credential
+      NEXT_PUBLIC_SUPABASE_URL: https://ci-not-a-real-project.supabase.co
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: ci-anon-key-not-a-real-credential
+      SUPABASE_SERVICE_ROLE_KEY: ci-service-role-key-not-a-real-credential
       PAYMENT_WEBHOOK_SECRET: ci-webhook-secret-not-a-real-credential
       CRON_SECRET: ci-cron-secret-not-a-real-credential
     steps:

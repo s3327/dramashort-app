@@ -1,0 +1,8 @@
+{
+  "user": [
+    "wallets", "coin_transactions", "daily_checkins", "user_unlocked_episodes", "support_tickets",
+    "credit_wallet_coins", "debit_wallet_coins", "ensure_user_wallet", "unlock_episode_with_coins",
+    "claim_daily_checkin", "fn_sync_wallet_to_profile"
+  ],
+  "content": []
+}

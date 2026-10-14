@@ -5,7 +5,6 @@ import {
   generateSecurePassword,
   isProductionProject,
   isValidEmail,
-  PRODUCTION_USER_PROJECT_REF,
 } from "@/scripts/create-admin";
 
 describe("Admin Provisioning Script CLI & Validation (Task 10.7)", () => {
@@ -25,14 +24,17 @@ describe("Admin Provisioning Script CLI & Validation (Task 10.7)", () => {
   });
 
   describe("isProductionProject", () => {
-    it("detects production project ref bpidsbcrvpkavvdvtpgh in URL", () => {
-      const prodUrl = `https://${PRODUCTION_USER_PROJECT_REF}.supabase.co`;
-      assert.equal(isProductionProject(prodUrl), true);
+    // ADR-0005: the single project gets a new ref, so any hosted project counts as production.
+    it("treats any hosted Supabase project as production", () => {
+      assert.equal(isProductionProject("https://abcdefghijklmnopqrst.supabase.co"), true);
+      assert.equal(isProductionProject("https://placeholder.supabase.co"), true);
+      assert.equal(isProductionProject("https://db.example.com"), true);
     });
 
-    it("returns false for local or non-production URLs", () => {
+    it("returns false only for a local stack or a missing URL", () => {
       assert.equal(isProductionProject("http://127.0.0.1:54321"), false);
-      assert.equal(isProductionProject("https://placeholder.supabase.co"), false);
+      assert.equal(isProductionProject("http://localhost:54321"), false);
+      assert.equal(isProductionProject("http://[::1]:54321"), false);
       assert.equal(isProductionProject(undefined), false);
     });
   });

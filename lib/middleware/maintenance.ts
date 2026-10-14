@@ -1,4 +1,5 @@
 import type { NextRequest } from "next/server";
+import { getSupabaseCredentials } from "@/lib/supabase/credentials";
 
 let cachedMaintenance: { active: boolean; expiresAt: number } | null = null;
 let testMaintenanceMode: boolean | null = null;
@@ -36,8 +37,7 @@ export async function isMaintenanceModeActive(request?: NextRequest): Promise<bo
 
   // 2. Fast PostgREST REST query to Content DB
   try {
-    const url = process.env.NEXT_PUBLIC_SUPABASE_URL || "http://127.0.0.1:54321";
-    const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "dev-anon-key";
+    const { url, anonKey } = getSupabaseCredentials();
 
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 1500);

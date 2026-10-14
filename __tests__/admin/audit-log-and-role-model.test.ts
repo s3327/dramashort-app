@@ -19,18 +19,13 @@ describe("Task 16.9: Audit Log & Role Model", () => {
   // 1. Database Migrations & Invariants
   // =========================================================================
   describe("Database Migration Integrity", () => {
-    test("verifies audit log migration file exists in content and user DBs", () => {
+    test("verifies the audit log migration file exists in the single chain", () => {
       const contentMigration = path.join(
         process.cwd(),
-        "supabase/content/supabase/migrations/20261009190000_audit_log_and_roles.sql"
-      );
-      const userMigration = path.join(
-        process.cwd(),
-        "supabase/user/supabase/migrations/20261009190000_audit_log_and_roles.sql"
+        "supabase/migrations/20261009190000_audit_log_and_roles.sql"
       );
 
       assert.ok(fs.existsSync(contentMigration), "Content DB migration must exist");
-      assert.ok(fs.existsSync(userMigration), "User DB migration mirror must exist");
 
       const contentSql = fs.readFileSync(contentMigration, "utf-8");
       assert.match(contentSql, /CREATE TABLE IF NOT EXISTS public\.admin_audit_log/i);
@@ -48,7 +43,7 @@ describe("Task 16.9: Audit Log & Role Model", () => {
     test("verifies indexes and RLS policies on admin_audit_log", () => {
       const contentMigration = path.join(
         process.cwd(),
-        "supabase/content/supabase/migrations/20261009190000_audit_log_and_roles.sql"
+        "supabase/migrations/20261009190000_audit_log_and_roles.sql"
       );
       const sql = fs.readFileSync(contentMigration, "utf-8");
 

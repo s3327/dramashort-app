@@ -1,6 +1,6 @@
 import "server-only";
 import { createUserServerClient } from "@/lib/supabase/user-server";
-import type { Database } from "@/types/supabase-user";
+import type { Database } from "@/types/supabase";
 import type { ListDef } from "@/contexts/FavoritesContext";
 import { type Result, ok, err } from "@/lib/common/result";
 

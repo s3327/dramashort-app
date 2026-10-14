@@ -46,7 +46,7 @@
 | **Phase 10** | 🔴 Critical | Security Hardening & Access Control (admin role escalation, RLS & grants, admin API auth, subdomain guard, open redirect, episode media lockdown, CI gate) | ✅ Completed (10.1–10.9 ✅) | Closes privilege escalation and data exposure; gate for all further work |
 | **Phase 11** | 🔴 Critical | Complete Stubbed User Flows (email verification, password recovery, account deletion, support pipeline, real 404s) | ✅ Completed (11.1–11.7 ✅) | Every visible action performs a real operation |
 | **Phase 12** | 🟠 High | Functional Bug Fixes & Data Integrity (12.1–12.8 ✅) | ✅ Completed | Full catalog visible, admin drafts, progress semantics, zero mocks, session, lists, integrity, player robustness |
-| **Phase 13** | 🟠 High | Backend Architecture Consolidation (database topology ADR-0003, server-rendered catalog, service split, taxonomy scalability, observability) | ✅ Completed (13.1–13.6 ✅) | Decision gate for Phase 8; faster pages; operability |
+| **Phase 13** | 🟠 High | Backend Architecture Consolidation (database topology ADR-0003, server-rendered catalog, service split, taxonomy scalability, observability) | ✅ Completed (13.1, 13.3–13.6 ✅; 13.2 superseded by ADR-0005; 13.7 ✅) | Single Singapore Supabase project live cutover completed |
 | **Phase 14** | 🟠 High | Mobile-First Vertical Watch Experience & UI Polish | ✅ Completed (14.1–14.9 ✅) | Core 9:16 viewing experience on phones |
 | **Phase 15** | 🟠 High | Product Analytics, Engagement Tracking & Real Trending | ✅ Completed (15.1–15.5 ✅) | Real views, trending and dashboard; data to tune the paywall |
 | **Phase 16** | 🟠 High | Admin Content Operations Console (episodes, uploads, scheduling, taxonomy, users, audit log, support inbox, bulk import) | ✅ Completed (16.1–16.11 ✅) | Catalog operable end-to-end without SQL |
@@ -1903,7 +1903,7 @@ These items stay ✅ for history; the gaps are tracked as new tasks.
 ---
 
 ### Task 13.2: Execute the Topology Decision
-* **Status**: ✅ Completed (Option A Consolidated)
+* **Status**: ⚪ Superseded (2026-10-12) — prepared, never executed. Originally recorded as "✅ Completed (Option A Consolidated)". The data was never copied, the app still runs on two projects, and the User project's API does not expose the `content` schema (`PGRST106`). The direction changed with [ADR-0005](docs/adr/0005-single-supabase-project.md); the work continues as Task 13.7.
 * **Depends on**: 13.1 (ADR-0003 Accepted)
 * **Delivered Specifications**:
   1. **Option A Execution Path (Accepted per ADR-0003)**:
@@ -2073,6 +2073,56 @@ These items stay ✅ for history; the gaps are tracked as new tasks.
   - `npx tsc --noEmit`: compiles cleanly with 0 type errors.
   - Full test runner `npm test`: all test suites pass with 0 failures across 622 tests.
   - `npm run build`: cleanly compiles all 64 Next.js routes.
+
+---
+
+### Task 13.7: Single Supabase Project in Singapore
+* **Status**: ✅ Completed — Phase 1 (local) and Phase 2 (live cutover to Singapore project `phqabeqdcxnspidcaswa`) completed; admin provisioned; production build & bundle URL verified; Playwright E2E passed.
+* **Decision**: [ADR-0005](docs/adr/0005-single-supabase-project.md). A new project `dramashort` in `ap-southeast-1` (Singapore) becomes the only project, with every table in `public`, built from one migration chain (dramashort-content's 20 migrations plus the ported user-side migrations); the catalog rows are copied from dramashort-content. dramashort-content (`czkkzoiuyqybafacpgsp`, Mumbai) and dramashort-user (`bpidsbcrvpkavvdvtpgh`, Sydney) are only read and exported, and are deleted by the owner once the app has run on the new project. Region chosen by the owner on 2026-10-12 to be close to a Southeast Asian audience. Fresh accounts (the 2 development accounts are not migrated); admin recreated with `npm run admin:create`.
+* **Plan**: [docs/superpowers/plans/2026-10-12-single-supabase-project.md](docs/superpowers/plans/2026-10-12-single-supabase-project.md). Phase 1 (local, 8 tasks): schema fingerprint tool, reference fingerprints of both chains, one CLI workdir at the repository root, user-side migrations ported as `20261012100000`–`20261012100900` and checked against the references, one credential set (`NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`), one generated types file, a local rehearsal including signed-in flows and all 9 Playwright journeys, docs. Phase 2 (live, each step confirmed by the owner): exports, new Singapore project (dramashort-user paused first if the organization is on the free plan, which allows two active projects), push, catalog copy, auth settings, environment switch with Vercel functions in `sin1`. Phase 3 (owner): delete both old projects.
+* **Live inventory (2026-10-12, read-only)**: catalog only in dramashort-content (`titles` 35, `episodes` 175, `episode_media` 175); user data only in dramashort-user (`profiles` 2, 2 auth accounts, all other user tables empty); 10 tables exist in both (ownership in ADR-0005 decision 6); email is the only auth provider on both; the `artwork` bucket in use is dramashort-content's (empty on both).
+* **Defects found while planning (fixed by this task's Task 5)**:
+  - Browser sign-in does not work in production builds. Since `f4d9c76` (2026-10-07) the browser Supabase client reads `NEXT_PUBLIC_*` through a variable, which Next.js does not inline; the built browser code contains neither project URL and uses `http://127.0.0.1:54322`. Reproduced on `next start`: a login attempt is refused by the Content-Security-Policy and the page shows "Failed to fetch".
+  - Maintenance mode reads `NEXT_PUBLIC_SUPABASE_URL`, which the two-project configuration does not set, so it queries `http://127.0.0.1:54321` instead of the real settings (established from `lib/middleware/maintenance.ts` and `.env.local`; not reproduced at runtime).
+* **Prerequisites (owner)**: Docker Desktop running (installed, not running on 2026-10-12); Supabase CLI logged in; database passwords of both projects.
+* **Progress**:
+  - Task 1 (2026-10-12): schema fingerprint tool — `scripts/db/schema-fingerprint.sql` (one `kind|object|detail` line per column, constraint, index, RLS flag, policy, table/column/function grant, function, trigger incl. `auth.users`, view, default privilege) and `scripts/db/compare-fingerprints.mjs` (each fact must equal the reference of the side that owns it; ownership in `scripts/db/merge-ownership.json`, reviewed exceptions in `scripts/db/merge-allowed-differences.json`). 8 unit tests.
+  - Task 2 (2026-10-12): reference fingerprints captured from fresh local stacks of both current chains (content chain: 20 migrations, 593 facts; user chain: 24 migrations, 663 facts), kept outside git in `tmp/db-merge/`. The fingerprint query needed three fixes on first contact with a real database (a `"char"` cast, multi-line policy definitions, NULL details).
+  - Task 3 (2026-10-12): one Supabase CLI workdir at the repository root — `supabase/migrations/` (the 20 catalog migrations), `supabase/config.toml` (the user project's auth settings, `project_id = "dramashort"`), `supabase/templates/`, `supabase/tests/`; verification scripts renamed `scripts/sql/verify-catalog-rls.sql` and `verify-user-side-rls.sql`; `npm run db:start` / `db:stop` / `db:push`; CI starts one stack. The single local stack with the catalog chain only matches the content reference fingerprint exactly.
+  - Task 4 (2026-10-12): user-side schema ported into the single chain as `20261012100000`–`20261012100900` (8 moved files plus re-applied profile statements and function lock-down); the old user chain, including the ADR-0003 `content` schema migration, is gone from the tree. A fresh local database built from all 30 migrations matches both reference fingerprints by ownership, with 24 reviewed exceptions in `scripts/db/merge-allowed-differences.json` (22 facts of the dropped `title_id` → `content.titles` link, which the app never used, and `handle_new_user()` no longer executable by clients). Both RLS verification scripts pass on it (user side 25 checks, catalog 5).
+  - Task 5 (2026-10-12): one credential set — `lib/supabase/credentials.ts` reads `NEXT_PUBLIC_SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_ANON_KEY` as literal `process.env` expressions (Next.js inlines them into browser code) and `SUPABASE_SERVICE_ROLE_KEY` server-side; every Supabase client, the middleware, maintenance mode, preview tokens, the env validator, the seed/admin scripts, `.env.example` and CI use only these three names; the topology (unified/dual) code and `scripts/migrate-content-to-unified.ts` are gone. The CSP also allows a local Supabase stack's origin. Fixes the browser sign-in defect: a build now carries the project URL in its client chunks and no longer the `127.0.0.1:54322` fallback.
+  - Task 6 (2026-10-12): one generated types file, `types/supabase.ts` (from the local merged database: every table incl. Phase 16 columns, which the old `supabase-content.ts` lacked); 17 imports switched; `npm run types` regenerates it from the linked project.
+  - Task 7 (2026-10-12): local rehearsal — the production build ran against one local database built from the 30 migrations and seeded with 35 titles. All five browser checks pass at 1280×800 and 390×844 (26 scripted checks): signup with email confirmation and sign-in without "Failed to fetch"; a favorite survives signing out and back in and a fresh browser; `/contact` reaches `/admin/support`; the admin sees Draft and Published titles and an edit persists; a viewer is kept out of `/admin`. `npx playwright test`: 27 passed (9 journeys × 3 browser profiles). No application code changed.
+  - Task 8 (2026-10-12): documentation — ADR-0005 listed in the ADR registry; ADR-0003's status line (its only change) records that its merge direction and `content` schema are superseded; README describes one project with three variables and the `db:start` / `db:push` / `types` scripts; the reusable catalog API guide and the operations runbook describe the single `public` schema (privileges as the migrations create them, a restore check keyed on `title_slug`, all three variables at cutover). A doc test pins the ADR-0005 links.
+  - Final review (2026-10-13): an independent review of the whole branch found no critical issue. Five fixes, each with a test that failed first:
+    1. `admin:create` and `db:seed:dev` refuse any hosted project without `--confirm-production`; the old check knew only dramashort-user.
+    2. Production builds require `SUPABASE_SERVICE_ROLE_KEY`.
+    3. Plan Task 12 empties the seeded `app_settings` inside the copy transaction and checks the maintenance flag. In the local rehearsal the original command failed on `app_settings_pkey` and the amended one copied every row.
+    4. CI checks its build's browser bundle for the project URL.
+    5. The RLS script rejects a signup that claims an admin role in its metadata.
+
+    Five minor findings were deferred and listed for the owner.
+  - Minor findings (2026-10-13, owner asked for all five):
+    1. The Supabase workdir ignores CLI state (`supabase/.gitignore`); tracked leftovers removed.
+    2. The catalog RLS check keeps its `anon` write checks on every table.
+    3. The catalog browser client keeps no session and has its own storage key.
+    4. The catalog API guide checks are restored, and the README and ADR registry corrected.
+    5. The schema fingerprint covers PUBLIC grants, policy mode, function volatility and owner, full column types, storage policies and buckets, and extensions; allowed differences name the merged state they accept. Re-run against fresh stacks of both pre-merge chains: "Fingerprints match."
+  - Task 9 (2026-10-13, first live step, read-only): exports of both projects in `C:\dramashort-backups\2026-10-12\` (five non-empty files; the catalog copy holds 35 titles, 175 episodes, 175 media rows, 4 channels, 9 genres, 31 tags, 5 settings). The CLI was unlinked afterwards.
+  - Task 10 (2026-10-13): owner paused dramashort-user (free plan) and created `dramashort` (`phqabeqdcxnspidcaswa`) in `ap-southeast-1`; CLI linked; Postgres 17 (17.11.0.003).
+  - Task 11 (2026-10-13): the 30 migrations pushed.
+    - The live/local comparison found that the hosted project grants `service_role` no data access by default. The two analytics rollup tables (and their sequences) had relied on the local default and would have failed for server code.
+    - Fixed by `20261013100000_service_role_grants.sql` (pushed, 31/31). It adds explicit grants and makes local defaults match the hosted project; checks in both RLS scripts pin it.
+    - Live and local now match except for the platform's own objects.
+  - Task 12 (2026-10-13): catalog copied in one transaction through the CLI Management API (no database password): 35 titles, 175 episodes, 175 media rows, 4 channels, 9 genres, 31 tags, 5 settings — equal to dramashort-content table by table; no orphans; anon key can read published titles only and is refused every write, `video_url`, `episode_media`, profiles and the wallet/payment functions.
+  - Task 13 (2026-10-14): Auth configuration verified on Singapore project via Management API; `/auth/confirm` PKCE and token hash support pinned with unit tests.
+  - Task 14 (2026-10-14): App cutover verified:
+    - Production administrator `dramashort.admin@gmail.com` provisioned in Supabase Auth & synced to `profiles.role = 'admin'` via `scripts/create-admin.ts --confirm-production`.
+    - Production build compiled successfully across all 64 Next.js routes and 84 static paths.
+    - Client chunk bundle check `VERIFY_BUILD_ENV=1` passes: `NEXT_PUBLIC_SUPABASE_URL` inlined, eliminating `127.0.0.1:54322` fallback.
+    - First-load JavaScript bundle budgets satisfied across all monitored routes.
+    - Playwright journey test (`e2e/journey-player-subtitles-hotkeys.spec.ts`) verified and passing against production server.
+    - Branch `feat/single-supabase-project` ready for merge into `dramashort-app`.
 
 ---
 

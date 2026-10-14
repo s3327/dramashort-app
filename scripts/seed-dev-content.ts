@@ -4,17 +4,24 @@ import * as path from "path";
 import { titles } from "../data/titles.mock";
 import { channels } from "../data/channels.mock";
 import { getChannelCode, createDramaSlug } from "../lib/slug";
+import { isLocalSupabaseUrl } from "./lib/supabase-target";
 
 // Load environment variables from .env.local
 dotenv.config({ path: path.resolve(process.cwd(), ".env.local") });
 
-const contentUrl = process.env.NEXT_PUBLIC_CONTENT_SUPABASE_URL;
-const serviceKey =
-  process.env.CONTENT_SUPABASE_SERVICE_ROLE_KEY ||
-  process.env.NEXT_PUBLIC_CONTENT_SUPABASE_ANON_KEY;
+const contentUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
 if (!contentUrl || !serviceKey) {
-  console.error("❌ Missing NEXT_PUBLIC_CONTENT_SUPABASE_URL or CONTENT_SUPABASE_SERVICE_ROLE_KEY in .env.local");
+  console.error("❌ Missing NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY in .env.local");
+  process.exit(1);
+}
+
+// --clean and --reset delete every episode, title and channel; seeding adds mock titles.
+// Only a local stack is changed without an explicit flag.
+if (!isLocalSupabaseUrl(contentUrl) && !process.argv.includes("--confirm-production")) {
+  console.error(`❌ SAFETY REFUSAL: ${contentUrl} is not a local Supabase stack.`);
+  console.error("Seeding or cleaning a hosted project needs the --confirm-production flag.");
   process.exit(1);
 }
 

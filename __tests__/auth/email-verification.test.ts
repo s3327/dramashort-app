@@ -71,6 +71,40 @@ describe("Email Verification & Confirmation Link (Task 11.1)", () => {
       }
     });
 
+    // Supabase's default templates link to /auth/v1/verify, which confirms the address and
+    // returns here with a PKCE code instead of token_hash (seen on the hosted project, 2026-10-13).
+    it("accepts the default template's ?code= link: exchanges it and redirects to next", async () => {
+      let exchangedCode: unknown = null;
+      setTestUserServerClientFactory(() => ({
+        auth: {
+          exchangeCodeForSession: async (code: unknown) => {
+            exchangedCode = code;
+            return { data: { session: {} }, error: null };
+          },
+        },
+      }));
+
+      const req = new NextRequest(
+        "http://localhost:3000/auth/confirm?type=recovery&next=%2Freset-password&code=pkce-code-123"
+      );
+      const res = await confirmRoute(req);
+      assert.equal(res.status, 307);
+      assert.ok(res.headers.get("location")?.endsWith("/reset-password"));
+      assert.equal(exchangedCode, "pkce-code-123");
+    });
+
+    it("redirects to /login?error=verification_failed when the code exchange fails", async () => {
+      setTestUserServerClientFactory(() => ({
+        auth: {
+          exchangeCodeForSession: async () => ({ data: { session: null }, error: { message: "invalid flow state" } }),
+        },
+      }));
+
+      const res = await confirmRoute(new NextRequest("http://localhost:3000/auth/confirm?code=expired"));
+      assert.equal(res.status, 307);
+      assert.ok(res.headers.get("location")?.includes("/login?error=verification_failed"));
+    });
+
     it("redirects to /login?error=verification_failed if token_hash is missing", async () => {
       const req = new NextRequest(
         "http://localhost:3000/auth/confirm?type=email&next=%2Fhome"
@@ -143,15 +177,8 @@ describe("Email Verification & Confirmation Link (Task 11.1)", () => {
 
   describe("Supabase Email Template & Auth Configuration", () => {
     const rootDir = process.cwd();
-    const configPath = path.join(rootDir, "supabase", "user", "supabase", "config.toml");
-    const templatePath = path.join(
-      rootDir,
-      "supabase",
-      "user",
-      "supabase",
-      "templates",
-      "confirmation.html"
-    );
+    const configPath = path.join(rootDir, "supabase", "config.toml");
+    const templatePath = path.join(rootDir, "supabase", "templates", "confirmation.html");
 
     it("verifies config.toml enables email confirmations", () => {
       const config = fs.readFileSync(configPath, "utf8");

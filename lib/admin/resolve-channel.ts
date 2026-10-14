@@ -1,5 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { Database } from "@/types/supabase-content";
+import type { Database } from "@/types/supabase";
 import { escapeLikePattern } from "@/lib/validation/drama";
 
 export interface ResolvedChannel {

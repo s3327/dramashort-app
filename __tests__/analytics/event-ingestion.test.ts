@@ -25,10 +25,8 @@ test("Task 15.1: Database migration defines playback_events with strict RLS and 
   const migrationPath = path.join(
     ROOT,
     "supabase",
-    "user",
-    "supabase",
     "migrations",
-    "20261008170000_playback_events.sql"
+    "20261012100500_playback_events.sql"
   );
   assert.ok(fs.existsSync(migrationPath), "Migration 20261008170000_playback_events.sql must exist");
 
