@@ -31,7 +31,7 @@ test.describe("Journey 3: Password Recovery & Reset Flow", () => {
     const loginLink = page.locator('a[href*="/login"]').first();
     if (await loginLink.isVisible()) {
       await loginLink.click();
-      await expect(page.url()).toContain("/login");
+      await expect(page).toHaveURL(/\/login/);
     }
   });
 });

@@ -71,6 +71,6 @@ test.describe("Journey 1: User Registration, Verification, Watching & Resuming",
 
     // Return to watch page without explicit ep param to test resume
     await page.goto(`/watch/${sampleSlug}`);
-    await expect(page.url()).toContain(`/watch/${sampleSlug}`);
+    await expect(page).toHaveURL(new RegExp(`/watch/${sampleSlug}`));
   });
 });
