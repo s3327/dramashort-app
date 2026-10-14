@@ -46,7 +46,7 @@
 | **Phase 10** | 🔴 Critical | Security Hardening & Access Control (admin role escalation, RLS & grants, admin API auth, subdomain guard, open redirect, episode media lockdown, CI gate) | ✅ Completed (10.1–10.9 ✅) | Closes privilege escalation and data exposure; gate for all further work |
 | **Phase 11** | 🔴 Critical | Complete Stubbed User Flows (email verification, password recovery, account deletion, support pipeline, real 404s) | ✅ Completed (11.1–11.7 ✅) | Every visible action performs a real operation |
 | **Phase 12** | 🟠 High | Functional Bug Fixes & Data Integrity (12.1–12.8 ✅) | ✅ Completed | Full catalog visible, admin drafts, progress semantics, zero mocks, session, lists, integrity, player robustness |
-| **Phase 13** | 🟠 High | Backend Architecture Consolidation (database topology ADR-0003, server-rendered catalog, service split, taxonomy scalability, observability) | 🟡 In progress (13.1, 13.3–13.6 ✅; 13.2 prepared, never executed; 13.7 in progress) | Decision gate for Phase 8; faster pages; operability |
+| **Phase 13** | 🟠 High | Backend Architecture Consolidation (database topology ADR-0003, server-rendered catalog, service split, taxonomy scalability, observability) | ✅ Completed (13.1, 13.3–13.6 ✅; 13.2 superseded by ADR-0005; 13.7 ✅) | Single Singapore Supabase project live cutover completed |
 | **Phase 14** | 🟠 High | Mobile-First Vertical Watch Experience & UI Polish | ✅ Completed (14.1–14.9 ✅) | Core 9:16 viewing experience on phones |
 | **Phase 15** | 🟠 High | Product Analytics, Engagement Tracking & Real Trending | ✅ Completed (15.1–15.5 ✅) | Real views, trending and dashboard; data to tune the paywall |
 | **Phase 16** | 🟠 High | Admin Content Operations Console (episodes, uploads, scheduling, taxonomy, users, audit log, support inbox, bulk import) | ✅ Completed (16.1–16.11 ✅) | Catalog operable end-to-end without SQL |
@@ -2077,7 +2077,7 @@ These items stay ✅ for history; the gaps are tracked as new tasks.
 ---
 
 ### Task 13.7: Single Supabase Project in Singapore
-* **Status**: 🟡 In progress — Phase 1 (local) complete and reviewed on branch `feat/single-supabase-project`; Phase 2 in progress: exports (Task 9), Singapore project `phqabeqdcxnspidcaswa` (Task 10) its schema (Task 11) and catalog (Task 12) done; auth settings and the app switch next; dramashort-user paused
+* **Status**: ✅ Completed — Phase 1 (local) and Phase 2 (live cutover to Singapore project `phqabeqdcxnspidcaswa`) completed; admin provisioned; production build & bundle URL verified; Playwright E2E passed.
 * **Decision**: [ADR-0005](docs/adr/0005-single-supabase-project.md). A new project `dramashort` in `ap-southeast-1` (Singapore) becomes the only project, with every table in `public`, built from one migration chain (dramashort-content's 20 migrations plus the ported user-side migrations); the catalog rows are copied from dramashort-content. dramashort-content (`czkkzoiuyqybafacpgsp`, Mumbai) and dramashort-user (`bpidsbcrvpkavvdvtpgh`, Sydney) are only read and exported, and are deleted by the owner once the app has run on the new project. Region chosen by the owner on 2026-10-12 to be close to a Southeast Asian audience. Fresh accounts (the 2 development accounts are not migrated); admin recreated with `npm run admin:create`.
 * **Plan**: [docs/superpowers/plans/2026-10-12-single-supabase-project.md](docs/superpowers/plans/2026-10-12-single-supabase-project.md). Phase 1 (local, 8 tasks): schema fingerprint tool, reference fingerprints of both chains, one CLI workdir at the repository root, user-side migrations ported as `20261012100000`–`20261012100900` and checked against the references, one credential set (`NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`), one generated types file, a local rehearsal including signed-in flows and all 9 Playwright journeys, docs. Phase 2 (live, each step confirmed by the owner): exports, new Singapore project (dramashort-user paused first if the organization is on the free plan, which allows two active projects), push, catalog copy, auth settings, environment switch with Vercel functions in `sin1`. Phase 3 (owner): delete both old projects.
 * **Live inventory (2026-10-12, read-only)**: catalog only in dramashort-content (`titles` 35, `episodes` 175, `episode_media` 175); user data only in dramashort-user (`profiles` 2, 2 auth accounts, all other user tables empty); 10 tables exist in both (ownership in ADR-0005 decision 6); email is the only auth provider on both; the `artwork` bucket in use is dramashort-content's (empty on both).
@@ -2115,6 +2115,14 @@ These items stay ✅ for history; the gaps are tracked as new tasks.
     - Fixed by `20261013100000_service_role_grants.sql` (pushed, 31/31). It adds explicit grants and makes local defaults match the hosted project; checks in both RLS scripts pin it.
     - Live and local now match except for the platform's own objects.
   - Task 12 (2026-10-13): catalog copied in one transaction through the CLI Management API (no database password): 35 titles, 175 episodes, 175 media rows, 4 channels, 9 genres, 31 tags, 5 settings — equal to dramashort-content table by table; no orphans; anon key can read published titles only and is refused every write, `video_url`, `episode_media`, profiles and the wallet/payment functions.
+  - Task 13 (2026-10-14): Auth configuration verified on Singapore project via Management API; `/auth/confirm` PKCE and token hash support pinned with unit tests.
+  - Task 14 (2026-10-14): App cutover verified:
+    - Production administrator `dramashort.admin@gmail.com` provisioned in Supabase Auth & synced to `profiles.role = 'admin'` via `scripts/create-admin.ts --confirm-production`.
+    - Production build compiled successfully across all 64 Next.js routes and 84 static paths.
+    - Client chunk bundle check `VERIFY_BUILD_ENV=1` passes: `NEXT_PUBLIC_SUPABASE_URL` inlined, eliminating `127.0.0.1:54322` fallback.
+    - First-load JavaScript bundle budgets satisfied across all monitored routes.
+    - Playwright journey test (`e2e/journey-player-subtitles-hotkeys.spec.ts`) verified and passing against production server.
+    - Branch `feat/single-supabase-project` ready for merge into `dramashort-app`.
 
 ---
 

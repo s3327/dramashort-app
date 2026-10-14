@@ -4551,3 +4551,32 @@
     - `PATCH titles` and `DELETE genres` refused (HTTP 401, `42501`);
     - `episodes?select=video_url`, `episode_media` and `profiles` refused (`42501`);
     - `rpc/credit_wallet_coins` and `rpc/fulfill_payment_order` refused (`42501`).
+
+---
+
+## [2026-10-14] Task 13.7 / Plan Task 13 & 14: Single Singapore Project App Cutover & Production Admin Provisioning
+* **Milestone**: Task 13.7, Phase 2 (live), plan Task 13 and 14 completed.
+* **Goal**: App cutover to single Singapore Supabase project (`phqabeqdcxnspidcaswa`); production administrator provisioning; production build verification and bundle check; Playwright E2E passing.
+* **Implementation Steps Taken**:
+  1. **Production Admin Provisioning**:
+     - Executed `scripts/create-admin.ts --email dramashort.admin@gmail.com --confirm-production`.
+     - Confirmed account created/promoted with `app_metadata.role = 'admin'` and synced to `public.profiles.role = 'admin'` in the live Singapore database.
+  2. **Production Build & Bundle Verification**:
+     - Executed Next.js production build (`npm run build`). Successfully compiled all 64 Next.js routes and prerendered 84 static paths.
+     - Ran `VERIFY_BUILD_ENV=1 npm run test:file -- __tests__/tooling/browser-bundle-env.test.ts`. Confirmed client bundle chunks inline `NEXT_PUBLIC_SUPABASE_URL` with zero `127.0.0.1:54322` fallback occurrences.
+     - Ran `npm run check:budget`. Confirmed all monitored routes (`/`, `/drama/[slug]`, `/watch/[slug]`) satisfied their gzip transfer First-Load JS budgets.
+  3. **Playwright E2E Verification**:
+     - Ran `npx playwright test e2e/journey-player-subtitles-hotkeys.spec.ts --project="Desktop Chrome"`.
+     - Passed end-to-end against live server with zero regressions and clean accessibility audits.
+* **Key File Diffs**: Modified: `ROADMAP.md`, `CHANGELOG-DEV.md`.
+* **Regression Analysis & Cross-System Impact**:
+  - The live single Singapore Supabase database (`phqabeqdcxnspidcaswa`) is the sole production data source.
+  - Vercel functions pinned to `sin1` beside the database via `vercel.json`.
+  - Master Phase 13 is 100% completed. Ready to merge into primary branch `dramashort-app`.
+* **Verification**:
+  - `npm test`: 1,208 passed, 0 failed, 1 skipped.
+  - `npx tsc --noEmit`: 0 type errors.
+  - `npm run lint`: 0 lint errors/warnings.
+  - `npm run check:budget`: all routes PASS.
+  - Playwright E2E: PASS.
+
